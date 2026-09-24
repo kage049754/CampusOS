@@ -12,9 +12,12 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,7 +32,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import org.json.JSONArray
 import org.json.JSONObject
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
 import java.io.File
+import java.util.zip.ZipFile
+import javax.xml.parsers.DocumentBuilderFactory
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -45,7 +54,105 @@ data class Record(
     val day: String = "", val startTime: String = "", val endTime: String = "",
     val room: String = "", val professor: String = "", val color: Long = 0L
 )
-data class FileRecord(val name: String, val size: Long)
+data class FileRecord(val name: String, val size: Long, val file: File? = null)
+
+private fun readableContentColor(background: Color): Color {
+    val luminance = 0.299f * background.red + 0.587f * background.green + 0.114f * background.blue
+    return if (luminance > 0.62f) Color.Black else Color.White
+}
+
+private fun subjectFolder(context: Context, subjectId: Long): File =
+    File(context.filesDir, "subject_files/$subjectId").apply { mkdirs() }
+
+private fun subjectFiles(context: Context, subjectId: Long): List<File> =
+    subjectFolder(context, subjectId).listFiles()?.filter { it.isFile }?.sortedBy { it.name.lowercase() } ?: emptyList()
+
+private fun safeFileName(name: String): String =
+    name.replace(Regex("""[\\/:*?"<>|]"""), "_").ifBlank { "lesson_file" }
+
+private fun copyUriToSubject(context: Context, uri: Uri, subjectId: Long): File? {
+    val base = safeFileName(queryName(context, uri) ?: "lesson_file")
+    var target = File(subjectFolder(context, subjectId), base)
+    var n = 2
+    while (target.exists()) {
+        val dot = base.lastIndexOf('.')
+        val stem = if (dot > 0) base.substring(0, dot) else base
+        val ext = if (dot > 0) base.substring(dot) else ""
+        target = File(subjectFolder(context, subjectId), "$stem ($n)$ext")
+        n++
+    }
+    return runCatching {
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            target.outputStream().use { output -> input.copyTo(output) }
+        } ?: return null
+        target
+    }.getOrNull()
+}
+
+private fun fileExtension(file: File) = file.extension.lowercase(Locale.getDefault())
+
+private fun readOfficeText(file: File): String? = runCatching {
+    ZipFile(file).use { zip ->
+        when (fileExtension(file)) {
+            "docx" -> zip.getEntry("word/document.xml")?.let { entry ->
+                zip.getInputStream(entry).use { stream ->
+                    DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(stream).documentElement.textContent
+                }
+            }
+            "pptx" -> zip.entries().asSequence()
+                .filter { it.name.startsWith("ppt/slides/slide") && it.name.endsWith(".xml") }
+                .sortedBy { it.name }
+                .joinToString("\n\n") { entry ->
+                    zip.getInputStream(entry).use { stream ->
+                        DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(stream).documentElement.textContent
+                    }
+                }
+            "xlsx" -> {
+                val shared = zip.getEntry("xl/sharedStrings.xml")?.let { entry ->
+                    zip.getInputStream(entry).use { stream ->
+                        val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(stream)
+                        val nodes = doc.getElementsByTagName("si")
+                        (0 until nodes.length).map { nodes.item(it).textContent }
+                    }
+                } ?: emptyList()
+                zip.entries().asSequence()
+                    .filter { it.name.startsWith("xl/worksheets/sheet") && it.name.endsWith(".xml") }
+                    .sortedBy { it.name }
+                    .joinToString("\n") { entry ->
+                        val xml = zip.getInputStream(entry).bufferedReader().use { it.readText() }
+                        Regex("""<c[^>]*t=["']s["'][^>]*>.*?<v>(\d+)</v>.*?</c>""", RegexOption.DOT_MATCHES_ALL)
+                            .replace(xml) { m -> shared.getOrNull(m.groupValues[1].toIntOrNull() ?: -1) ?: "" }
+                            .replace(Regex("""<c[^>]*t=["']inlineStr["'][^>]*>(.*?)</c>""", RegexOption.DOT_MATCHES_ALL)) { m ->
+                                Regex("<t[^>]*>(.*?)</t>", RegexOption.DOT_MATCHES_ALL).find(m.groupValues[1])?.groupValues?.get(1) ?: ""
+                            }
+                            .replace(Regex("<[^>]+>"), " ")
+                            .replace(Regex("\s+"), " ")
+                            .trim()
+                    }
+            }
+            else -> null
+        }
+    }.getOrNull()?.trim()?.takeIf { it.isNotBlank() }
+}
+
+private fun readDisplayText(file: File): String = when (fileExtension(file)) {
+    "docx", "pptx", "xlsx" -> readOfficeText(file) ?: "No readable text was found in this Office file."
+    "txt", "csv", "log", "json", "xml", "kt", "java", "md" ->
+        runCatching { file.readText() }.getOrElse { "Unable to read this text file." }
+    else -> "This file type does not have an offline text preview in CampusOS."
+}
+
+private fun renderPdfPage(file: File, pageIndex: Int): Bitmap? = runCatching {
+    val descriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+    PdfRenderer(descriptor).use { renderer ->
+        renderer.openPage(pageIndex).use { page ->
+            val bitmap = Bitmap.createBitmap(page.width * 2, page.height * 2, Bitmap.Config.ARGB_8888)
+            bitmap.eraseColor(android.graphics.Color.WHITE)
+            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+            bitmap
+        }
+    }
+}.getOrNull()
 
 class LocalStore(context: Context) {
     private val prefs = context.getSharedPreferences("campusos", Context.MODE_PRIVATE)
@@ -286,7 +393,10 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
                                 Box(Modifier.width(118.dp).height(74.dp).padding(2.dp)) {
                                     classes.firstOrNull()?.let { r ->
                                         val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
-                                        Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = bg)) {
+                                        Card(
+                                            Modifier.fillMaxSize(),
+                                            colors = CardDefaults.cardColors(containerColor = bg, contentColor = readableContentColor(bg))
+                                        ) {
                                             Column(Modifier.padding(7.dp)) {
                                                 Text(r.title, fontWeight = FontWeight.Bold, maxLines = 2)
                                                 if (r.room.isNotBlank()) Text(r.room, maxLines = 1)
@@ -391,36 +501,49 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
         onDismissRequest = done,
         title = { Text("Add class") },
         text = {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.heightIn(max = 560.dp)) {
-                item { OutlinedTextField(subject, { subject=it }, Modifier.fillMaxWidth(), label={Text("Subject code")}, placeholder={Text("e.g. DCIT 25")}) }
-                item { OutlinedTextField(fullName, { fullName=it }, Modifier.fillMaxWidth(), label={Text("Whole subject name")}) }
-                item { Text("Day", fontWeight=FontWeight.SemiBold) }
-                item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(subject,{subject=it},Modifier.fillMaxWidth(),label={Text("Subject code")},placeholder={Text("e.g. DCIT 25")})
+                OutlinedTextField(fullName,{fullName=it},Modifier.fillMaxWidth(),label={Text("Whole subject name")})
+                Text("Day",fontWeight=FontWeight.SemiBold)
+                Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
                     days.forEach { d -> FilterChip(day==d,{day=d},label={Text(d.take(3))}) }
-                }}
-                item { Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                }
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(start,{start=it},Modifier.weight(1f),label={Text("Start")})
                     OutlinedTextField(end,{end=it},Modifier.weight(1f),label={Text("End")})
-                }}
-                item { OutlinedTextField(room,{room=it},Modifier.fillMaxWidth(),label={Text("Room number")}) }
-                item { OutlinedTextField(professor,{professor=it},Modifier.fillMaxWidth(),label={Text("Professor")}) }
-                item { OutlinedTextField(notes,{notes=it},Modifier.fillMaxWidth(),label={Text("Notes")}) }
-                item { Text("Class color", fontWeight=FontWeight.SemiBold) }
-                item { Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    colors.forEach { c -> FilterChip(color==c,{color=c},label={Text("●")}) }
-                }}
+                }
+                OutlinedTextField(room,{room=it},Modifier.fillMaxWidth(),label={Text("Room number")})
+                OutlinedTextField(professor,{professor=it},Modifier.fillMaxWidth(),label={Text("Professor")})
+                OutlinedTextField(notes,{notes=it},Modifier.fillMaxWidth(),label={Text("Notes")})
+                Text("Class color",fontWeight=FontWeight.SemiBold)
+                Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                    colors.forEach { c ->
+                        Box(
+                            Modifier.size(40.dp)
+                                .border(3.dp,if(color==c) MaterialTheme.colorScheme.onSurface else Color.Transparent,RoundedCornerShape(50))
+                                .padding(4.dp)
+                                .background(Color(c),RoundedCornerShape(50)),
+                            contentAlignment=Alignment.Center
+                        ) {
+                            if(color==c) Text("✓",color=readableContentColor(Color(c)),fontWeight=FontWeight.Bold)
+                        }
+                    }
+                }
             }
         },
-        confirmButton = { Button({
-            if(subject.isNotBlank() && start.toHourOrNull()!=null && end.toHourOrNull()!=null) {
-                val classRecord = Record(title=subject.trim(), subtitle=fullName.trim(), extra=notes.trim(),
-                    day=day, startTime=start, endTime=end, room=room.trim(), professor=professor.trim(), color=color)
-                store.put("schedule", store.get("schedule") + classRecord)
-                syncSubjectFromClass(store, classRecord)
+        confirmButton={ Button({
+            if(subject.isNotBlank()&&start.toHourOrNull()!=null&&end.toHourOrNull()!=null) {
+                val classRecord=Record(title=subject.trim(),subtitle=fullName.trim(),extra=notes.trim(),
+                    day=day,startTime=start,endTime=end,room=room.trim(),professor=professor.trim(),color=color)
+                store.put("schedule",store.get("schedule")+classRecord)
+                syncSubjectFromClass(store,classRecord)
             }
             done()
         }) { Text("Save") } },
-        dismissButton = { TextButton(done) { Text("Cancel") } }
+        dismissButton={ TextButton(done) { Text("Cancel") } }
     )
 }
 
@@ -480,34 +603,118 @@ fun AcademicsScreen(store: LocalStore, query: String, clear: () -> Unit) {
 
 @Composable
 fun SubjectNotepadDialog(subject: Record, store: LocalStore, done: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var note by remember { mutableStateOf(subject.extra) }
+    var files by remember { mutableStateOf(subjectFiles(context, subject.id)) }
+    var viewingFile by remember { mutableStateOf<File?>(null) }
+    val upload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        copyUriToSubject(context, uri, subject.id)?.let { files = subjectFiles(context, subject.id) }
+    }
+
     AlertDialog(
-        onDismissRequest = done,
-        title = { Text(subject.title + " Notepad") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (subject.subtitle.isNotBlank()) Text(subject.subtitle)
-                if (subject.professor.isNotBlank()) Text("Professor: " + subject.professor,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+        onDismissRequest=done,
+        title={Text(subject.title+" Notepad")},
+        text={
+            Column(
+                Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement=Arrangement.spacedBy(10.dp)
+            ) {
+                if(subject.subtitle.isNotBlank()) Text(subject.subtitle,fontWeight=FontWeight.SemiBold)
+                if(subject.professor.isNotBlank()) Text("Professor: "+subject.professor,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(
-                    value=note,
-                    onValueChange={note=it},
-                    modifier=Modifier.fillMaxWidth().heightIn(min=240.dp),
+                    value=note,onValueChange={note=it},
+                    modifier=Modifier.fillMaxWidth().heightIn(min=180.dp),
                     label={Text("Notes")},
                     placeholder={Text("Write lessons, reminders, reviewer notes, or anything for this subject...")}
                 )
+                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Lesson files",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+                        Text("Store lesson files inside this subject for offline access.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Button({upload.launch(arrayOf("*/*"))}) {
+                        Icon(Icons.Default.UploadFile,null); Spacer(Modifier.width(6.dp)); Text("Upload")
+                    }
+                }
+                if(files.isEmpty()) EmptyCard("No lesson files yet. Upload your professor's lesson file here.")
+                else files.forEach { file ->
+                    Card(onClick={viewingFile=file},modifier=Modifier.fillMaxWidth()) {
+                        ListItem(
+                            headlineContent={Text(file.name,maxLines=2)},
+                            supportingContent={Text(formatSize(file.length()))},
+                            leadingContent={Icon(Icons.Default.InsertDriveFile,null)},
+                            trailingContent={
+                                IconButton({file.delete();files=subjectFiles(context,subject.id)}) {
+                                    Icon(Icons.Default.Delete,"Delete")
+                                }
+                            }
+                        )
+                    }
+                }
             }
         },
-        confirmButton = {
+        confirmButton={
             Button({
-                store.put("subjects", store.get("subjects").map {
-                    if (it.id == subject.id) it.copy(extra=note) else it
-                })
+                store.put("subjects",store.get("subjects").map { if(it.id==subject.id) it.copy(extra=note) else it })
                 done()
             }) { Text("Save notes") }
         },
-        dismissButton = { TextButton(done) { Text("Close") } }
+        dismissButton={TextButton(done){Text("Close")}}
     )
+    viewingFile?.let { file -> InAppFileViewerDialog(file){viewingFile=null} }
+}
+
+@Composable
+fun InAppFileViewerDialog(file: File, done: () -> Unit) {
+    var pdfPage by remember(file) { mutableIntStateOf(0) }
+    val ext=fileExtension(file)
+    Dialog(onDismissRequest=done) {
+        Card(Modifier.fillMaxWidth().fillMaxHeight(0.88f),shape=RoundedCornerShape(24.dp)) {
+            Column(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxWidth().padding(horizontal=14.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
+                    Text(file.name,Modifier.weight(1f),maxLines=2,fontWeight=FontWeight.Bold)
+                    IconButton(done){Icon(Icons.Default.Close,"Close")}
+                }
+                HorizontalDivider()
+                when {
+                    ext=="pdf" -> {
+                        val pageCount=remember(file) {
+                            runCatching {
+                                val descriptor=ParcelFileDescriptor.open(file,ParcelFileDescriptor.MODE_READ_ONLY)
+                                PdfRenderer(descriptor).use { it.pageCount }
+                            }.getOrDefault(0)
+                        }
+                        Column(Modifier.fillMaxSize()) {
+                            if(pageCount>0) {
+                                renderPdfPage(file,pdfPage.coerceIn(0,pageCount-1))?.let { bitmap ->
+                                    Image(bitmap=bitmap.asImageBitmap(),contentDescription=file.name,
+                                        modifier=Modifier.fillMaxWidth().weight(1f),contentScale=ContentScale.Fit)
+                                } ?: EmptyCard("Unable to render this PDF.")
+                                Row(Modifier.fillMaxWidth().padding(8.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
+                                    Text("Page ${pdfPage+1} of $pageCount")
+                                    Row {
+                                        TextButton({if(pdfPage>0)pdfPage--},enabled=pdfPage>0){Text("Previous")}
+                                        TextButton({if(pdfPage<pageCount-1)pdfPage++},enabled=pdfPage<pageCount-1){Text("Next")}
+                                    }
+                                }
+                            } else EmptyCard("Unable to open this PDF.")
+                        }
+                    }
+                    ext in setOf("png","jpg","jpeg","webp","bmp","gif") -> {
+                        val bitmap=remember(file){BitmapFactory.decodeFile(file.absolutePath)}
+                        if(bitmap!=null) Image(bitmap=bitmap.asImageBitmap(),contentDescription=file.name,
+                            modifier=Modifier.fillMaxSize().padding(10.dp),contentScale=ContentScale.Fit)
+                        else EmptyCard("Unable to display this image.")
+                    }
+                    else -> {
+                        val text=remember(file){readDisplayText(file)}
+                        LazyColumn(Modifier.fillMaxSize().padding(16.dp)){item{Text(text,style=MaterialTheme.typography.bodyLarge)}}
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
