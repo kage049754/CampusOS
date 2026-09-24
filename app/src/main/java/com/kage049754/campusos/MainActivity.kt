@@ -209,10 +209,9 @@ class MainActivity : ComponentActivity() {
 
 enum class Screen(val label: String) {
     HOME("Home"), SCHEDULE("Schedule"), TASKS("Tasks"), ACADEMICS("Academics"),
-    FINANCE("Finance"), FILES("Files"), SETTINGS("Settings")
+    FILES("Files"), SETTINGS("Settings")
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CampusOSApp(activity: Activity) {
