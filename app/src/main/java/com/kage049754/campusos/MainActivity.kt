@@ -547,6 +547,13 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
                                                     maxLines = 1
                                                 )
                                             }
+                                            if (r.classType.isNotBlank()) {
+                                                Text(
+                                                    r.classType,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    maxLines = 1
+                                                )
+                                            }
                                         }
                                     }
                                 }
