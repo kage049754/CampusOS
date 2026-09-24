@@ -350,6 +350,11 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
             .filter { it.day.equals(todayName, ignoreCase = true) }
             .sortedBy { it.startTime }
     }
+    val pendingTasks = remember(tasks) {
+        tasks.filter { !it.done }
+            .sortedWith(compareBy({ it.dueDate }, { it.dueTime }))
+            .take(5)
+    }
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Good day 👋", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text(date, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item { Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -365,8 +370,26 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
             }
         }
         item { SectionTitle("Tasks to do") }
-        val pendingTasks = tasks.filter { !it.done }.sortedWith(compareBy({it.dueDate},{it.dueTime})).take(5)
-        if (pendingTasks.isEmpty()) item { EmptyCard("No unfinished tasks.") } else items(pendingTasks,key={it.id}) { r -> Card(Modifier.fillMaxWidth()){ Column(Modifier.padding(12.dp)){ Text(r.title,fontWeight=FontWeight.Bold); if(r.subtitle.isNotBlank()) Text(r.subtitle,maxLines=2); if(r.dueDate.isNotBlank()) Text("Due: ${r.dueDate} ${r.dueTime}",style=MaterialTheme.typography.labelMedium); if(r.subjectId!=0L) store.get("subjects").firstOrNull{it.id==r.subjectId}?.let{sub->Text("Subject: ${sub.title}",style=MaterialTheme.typography.labelSmall)}}}} }
+        if (pendingTasks.isEmpty()) {
+            item { EmptyCard("No unfinished tasks.") }
+        } else {
+            items(pendingTasks, key = { it.id }) { r ->
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(r.title, fontWeight = FontWeight.Bold)
+                        if (r.subtitle.isNotBlank()) Text(r.subtitle, maxLines = 2)
+                        if (r.dueDate.isNotBlank()) {
+                            Text("Due: ${r.dueDate} ${r.dueTime}", style = MaterialTheme.typography.labelMedium)
+                        }
+                        if (r.subjectId != 0L) {
+                            store.get("subjects").firstOrNull { it.id == r.subjectId }?.let { sub ->
+                                Text("Subject: ${sub.title}", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
+            }
+        }
         item { SectionTitle("Quick access") }
         item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             SmallAction("Subjects", Icons.Default.School) { go(Screen.ACADEMICS) }
