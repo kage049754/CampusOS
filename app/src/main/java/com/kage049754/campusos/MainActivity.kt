@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -263,12 +264,12 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
                 Column {
                     Row {
                         Box(Modifier.width(72.dp).height(48.dp).then(
-                            if (today in activeDays) Modifier.background(dayHighlight) else Modifier
+                            if (today in activeDays) Modifier.border(3.dp, dayHighlight) else Modifier
                         ), contentAlignment = Alignment.Center) { Text("Time", fontWeight = FontWeight.Bold) }
                         activeDays.forEach { d ->
                             val isToday = d.equals(today, true)
                             Box(Modifier.width(118.dp).height(48.dp).then(
-                                if (isToday) Modifier.background(dayHighlight) else Modifier
+                                if (isToday) Modifier.border(3.dp, dayHighlight) else Modifier
                             ), contentAlignment = Alignment.Center) { Text(d.take(3), fontWeight = FontWeight.Bold) }
                         }
                     }
@@ -276,7 +277,7 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
                         val isCurrentHour = h == currentHour
                         Row {
                             Box(Modifier.width(72.dp).height(74.dp).then(
-                                if (isCurrentHour) Modifier.background(timeHighlight) else Modifier
+                                if (isCurrentHour) Modifier.border(3.dp, timeHighlight) else Modifier
                             ), contentAlignment = Alignment.TopCenter) {
                                 Text(String.format(Locale.getDefault(), "%02d:00", h), color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -355,7 +356,6 @@ fun ScheduleHighlightColorDialog(store: LocalStore, done: () -> Unit) {
 
 private fun String.toHourOrNull(): Int? = substringBefore(":").toIntOrNull()
 
-@Composable
 private fun syncSubjectFromClass(store: LocalStore, classRecord: Record) {
     val code = classRecord.title.trim()
     if (code.isBlank()) return
@@ -375,6 +375,7 @@ private fun syncSubjectFromClass(store: LocalStore, classRecord: Record) {
         else subjects.map { if (it.id == existing.id) synced else it })
 }
 
+@Composable
 fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
     var subject by remember { mutableStateOf("") }
     var fullName by remember { mutableStateOf("") }
@@ -461,7 +462,7 @@ fun AcademicsScreen(store: LocalStore, query: String, clear: () -> Unit) {
         if (list.isEmpty()) EmptyCard("No "+labels[tab].lowercase()+" yet. Use + to add.")
         else LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(list, key = { it.id }) { r ->
-                Card(Modifier.fillMaxWidth(), onClick = { if (tab == 0) selectedSubject = r }) {
+                Card(onClick = { if (tab == 0) selectedSubject = r }, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp)) {
                         Text(r.title, fontWeight = FontWeight.SemiBold)
                         if (r.subtitle.isNotBlank()) Text(r.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -509,6 +510,7 @@ fun SubjectNotepadDialog(subject: Record, store: LocalStore, done: () -> Unit) {
     )
 }
 
+@Composable
 fun RecordCard(r: Record, key: String, store: LocalStore, refresh: () -> Unit) {
     Card(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
