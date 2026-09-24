@@ -361,6 +361,9 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                 HomeTodayClassCard(r)
             }
         }
+        item { SectionTitle("Tasks to do") }
+        val pendingTasks = tasks.filter { !it.done }.sortedWith(compareBy({it.dueDate},{it.dueTime})).take(5)
+        if (pendingTasks.isEmpty()) item { EmptyCard("No unfinished tasks.") } else items(pendingTasks,key={it.id}) { r -> Card(Modifier.fillMaxWidth()){ Column(Modifier.padding(12.dp)){ Text(r.title,fontWeight=FontWeight.Bold); if(r.subtitle.isNotBlank()) Text(r.subtitle,maxLines=2); if(r.dueDate.isNotBlank()) Text("Due: ${r.dueDate} ${r.dueTime}",style=MaterialTheme.typography.labelMedium); if(r.subjectId!=0L) store.get("subjects").firstOrNull{it.id==r.subjectId}?.let{sub->Text("Subject: ${sub.title}",style=MaterialTheme.typography.labelSmall)}}}} }
         item { SectionTitle("Quick access") }
         item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             SmallAction("Subjects", Icons.Default.School) { go(Screen.ACADEMICS) }
@@ -497,9 +500,9 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
             }
         }
 
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp)
-        ) {
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal=4.dp)) {
+            val dayWidth=(maxWidth-56.dp).coerceAtLeast(0.dp)/scheduleDays.size.coerceAtLeast(1)
+
             Column {
                 Row {
                     Box(
@@ -510,7 +513,7 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
                     scheduleDays.forEach { d ->
                         val isToday = d.equals(today, true)
                         Box(
-                            Modifier.width(94.dp).height(42.dp).background(tableBg).border(1.dp, tableBorder)
+                            Modifier.width(dayWidth).height(42.dp).background(tableBg).border(1.dp, tableBorder)
                                 .then(if (isToday) Modifier.border(2.dp, dayHighlight) else Modifier),
                             contentAlignment = Alignment.Center
                         ) { Text(d.take(3), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall) }
@@ -1048,6 +1051,8 @@ fun RecordCard(r: Record, key: String, store: LocalStore, refresh: () -> Unit) {
                 Text(r.title, fontWeight = FontWeight.SemiBold)
                 if (r.subtitle.isNotBlank()) Text(r.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (r.extra.isNotBlank()) Text(r.extra, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (key == "tasks" && r.dueDate.isNotBlank()) Text("Due: ${r.dueDate} ${r.dueTime}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (key == "tasks" && r.subjectId != 0L) store.get("subjects").firstOrNull { it.id == r.subjectId }?.let { Text("Subject: ${it.title}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 if (key == "grades") Text("Grade: %.2f".format(r.value))
                 if (key == "expenses") Text("₱%.2f".format(r.value), fontWeight = FontWeight.Bold)
             }
