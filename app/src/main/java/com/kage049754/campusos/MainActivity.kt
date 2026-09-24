@@ -32,6 +32,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.Calendar
 
 data class Record(
     val id: Long = System.currentTimeMillis(),
@@ -76,6 +77,10 @@ class LocalStore(context: Context) {
     fun setTheme(v: String) = prefs.edit().putString("theme", v).apply()
     fun lockEnabled() = prefs.getBoolean("lock", false)
     fun setLockEnabled(v: Boolean) = prefs.edit().putBoolean("lock", v).apply()
+    fun scheduleDayHighlight() = prefs.getLong("schedule_day_highlight", 0xFF1976D2L)
+    fun setScheduleDayHighlight(v: Long) = prefs.edit().putLong("schedule_day_highlight", v).apply()
+    fun scheduleTimeHighlight() = prefs.getLong("schedule_time_highlight", 0xFF43A047L)
+    fun setScheduleTimeHighlight(v: Long) = prefs.edit().putLong("schedule_time_highlight", v).apply()
     fun backupJson(): String {
         val root = JSONObject()
         listOf("subjects","schedule","tasks","reviewers","grades","attendance","expenses").forEach {
@@ -218,6 +223,14 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
 fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
     var refresh by remember { mutableIntStateOf(0) }
     var showAdd by remember { mutableStateOf(false) }
+    var showColors by remember { mutableStateOf(false) }
+    var nowTick by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            nowTick = System.currentTimeMillis()
+            kotlinx.coroutines.delay(30000)
+        }
+    }
     LaunchedEffect(query) { if (query == "__ADD__") showAdd = true }
     val all = remember(refresh, query) { store.get("schedule").filter {
         query.isBlank() || query == "__ADD__" || (it.title+" "+it.subtitle+" "+it.extra+" "+it.day+" "+it.room+" "+it.professor).contains(query, true)
@@ -230,19 +243,41 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
         val max = (ends.maxOrNull() ?: 18).coerceAtMost(23)
         (min until max.coerceAtLeast(min + 1)).toList()
     }
+    val calendar = remember(nowTick) { Calendar.getInstance() }
+    val today = SimpleDateFormat("EEEE", Locale.getDefault()).format(calendar.time)
+    val currentHour = calendar.get(Calendar.HOUR_OF_DAY)
+    val dayHighlight = Color(store.scheduleDayHighlight())
+    val timeHighlight = Color(store.scheduleTimeHighlight())
+
     Column(Modifier.fillMaxSize()) {
-        Text("Class Schedule", Modifier.padding(horizontal = 16.dp, vertical = 10.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Class Schedule", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("Today: ${today} • ${String.format(Locale.getDefault(), "%02d:%02d", calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE))}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            IconButton({ showColors = true }) { Icon(Icons.Default.Palette, "Schedule highlight colors") }
+        }
         if (activeDays.isEmpty()) EmptyCard("No classes yet. Tap + to build your Monday–Saturday schedule.")
         else {
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
                 Column {
                     Row {
-                        Box(Modifier.width(72.dp).height(48.dp), contentAlignment = Alignment.Center) { Text("Time", fontWeight = FontWeight.Bold) }
-                        activeDays.forEach { d -> Box(Modifier.width(118.dp).height(48.dp), contentAlignment = Alignment.Center) { Text(d.take(3), fontWeight = FontWeight.Bold) } }
+                        Box(Modifier.width(72.dp).height(48.dp).then(
+                            if (today in activeDays) Modifier.background(dayHighlight) else Modifier
+                        ), contentAlignment = Alignment.Center) { Text("Time", fontWeight = FontWeight.Bold) }
+                        activeDays.forEach { d ->
+                            val isToday = d.equals(today, true)
+                            Box(Modifier.width(118.dp).height(48.dp).then(
+                                if (isToday) Modifier.background(dayHighlight) else Modifier
+                            ), contentAlignment = Alignment.Center) { Text(d.take(3), fontWeight = FontWeight.Bold) }
+                        }
                     }
                     hours.forEach { h ->
+                        val isCurrentHour = h == currentHour
                         Row {
-                            Box(Modifier.width(72.dp).height(74.dp), contentAlignment = Alignment.TopCenter) {
+                            Box(Modifier.width(72.dp).height(74.dp).then(
+                                if (isCurrentHour) Modifier.background(timeHighlight) else Modifier
+                            ), contentAlignment = Alignment.TopCenter) {
                                 Text(String.format(Locale.getDefault(), "%02d:00", h), color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             activeDays.forEach { day ->
@@ -284,6 +319,38 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
         }
     }
     if (showAdd) ScheduleDialog(store) { showAdd = false; clear(); refresh++ }
+    if (showColors) ScheduleHighlightColorDialog(store) { showColors = false }
+}
+
+@Composable
+fun ScheduleHighlightColorDialog(store: LocalStore, done: () -> Unit) {
+    var dayColor by remember { mutableLongStateOf(store.scheduleDayHighlight()) }
+    var timeColor by remember { mutableLongStateOf(store.scheduleTimeHighlight()) }
+    val colors = listOf(0xFF1976D2L,0xFF7B1FA2L,0xFFC62828L,0xFF00897BL,0xFFF9A825L,0xFF5D4037L)
+    AlertDialog(
+        onDismissRequest = done,
+        title = { Text("Schedule highlight colors") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Today / day header", fontWeight = FontWeight.SemiBold)
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    colors.forEach { c -> FilterChip(dayColor == c, { dayColor = c }, label = { Text("●") }) }
+                }
+                Text("Current time row", fontWeight = FontWeight.SemiBold)
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    colors.forEach { c -> FilterChip(timeColor == c, { timeColor = c }, label = { Text("●") }) }
+                }
+            }
+        },
+        confirmButton = {
+            Button({
+                store.setScheduleDayHighlight(dayColor)
+                store.setScheduleTimeHighlight(timeColor)
+                done()
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(done) { Text("Cancel") } }
+    )
 }
 
 private fun String.toHourOrNull(): Int? = substringBefore(":").toIntOrNull()
