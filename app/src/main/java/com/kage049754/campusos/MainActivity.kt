@@ -27,6 +27,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -189,6 +190,10 @@ class LocalStore(context: Context) {
     fun setScheduleDayHighlight(v: Long) = prefs.edit().putLong("schedule_day_highlight", v).apply()
     fun scheduleTimeHighlight() = prefs.getLong("schedule_time_highlight", 0xFF43A047L)
     fun setScheduleTimeHighlight(v: Long) = prefs.edit().putLong("schedule_time_highlight", v).apply()
+    fun scheduleTableBackground() = prefs.getLong("schedule_table_background", 0x00000000L)
+    fun setScheduleTableBackground(v: Long) = prefs.edit().putLong("schedule_table_background", v).apply()
+    fun scheduleTableBorder() = prefs.getLong("schedule_table_border", 0xFF808080L)
+    fun setScheduleTableBorder(v: Long) = prefs.edit().putLong("schedule_table_border", v).apply()
     fun backupJson(): String {
         val root = JSONObject()
         listOf("subjects","schedule","tasks","reviewers","grades","attendance","expenses").forEach {
@@ -227,6 +232,8 @@ fun CampusOSApp(activity: Activity) {
     var locked by remember { mutableStateOf(store.lockEnabled() && store.pin().isNotBlank()) }
     var screen by remember { mutableStateOf(Screen.HOME) }
     var search by remember { mutableStateOf("") }
+    var showHomeAdd by remember { mutableStateOf(false) }
+    var showHomeColors by remember { mutableStateOf(false) }
 
     if (locked) { LockScreen(store) { locked = false }; return }
 
@@ -240,7 +247,14 @@ fun CampusOSApp(activity: Activity) {
             topBar = {
                 TopAppBar(
                     title = { Text("CampusOS", fontWeight = FontWeight.Bold) },
-                    actions = { IconButton({ screen = Screen.SETTINGS }) { Icon(Icons.Default.Settings, "Settings") } }
+                    actions = {
+                        IconButton({ showHomeAdd = true }) { Icon(Icons.Default.Add, "Add class") }
+                        IconButton({ showHomeColors = true }) { Icon(Icons.Default.Palette, "Appearance") }
+                        IconButton({
+                            val next = if (theme == "dark") "light" else "dark"
+                            theme = next; store.setTheme(next)
+                        }) { Icon(if (theme == "dark") Icons.Default.LightMode else Icons.Default.DarkMode, "Toggle dark mode") }
+                    }
                 )
             },
             bottomBar = {
@@ -278,6 +292,8 @@ fun CampusOSApp(activity: Activity) {
                     }
                 }
             }
+            if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
+            if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }) { showHomeColors = false }
         }
     }
 }
@@ -312,7 +328,9 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
         }}
         item { SectionTitle("Today") }
         if (schedule.isEmpty()) item { EmptyCard("No classes yet. Add your schedule.") }
-        items(schedule.take(5), key = { it.id }) { RecordCard(it, "schedule", store) { tick++ } }
+        items(schedule.take(5), key = { it.id }) { r ->
+            HomeTodayClassCard(r)
+        }
         item { SectionTitle("Academic snapshot") }
         item { Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
             StatCard("Attendance", attendance.count { it.done }.toString(), Modifier.weight(1f))
@@ -325,6 +343,69 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
             SmallAction("Tasks", Icons.Default.CheckCircle) { go(Screen.TASKS) }
         }}
     }
+}
+
+@Composable
+fun HomeTodayClassCard(r: Record) {
+    val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = bg, contentColor = readableContentColor(bg))
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(r.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            if (r.subtitle.isNotBlank()) Text(r.subtitle)
+            if (r.day.isNotBlank()) Text("undefined • undefined-undefined", style = MaterialTheme.typography.labelMedium)
+            if (r.room.isNotBlank()) Text("Room: undefined")
+            if (r.professor.isNotBlank()) Text("Professor: undefined")
+        }
+    }
+}
+
+@Composable
+fun HomeAppearanceDialog(store: LocalStore, theme: String, setTheme: (String) -> Unit, done: () -> Unit) {
+    var tableBg by remember { mutableLongStateOf(store.scheduleTableBackground()) }
+    var border by remember { mutableLongStateOf(store.scheduleTableBorder()) }
+    val colors = listOf(0xFF000000L,0xFFFFFFFFL,0xFF263238L,0xFF37474FL,0xFFECEFF1L,0xFFF5F5F5L,0xFF1976D2L,0xFF7B1FA2L,0xFFC62828L,0xFF00897BL)
+    AlertDialog(
+        onDismissRequest=done,
+        title={Text("CampusOS appearance")},
+        text={
+            Column(Modifier.heightIn(max=560.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                Text("Theme",fontWeight=FontWeight.SemiBold)
+                Row(horizontalArrangement=Arrangement.spacedBy(7.dp)) {
+                    listOf("system","light","dark").forEach { mode ->
+                        FilterChip(theme==mode,{setTheme(mode)},label={Text(mode.replaceFirstChar{it.uppercase()})})
+                    }
+                }
+                Text("Schedule table background",fontWeight=FontWeight.SemiBold)
+                Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(9.dp)) {
+                    colors.forEach { c -> ColorChoiceCircle(c,tableBg==c){tableBg=c} }
+                }
+                Text("Schedule table border",fontWeight=FontWeight.SemiBold)
+                Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(9.dp)) {
+                    colors.forEach { c -> ColorChoiceCircle(c,border==c){border=c} }
+                }
+            }
+        },
+        confirmButton={
+            Button({
+                store.setScheduleTableBackground(tableBg)
+                store.setScheduleTableBorder(border)
+                done()
+            }){Text("Save")}
+        },
+        dismissButton={TextButton(done){Text("Cancel")}}
+    )
+}
+
+@Composable
+fun ColorChoiceCircle(value: Long, selected: Boolean, click: () -> Unit) {
+    Box(
+        Modifier.size(40.dp).border(3.dp,if(selected) MaterialTheme.colorScheme.onSurface else Color.Transparent,RoundedCornerShape(50))
+            .padding(4.dp).background(Color(value),RoundedCornerShape(50)).clickable(onClick=click),
+        contentAlignment=Alignment.Center
+    ) { if(selected) Text("✓",color=readableContentColor(Color(value)),fontWeight=FontWeight.Bold) }
 }
 
 @Composable
@@ -356,6 +437,9 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
     val currentHour = calendar.get(Calendar.HOUR_OF_DAY)
     val dayHighlight = Color(store.scheduleDayHighlight())
     val timeHighlight = Color(store.scheduleTimeHighlight())
+    val tableBgValue = store.scheduleTableBackground()
+    val tableBg = if (tableBgValue == 0L) Color.Transparent else Color(tableBgValue)
+    val tableBorder = Color(store.scheduleTableBorder())
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -370,12 +454,12 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
                 Column {
                     Row {
-                        Box(Modifier.width(72.dp).height(48.dp).then(
+                        Box(Modifier.width(72.dp).height(48.dp).background(tableBg).border(1.dp, tableBorder).then(
                             if (today in activeDays) Modifier.border(3.dp, dayHighlight) else Modifier
                         ), contentAlignment = Alignment.Center) { Text("Time", fontWeight = FontWeight.Bold) }
                         activeDays.forEach { d ->
                             val isToday = d.equals(today, true)
-                            Box(Modifier.width(118.dp).height(48.dp).then(
+                            Box(Modifier.width(118.dp).height(48.dp).background(tableBg).border(1.dp, tableBorder).then(
                                 if (isToday) Modifier.border(3.dp, dayHighlight) else Modifier
                             ), contentAlignment = Alignment.Center) { Text(d.take(3), fontWeight = FontWeight.Bold) }
                         }
@@ -383,14 +467,14 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
                     hours.forEach { h ->
                         val isCurrentHour = h == currentHour
                         Row {
-                            Box(Modifier.width(72.dp).height(74.dp).then(
+                            Box(Modifier.width(72.dp).height(74.dp).background(tableBg).border(1.dp, tableBorder).then(
                                 if (isCurrentHour) Modifier.border(3.dp, timeHighlight) else Modifier
                             ), contentAlignment = Alignment.TopCenter) {
                                 Text(String.format(Locale.getDefault(), "%02d:00", h), color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             activeDays.forEach { day ->
                                 val classes = all.filter { it.day.equals(day, true) && it.startTime.toHourOrNull() == h }
-                                Box(Modifier.width(118.dp).height(74.dp).padding(2.dp)) {
+                                Box(Modifier.width(118.dp).height(74.dp).background(tableBg).border(1.dp, tableBorder).padding(2.dp)) {
                                     classes.firstOrNull()?.let { r ->
                                         val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
                                         Card(
@@ -422,7 +506,7 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
                         if (r.day.isNotBlank()) Text("${r.day} • ${r.startTime}-${r.endTime}${if (r.room.isNotBlank()) " • ${r.room}" else ""}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (r.extra.isNotBlank()) Text(r.extra, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            IconButton({ store.delete("schedule", r.id); refresh++ }) { Icon(Icons.Default.Delete, "Delete") }
+                            IconButton({ deleteScheduleAndSync(store, r); refresh++ }) { Icon(Icons.Default.Delete, "Delete") }
                         }
                     }
                 }
@@ -465,6 +549,17 @@ fun ScheduleHighlightColorDialog(store: LocalStore, done: () -> Unit) {
 }
 
 private fun String.toHourOrNull(): Int? = substringBefore(":").toIntOrNull()
+
+private fun deleteScheduleAndSync(store: LocalStore, classRecord: Record) {
+    store.delete("schedule", classRecord.id)
+    val remaining = store.get("schedule").any { it.title.equals(classRecord.title, true) }
+    if (!remaining) {
+        store.put("subjects", store.get("subjects").filterNot { it.title.equals(classRecord.title, true) })
+    } else {
+        val latest = store.get("schedule").last { it.title.equals(classRecord.title, true) }
+        syncSubjectFromClass(store, latest)
+    }
+}
 
 private fun syncSubjectFromClass(store: LocalStore, classRecord: Record) {
     val code = classRecord.title.trim()
