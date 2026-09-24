@@ -431,17 +431,18 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
         }
     }
     LaunchedEffect(query) { if (query == "__ADD__") showAdd = true }
-    val all = remember(refresh, query) { store.get("schedule").filter {
-        query.isBlank() || query == "__ADD__" || (it.title+" "+it.subtitle+" "+it.extra+" "+it.day+" "+it.room+" "+it.professor).contains(query, true)
-    }}
-    val activeDays = days.filter { d -> all.any { it.day.equals(d, true) } }
-    val hours = if (all.isEmpty()) (7..18).toList() else {
-        val starts = all.mapNotNull { it.startTime.toHourOrNull() }
-        val ends = all.mapNotNull { it.endTime.toHourOrNull() }
-        val min = (starts.minOrNull() ?: 7).coerceAtLeast(0)
-        val max = (ends.maxOrNull() ?: 18).coerceAtMost(23)
-        (min until max.coerceAtLeast(min + 1)).toList()
+
+    val all = remember(refresh, query) {
+        store.get("schedule").filter {
+            query.isBlank() || query == "__ADD__" ||
+                (it.title + " " + it.subtitle + " " + it.extra + " " + it.day + " " + it.room + " " + it.professor)
+                    .contains(query, true)
+        }
     }
+
+    // Always show the complete Monday-Saturday / 07:00-19:00 timetable.
+    val scheduleDays = days
+    val hours = (7..18).toList()
     val calendar = remember(nowTick) { Calendar.getInstance() }
     val today = SimpleDateFormat("EEEE", Locale.getDefault()).format(calendar.time)
     val currentHour = calendar.get(Calendar.HOUR_OF_DAY)
@@ -452,49 +453,90 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
     val tableBorder = Color(store.scheduleTableBorder())
 
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Column(Modifier.weight(1f)) {
                 Text("Class Schedule", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("Today: ${today} • ${String.format(Locale.getDefault(), "%02d:%02d", calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE))}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "Monday–Saturday • 07:00–19:00",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
-            IconButton({ showColors = true }) { Icon(Icons.Default.Palette, "Schedule highlight colors") }
+            IconButton({ showColors = true }) {
+                Icon(Icons.Default.Palette, "Schedule colors")
+            }
         }
-        if (activeDays.isEmpty()) EmptyCard("No classes yet. Tap + to build your Monday–Saturday schedule.")
-        else {
-            Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
-                Column {
-                    Row {
-                        Box(Modifier.width(72.dp).height(48.dp).background(tableBg).border(1.dp, tableBorder).then(
-                            if (today in activeDays) Modifier.border(3.dp, dayHighlight) else Modifier
-                        ), contentAlignment = Alignment.Center) { Text("Time", fontWeight = FontWeight.Bold) }
-                        activeDays.forEach { d ->
-                            val isToday = d.equals(today, true)
-                            Box(Modifier.width(118.dp).height(48.dp).background(tableBg).border(1.dp, tableBorder).then(
-                                if (isToday) Modifier.border(3.dp, dayHighlight) else Modifier
-                            ), contentAlignment = Alignment.Center) { Text(d.take(3), fontWeight = FontWeight.Bold) }
-                        }
+
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp)
+        ) {
+            Column {
+                Row {
+                    Box(
+                        Modifier.width(56.dp).height(42.dp).background(tableBg).border(1.dp, tableBorder),
+                        contentAlignment = Alignment.Center
+                    ) { Text("Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall) }
+
+                    scheduleDays.forEach { d ->
+                        val isToday = d.equals(today, true)
+                        Box(
+                            Modifier.width(94.dp).height(42.dp).background(tableBg).border(1.dp, tableBorder)
+                                .then(if (isToday) Modifier.border(2.dp, dayHighlight) else Modifier),
+                            contentAlignment = Alignment.Center
+                        ) { Text(d.take(3), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall) }
                     }
-                    hours.forEach { h ->
-                        val isCurrentHour = h == currentHour
-                        Row {
-                            Box(Modifier.width(72.dp).height(74.dp).background(tableBg).border(1.dp, tableBorder).then(
-                                if (isCurrentHour) Modifier.border(3.dp, timeHighlight) else Modifier
-                            ), contentAlignment = Alignment.TopCenter) {
-                                Text(String.format(Locale.getDefault(), "%02d:00", h), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+
+                hours.forEach { h ->
+                    val isCurrentHour = h == currentHour
+                    Row {
+                        Box(
+                            Modifier.width(56.dp).height(62.dp).background(tableBg).border(1.dp, tableBorder)
+                                .then(if (isCurrentHour) Modifier.border(2.dp, timeHighlight) else Modifier),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "%02d:00".format(h),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+
+                        scheduleDays.forEach { day ->
+                            val classes = all.filter {
+                                it.day.equals(day, true) && it.startTime.toHourOrNull() == h
                             }
-                            activeDays.forEach { day ->
-                                val classes = all.filter { it.day.equals(day, true) && it.startTime.toHourOrNull() == h }
-                                Box(Modifier.width(118.dp).height(74.dp).background(tableBg).border(1.dp, tableBorder).padding(2.dp)) {
-                                    classes.firstOrNull()?.let { r ->
-                                        val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
-                                        Card(
-                                            Modifier.fillMaxSize(),
-                                            colors = CardDefaults.cardColors(containerColor = bg, contentColor = readableContentColor(bg))
+                            Box(
+                                Modifier.width(94.dp).height(62.dp).background(tableBg).border(1.dp, tableBorder).padding(2.dp)
+                            ) {
+                                classes.firstOrNull()?.let { r ->
+                                    val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
+                                    Card(
+                                        Modifier.fillMaxSize(),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = bg,
+                                            contentColor = readableContentColor(bg)
+                                        )
+                                    ) {
+                                        Column(
+                                            Modifier.fillMaxSize().padding(horizontal = 5.dp, vertical = 4.dp),
+                                            verticalArrangement = Arrangement.Center
                                         ) {
-                                            Column(Modifier.padding(7.dp)) {
-                                                Text(r.title, fontWeight = FontWeight.Bold, maxLines = 2)
-                                                if (r.room.isNotBlank()) Text(r.room, maxLines = 1)
-                                                if (r.endTime.isNotBlank()) Text("${r.startTime}-${r.endTime}", style = MaterialTheme.typography.labelSmall)
+                                            Text(
+                                                r.title,
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                maxLines = 2
+                                            )
+                                            if (r.room.isNotBlank()) {
+                                                Text(
+                                                    r.room,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    maxLines = 1
+                                                )
                                             }
                                         }
                                     }
@@ -503,26 +545,86 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
                         }
                     }
                 }
+
+                // Explicit bottom boundary makes the 19:00 end of the timetable clear.
+                Row {
+                    Box(
+                        Modifier.width(56.dp).height(28.dp).background(tableBg).border(1.dp, tableBorder),
+                        contentAlignment = Alignment.Center
+                    ) { Text("19:00", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
+                    scheduleDays.forEach {
+                        Box(Modifier.width(94.dp).height(28.dp).background(tableBg).border(1.dp, tableBorder))
+                    }
+                }
             }
         }
-        Text("Subject details", Modifier.padding(start = 16.dp, top = 14.dp, bottom = 8.dp), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+
+        Text(
+            "Subject details",
+            Modifier.padding(start = 16.dp, top = 10.dp, bottom = 6.dp),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+
+        LazyColumn(
+            Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             items(all, key = { it.id }) { r ->
                 Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp)) {
-                        Text(r.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        if (r.subtitle.isNotBlank()) Text(r.subtitle)
-                        if (r.professor.isNotBlank()) Text("Professor: ${r.professor}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (r.day.isNotBlank()) Text("${r.day} • ${r.startTime}-${r.endTime}${if (r.room.isNotBlank()) " • ${r.room}" else ""}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (r.extra.isNotBlank()) Text(r.extra, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            IconButton({ deleteScheduleAndSync(store, r); refresh++ }) { Icon(Icons.Default.Delete, "Delete") }
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier.size(width = 4.dp, height = 48.dp)
+                                .background(
+                                    if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primary,
+                                    RoundedCornerShape(4.dp)
+                                )
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                                if (r.room.isNotBlank()) {
+                                    Text(
+                                        "  •  undefined",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            if (r.subtitle.isNotBlank()) {
+                                Text(
+                                    r.subtitle,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1
+                                )
+                            }
+                            if (r.professor.isNotBlank()) {
+                                Text(
+                                    r.professor,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1
+                                )
+                            }
+                            Text(
+                                "undefined • undefined-undefined",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton({ deleteScheduleAndSync(store, r); refresh++ }) {
+                            Icon(Icons.Default.Delete, "Delete")
                         }
                     }
                 }
             }
         }
     }
+
     if (showAdd) ScheduleDialog(store) { showAdd = false; clear(); refresh++ }
     if (showColors) ScheduleHighlightColorDialog(store) { showColors = false }
 }
@@ -597,9 +699,8 @@ fun TimeWheelDialog(
     done: (String) -> Unit,
     cancel: () -> Unit
 ) {
-    val parts = initial.split(":")
-    var hour by remember { mutableIntStateOf(parts.getOrNull(0)?.toIntOrNull()?.coerceIn(0, 23) ?: 7) }
-    var minute by remember { mutableIntStateOf(parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: 0) }
+    val initialHour = initial.substringBefore(":").toIntOrNull()?.coerceIn(7, 18) ?: 7
+    var hour by remember { mutableIntStateOf(initialHour) }
 
     AlertDialog(
         onDismissRequest = cancel,
@@ -611,55 +712,38 @@ fun TimeWheelDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    "%02d:%02d".format(hour, minute),
+                    "%02d:00".format(hour),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    "Scroll the wheels like an alarm clock",
+                    "Choose a 1-hour class slot",
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    AndroidView(
-                        factory = { context ->
-                            android.widget.NumberPicker(context).apply {
-                                minValue = 0
-                                maxValue = 23
-                                value = hour
-                                wrapSelectorWheel = true
-                                setOnValueChangedListener { _, _, newValue -> hour = newValue }
-                            }
-                        },
-                        update = { picker ->
-                            if (picker.value != hour) picker.value = hour
-                        },
-                        modifier = Modifier.width(110.dp).height(180.dp)
-                    )
-                    Text(":", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                    AndroidView(
-                        factory = { context ->
-                            android.widget.NumberPicker(context).apply {
-                                minValue = 0
-                                maxValue = 59
-                                value = minute
-                                wrapSelectorWheel = true
-                                setOnValueChangedListener { _, _, newValue -> minute = newValue }
-                            }
-                        },
-                        update = { picker ->
-                            if (picker.value != minute) picker.value = minute
-                        },
-                        modifier = Modifier.width(110.dp).height(180.dp)
-                    )
-                }
+                AndroidView(
+                    factory = { context ->
+                        android.widget.NumberPicker(context).apply {
+                            minValue = 7
+                            maxValue = 18
+                            value = hour
+                            wrapSelectorWheel = false
+                            displayedValues = (7..18).map { "%02d:00".format(it) }.toTypedArray()
+                            setOnValueChangedListener { _, _, newValue -> hour = newValue }
+                        }
+                    },
+                    update = { picker ->
+                        if (picker.value != hour) picker.value = hour
+                    },
+                    modifier = Modifier.width(150.dp).height(190.dp)
+                )
+                Text(
+                    "%02d:00 – %02d:00".format(hour, hour + 1),
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         },
         confirmButton = {
-            Button(onClick = { done("%02d:%02d".format(hour, minute)) }) {
+            Button(onClick = { done("%02d:00".format(hour)) }) {
                 Text("Set time")
             }
         },
@@ -711,7 +795,7 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                         }
                     }
                 }
-                Text("Use the scrolling hour/minute wheels to choose the time.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+                Text("Classes are fixed to 1-hour slots: 07:00–08:00, 08:00–09:00, …, 18:00–19:00.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
                 OutlinedTextField(room,{room=it},Modifier.fillMaxWidth(),label={Text("Room number")})
                 OutlinedTextField(professor,{professor=it},Modifier.fillMaxWidth(),label={Text("Professor")})
                 OutlinedTextField(notes,{notes=it},Modifier.fillMaxWidth(),label={Text("Notes")})
