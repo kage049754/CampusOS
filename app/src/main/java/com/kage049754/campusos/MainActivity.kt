@@ -474,7 +474,7 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
         }
     }
 
-    // Always show the complete Monday-Saturday / 07:00-19:00 timetable.
+    // Show only configured days/hours and highlight the current day, current hour, and matching class.
     val scheduleDays = store.scheduleDays()
     val startHour = store.scheduleStartHour().coerceIn(0, 23)
     val endHour = store.scheduleEndHour().coerceIn(startHour + 1, 24)
@@ -519,8 +519,9 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
                     scheduleDays.forEach { d ->
                         val isToday = d.equals(today, true)
                         Box(
-                            Modifier.width(dayWidth).height(42.dp).background(tableBg).border(1.dp, tableBorder)
-                                .then(if (isToday) Modifier.border(2.dp, dayHighlight) else Modifier),
+                            Modifier.width(dayWidth).height(42.dp)
+                                .background(if (isToday) dayHighlight.copy(alpha = 0.16f) else tableBg)
+                                .border(if (isToday) 2.dp else 1.dp, if (isToday) dayHighlight else tableBorder),
                             contentAlignment = Alignment.Center
                         ) { Text(d.take(3), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall) }
                     }
@@ -546,14 +547,22 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
                                 it.day.equals(day, true) && it.startTime.toHourOrNull() == h
                             }
                             Box(
-                                Modifier.width(94.dp).height(62.dp).background(tableBg).border(1.dp, tableBorder).padding(2.dp)
+                                Modifier.width(dayWidth).height(62.dp)
+                                .background(if (day.equals(today, true) && isCurrentHour) timeHighlight.copy(alpha = 0.10f) else tableBg)
+                                .border(
+                                    if (day.equals(today, true) && isCurrentHour) 2.dp else 1.dp,
+                                    if (day.equals(today, true) && isCurrentHour) timeHighlight else tableBorder
+                                )
+                                .padding(2.dp)
                             ) {
                                 classes.firstOrNull()?.let { r ->
+                                    val isCurrentClass = day.equals(today, true) && isCurrentHour
                                     val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
                                     Card(
-                                        Modifier.fillMaxSize(),
+                                        Modifier.fillMaxSize()
+                                            .then(if (isCurrentClass) Modifier.border(3.dp, dayHighlight, RoundedCornerShape(10.dp)) else Modifier),
                                         colors = CardDefaults.cardColors(
-                                            containerColor = bg,
+                                            containerColor = if (isCurrentClass) bg.copy(alpha = 0.92f) else bg,
                                             contentColor = readableContentColor(bg)
                                         )
                                     ) {
@@ -596,7 +605,7 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
                         contentAlignment = Alignment.Center
                     ) { Text("19:00", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
                     scheduleDays.forEach {
-                        Box(Modifier.width(94.dp).height(28.dp).background(tableBg).border(1.dp, tableBorder))
+                        Box(Modifier.width(dayWidth).height(28.dp).background(tableBg).border(1.dp, tableBorder))
                     }
                 }
             }
