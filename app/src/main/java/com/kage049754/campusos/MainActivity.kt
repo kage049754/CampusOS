@@ -358,25 +358,36 @@ fun CrudScreen(title: String, key: String, store: LocalStore, query: String, cle
 fun AcademicsScreen(store: LocalStore, query: String, clear: () -> Unit) {
     var tab by remember { mutableIntStateOf(0) }
     var refresh by remember { mutableIntStateOf(0) }
-    val labels = listOf("Subjects","Grades","Attendance","Reviewers")
+    var selectedSubject by remember { mutableStateOf<Record?>(null) }
+    val labels = listOf("Subjects","Reviewers")
+    val keys = listOf("subjects","reviewers")
+    val list = remember(refresh, query, tab) { store.get(keys[tab]).filter {
+        query.isBlank() || query == "__ADD__" || (it.title+" "+it.subtitle+" "+it.extra).contains(query, true)
+    }}
     Column(Modifier.fillMaxSize()) {
         Text("Academics", Modifier.padding(16.dp), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         ScrollableTabRow(selectedTabIndex = tab, edgePadding = 12.dp) {
             labels.forEachIndexed { i, label -> Tab(tab == i, { tab = i }, text = { Text(label) }) }
         }
-        val key = listOf("subjects","grades","attendance","reviewers")[tab]
-        val list = remember(refresh, query, tab) { store.get(key).filter {
-            query.isBlank() || query == "__ADD__" || (it.title+" "+it.subtitle+" "+it.extra).contains(query, true)
-        }}
         if (list.isEmpty()) EmptyCard("No "+labels[tab].lowercase()+" yet. Use + to add.")
         else LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(list, key = { it.id }) { r -> RecordCard(r, key, store) { refresh++ } }
+            items(list, key = { it.id }) { r ->
+                Card(Modifier.fillMaxWidth(), onClick = { if (tab == 0) selectedSubject = r }) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text(r.title, fontWeight = FontWeight.SemiBold)
+                        if (r.subtitle.isNotBlank()) Text(r.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (r.extra.isNotBlank()) Text(r.extra, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                    }
+                }
+            }
         }
     }
-    if (query == "__ADD__") AddRecordDialog(labels[tab], listOf("subjects","grades","attendance","reviewers")[tab], store) { clear(); refresh++ }
+    if (query == "__ADD__") AddRecordDialog(labels[tab], keys[tab], store) { clear(); refresh++ }
+    selectedSubject?.let { subject ->
+        SubjectNotepadDialog(subject, store) { selectedSubject = null; refresh++ }
+    }
 }
 
-@Composable
 fun RecordCard(r: Record, key: String, store: LocalStore, refresh: () -> Unit) {
     Card(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
