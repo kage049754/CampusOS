@@ -335,16 +335,25 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     val tasks = remember(tick) { store.get("tasks") }
     val schedule = remember(tick) { store.get("schedule") }
     val date = SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date())
+    val todayName = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date())
+    val todaySchedule = remember(schedule, todayName) {
+        schedule
+            .filter { it.day.equals(todayName, ignoreCase = true) }
+            .sortedBy { it.startTime }
+    }
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Good day 👋", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text(date, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item { Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
             StatCard("Classes", schedule.size.toString(), Modifier.weight(1f))
             StatCard("Tasks", tasks.count { !it.done }.toString(), Modifier.weight(1f))
         }}
-        item { SectionTitle("Today") }
-        if (schedule.isEmpty()) item { EmptyCard("No classes yet. Add your schedule.") }
-        items(schedule.take(5), key = { it.id }) { r ->
-            HomeTodayClassCard(r)
+        item { SectionTitle("Today • $todayName") }
+        if (todaySchedule.isEmpty()) {
+            item { EmptyCard("No classes scheduled for today.") }
+        } else {
+            items(todaySchedule.take(5), key = { it.id }) { r ->
+                HomeTodayClassCard(r)
+            }
         }
         item { SectionTitle("Quick access") }
         item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
