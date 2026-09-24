@@ -105,7 +105,9 @@ private fun readOfficeText(file: File): String? = runCatching {
             "pptx" -> zip.entries().asSequence()
                 .filter { it.name.startsWith("ppt/slides/slide") && it.name.endsWith(".xml") }
                 .sortedBy { it.name }
-                .joinToString("\n\n") { entry ->
+                .joinToString("
+
+") { entry ->
                     zip.getInputStream(entry).use { stream ->
                         DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(stream).documentElement.textContent
                     }
@@ -113,7 +115,8 @@ private fun readOfficeText(file: File): String? = runCatching {
             "xlsx" -> zip.entries().asSequence()
                 .filter { it.name.startsWith("xl/worksheets/sheet") && it.name.endsWith(".xml") }
                 .sortedBy { it.name }
-                .joinToString("\n") { entry ->
+                .joinToString("
+") { entry ->
                     zip.getInputStream(entry).bufferedReader().use { it.readText() }
                         .replace(Regex("<[^>]+>"), " ")
                         .replace(Regex("\\s+"), " ")
@@ -227,7 +230,8 @@ fun CampusOSApp(activity: Activity) {
     var search by remember { mutableStateOf("") }
     var showHomeAdd by remember { mutableStateOf(false) }
     var showHomeColors by remember { mutableStateOf(false) }
-    var showHomeSettings by remember { mutableStateOf(false) }\n    var showScheduleSettings by remember { mutableStateOf(false) }
+    var showHomeSettings by remember { mutableStateOf(false) }
+    var showScheduleSettings by remember { mutableStateOf(false) }
 
     if (locked) { LockScreen(store) { locked = false }; return }
 
@@ -308,7 +312,8 @@ fun CampusOSApp(activity: Activity) {
                 )
             }
             if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
-            if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }) { showHomeColors = false }\n            if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
+            if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }) { showHomeColors = false }
+            if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
         }
     }
 }
@@ -327,7 +332,8 @@ fun HomeSettingsDialog(store: LocalStore, theme: String, setTheme: (String) -> U
     AlertDialog(onDismissRequest = done, title = { Text("CampusOS Settings") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(onClick = onAddClass, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("Add Class") }
-            OutlinedButton(onClick = onScheduleSettings, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.CalendarMonth, null); Spacer(Modifier.width(8.dp)); Text("Class Schedule Settings") }\n            OutlinedButton(onClick = onAppearance, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Palette, null); Spacer(Modifier.width(8.dp)); Text("Colors & Appearance") }
+            OutlinedButton(onClick = onScheduleSettings, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.CalendarMonth, null); Spacer(Modifier.width(8.dp)); Text("Class Schedule Settings") }
+            OutlinedButton(onClick = onAppearance, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Palette, null); Spacer(Modifier.width(8.dp)); Text("Colors & Appearance") }
             OutlinedButton(onClick = { setTheme(if (theme == "dark") "light" else "dark") }, modifier = Modifier.fillMaxWidth()) {
                 Icon(if (theme == "dark") Icons.Default.LightMode else Icons.Default.DarkMode, null); Spacer(Modifier.width(8.dp)); Text(if (theme == "dark") "Switch to Light Mode" else "Switch to Dark Mode")
             }
@@ -789,7 +795,6 @@ fun TimeWheelDialog(
     )
 }
 
-@Composable
 @Composable
 fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
     var subject by remember { mutableStateOf("") }
