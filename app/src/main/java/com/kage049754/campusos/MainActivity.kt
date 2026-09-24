@@ -14,6 +14,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.Color
@@ -28,6 +29,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -927,7 +929,23 @@ fun TaskCalendar(selectedDate:String,onSelect:(String)->Unit){
     val offset=(first.get(Calendar.DAY_OF_WEEK)-Calendar.MONDAY+7)%7
     val max=first.getActualMaximum(Calendar.DAY_OF_MONTH)
     val todayKey=sdf.format(Calendar.getInstance().time)
-    Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                var dragTotal = 0f
+                detectHorizontalDragGestures(
+                    onHorizontalDrag = { _, amount -> dragTotal += amount },
+                    onDragEnd = {
+                        if (dragTotal > 80f) monthOffset++
+                        else if (dragTotal < -80f) monthOffset--
+                        dragTotal = 0f
+                    },
+                    onDragCancel = { dragTotal = 0f }
+                )
+            },
+        verticalArrangement=Arrangement.spacedBy(6.dp)
+    ) {
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
             IconButton({monthOffset++}){Icon(Icons.Default.ChevronLeft,"Previous month")}
             Text(SimpleDateFormat("MMMM yyyy",Locale.getDefault()).format(first.time),Modifier.weight(1f),textAlign=androidx.compose.ui.text.style.TextAlign.Center,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
@@ -1198,43 +1216,3 @@ private fun queryName(context: Context, uri: Uri): String? {
             return cursor.getString(0)
                 .replace("/", "_")
                 .replace("\\", "_")
-        }
-    }
-    return uri.lastPathSegment?.substringAfterLast("/")
-}
-
-private fun formatSize(size: Long) = when {
-    size < 1024 -> "$size B"
-    size < 1024*1024 -> "%.1f KB".format(size/1024.0)
-    else -> "%.1f MB".format(size/1024.0/1024.0)
-}
-
-@Composable
-fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit, lock: () -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var pin by remember { mutableStateOf(store.pin()) }
-    var lockOn by remember { mutableStateOf(store.lockEnabled()) }
-    var showPin by remember { mutableStateOf(false) }
-    val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        uri ?: return@rememberLauncherForActivityResult
-        context.contentResolver.openOutputStream(uri)?.use { it.write(store.backupJson().toByteArray()) }
-    }
-    val restore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri ?: return@rememberLauncherForActivityResult
-        runCatching { context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { store.restoreJson(it.readText()) } }
-    }
-    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
-        item { Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Appearance", fontWeight = FontWeight.Bold)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    listOf("system","light","dark").forEach { mode ->
-                        FilterChip(theme == mode, { setTheme(mode) }, label = { Text(mode.replaceFirstChar { it.uppercase() }) })
-                    }
-                }
-            }
-        }}
-        item { Card(Modifier.fillMaxWidth()) {
-            ListItem(headlineContent = { Text("App lock") },
-                supportingContent = { Text(if (pin.isBlank()) "Set a PIN first" else "Require PIN when opening CampusOS") },
