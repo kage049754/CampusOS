@@ -289,6 +289,25 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
 private fun String.toHourOrNull(): Int? = substringBefore(":").toIntOrNull()
 
 @Composable
+private fun syncSubjectFromClass(store: LocalStore, classRecord: Record) {
+    val code = classRecord.title.trim()
+    if (code.isBlank()) return
+    val subjects = store.get("subjects")
+    val existing = subjects.firstOrNull { it.title.equals(code, true) }
+    val synced = if (existing == null) {
+        Record(title=code, subtitle=classRecord.subtitle, extra=classRecord.extra,
+            professor=classRecord.professor, room=classRecord.room)
+    } else {
+        existing.copy(
+            subtitle=if (classRecord.subtitle.isNotBlank()) classRecord.subtitle else existing.subtitle,
+            professor=if (classRecord.professor.isNotBlank()) classRecord.professor else existing.professor,
+            room=if (classRecord.room.isNotBlank()) classRecord.room else existing.room
+        )
+    }
+    store.put("subjects", if (existing == null) subjects + synced
+        else subjects.map { if (it.id == existing.id) synced else it })
+}
+
 fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
     var subject by remember { mutableStateOf("") }
     var fullName by remember { mutableStateOf("") }
@@ -326,7 +345,10 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
         },
         confirmButton = { Button({
             if(subject.isNotBlank() && start.toHourOrNull()!=null && end.toHourOrNull()!=null) {
-                store.put("schedule", store.get("schedule") + Record(title=subject.trim(), subtitle=fullName.trim(), extra=notes.trim(), day=day, startTime=start, endTime=end, room=room.trim(), professor=professor.trim(), color=color))
+                val classRecord = Record(title=subject.trim(), subtitle=fullName.trim(), extra=notes.trim(),
+                    day=day, startTime=start, endTime=end, room=room.trim(), professor=professor.trim(), color=color)
+                store.put("schedule", store.get("schedule") + classRecord)
+                syncSubjectFromClass(store, classRecord)
             }
             done()
         }) { Text("Save") } },
@@ -386,6 +408,38 @@ fun AcademicsScreen(store: LocalStore, query: String, clear: () -> Unit) {
     selectedSubject?.let { subject ->
         SubjectNotepadDialog(subject, store) { selectedSubject = null; refresh++ }
     }
+}
+
+@Composable
+fun SubjectNotepadDialog(subject: Record, store: LocalStore, done: () -> Unit) {
+    var note by remember { mutableStateOf(subject.extra) }
+    AlertDialog(
+        onDismissRequest = done,
+        title = { Text(subject.title + " Notepad") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (subject.subtitle.isNotBlank()) Text(subject.subtitle)
+                if (subject.professor.isNotBlank()) Text("Professor: " + subject.professor,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(
+                    value=note,
+                    onValueChange={note=it},
+                    modifier=Modifier.fillMaxWidth().heightIn(min=240.dp),
+                    label={Text("Notes")},
+                    placeholder={Text("Write lessons, reminders, reviewer notes, or anything for this subject...")}
+                )
+            }
+        },
+        confirmButton = {
+            Button({
+                store.put("subjects", store.get("subjects").map {
+                    if (it.id == subject.id) it.copy(extra=note) else it
+                })
+                done()
+            }) { Text("Save notes") }
+        },
+        dismissButton = { TextButton(done) { Text("Close") } }
+    )
 }
 
 fun RecordCard(r: Record, key: String, store: LocalStore, refresh: () -> Unit) {
