@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -108,33 +109,19 @@ private fun readOfficeText(file: File): String? = runCatching {
                         DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(stream).documentElement.textContent
                     }
                 }
-            "xlsx" -> {
-                val shared = zip.getEntry("xl/sharedStrings.xml")?.let { entry ->
-                    zip.getInputStream(entry).use { stream ->
-                        val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(stream)
-                        val nodes = doc.getElementsByTagName("si")
-                        (0 until nodes.length).map { nodes.item(it).textContent }
-                    }
-                } ?: emptyList()
-                zip.entries().asSequence()
-                    .filter { it.name.startsWith("xl/worksheets/sheet") && it.name.endsWith(".xml") }
-                    .sortedBy { it.name }
-                    .joinToString("\n") { entry ->
-                        val xml = zip.getInputStream(entry).bufferedReader().use { it.readText() }
-                        Regex("""<c[^>]*t=["']s["'][^>]*>.*?<v>(\d+)</v>.*?</c>""", RegexOption.DOT_MATCHES_ALL)
-                            .replace(xml) { m -> shared.getOrNull(m.groupValues[1].toIntOrNull() ?: -1) ?: "" }
-                            .replace(Regex("""<c[^>]*t=["']inlineStr["'][^>]*>(.*?)</c>""", RegexOption.DOT_MATCHES_ALL)) { m ->
-                                Regex("<t[^>]*>(.*?)</t>", RegexOption.DOT_MATCHES_ALL).find(m.groupValues[1])?.groupValues?.get(1) ?: ""
-                            }
-                            .replace(Regex("<[^>]+>"), " ")
-                            .replace(Regex("\s+"), " ")
-                            .trim()
-                    }
-            }
+            "xlsx" -> zip.entries().asSequence()
+                .filter { it.name.startsWith("xl/worksheets/sheet") && it.name.endsWith(".xml") }
+                .sortedBy { it.name }
+                .joinToString("\n") { entry ->
+                    zip.getInputStream(entry).bufferedReader().use { it.readText() }
+                        .replace(Regex("<[^>]+>"), " ")
+                        .replace(Regex("\\s+"), " ")
+                        .trim()
+                }
             else -> null
         }
-    }.getOrNull()?.trim()?.takeIf { it.isNotBlank() }
-}
+    }
+}.getOrNull()?.trim()?.takeIf { it.isNotBlank() }
 
 private fun readDisplayText(file: File): String = when (fileExtension(file)) {
     "docx", "pptx", "xlsx" -> readOfficeText(file) ?: "No readable text was found in this Office file."
@@ -899,11 +886,22 @@ fun FilesScreen() {
 private fun listFiles(context: Context) = context.filesDir.listFiles()?.filter { it.isFile }
     ?.map { FileRecord(it.name, it.length()) }?.sortedBy { it.name.lowercase() } ?: emptyList()
 private fun queryName(context: Context, uri: Uri): String? {
-    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
-        if (it.moveToFirst()) return it.getString(0).replace(Regex("[/\\]"), "_")
+    context.contentResolver.query(
+        uri,
+        arrayOf(OpenableColumns.DISPLAY_NAME),
+        null,
+        null,
+        null
+    )?.use { cursor ->
+        if (cursor.moveToFirst()) {
+            return cursor.getString(0)
+                .replace("/", "_")
+                .replace("\\", "_")
+        }
     }
     return uri.lastPathSegment?.substringAfterLast("/")
 }
+
 private fun formatSize(size: Long) = when {
     size < 1024 -> "$size B"
     size < 1024*1024 -> "%.1f KB".format(size/1024.0)
