@@ -55,7 +55,7 @@ data class Record(
     val value: Double = 0.0,
     val done: Boolean = false,
     val day: String = "", val startTime: String = "", val endTime: String = "",
-    val room: String = "", val professor: String = "", val color: Long = 0L
+    val room: String = "", val professor: String = "", val color: Long = 0L, val classType: String = "Lecture"
 )
 data class FileRecord(val name: String, val size: Long, val file: File? = null)
 
@@ -152,7 +152,7 @@ class LocalStore(context: Context) {
             val o = a.getJSONObject(i)
             out += Record(o.getLong("id"), o.getString("title"), o.optString("subtitle"),
                 o.optString("extra"), o.optDouble("value", 0.0), o.optBoolean("done", false),
-                o.optString("day"), o.optString("startTime"), o.optString("endTime"), o.optString("room"), o.optString("professor"), o.optLong("color", 0L))
+                o.optString("day"), o.optString("startTime"), o.optString("endTime"), o.optString("room"), o.optString("professor"), o.optLong("color", 0L), o.optString("classType", "Lecture"))
         }
         return out
     }
@@ -161,7 +161,7 @@ class LocalStore(context: Context) {
         list.forEach { r -> a.put(JSONObject().apply {
             put("id", r.id); put("title", r.title); put("subtitle", r.subtitle)
             put("extra", r.extra); put("value", r.value); put("done", r.done)
-            put("day", r.day); put("startTime", r.startTime); put("endTime", r.endTime); put("room", r.room); put("professor", r.professor); put("color", r.color)
+            put("day", r.day); put("startTime", r.startTime); put("endTime", r.endTime); put("room", r.room); put("professor", r.professor); put("color", r.color); put("classType", r.classType)
         }) }
         prefs.edit().putString(key, a.toString()).apply()
     }
@@ -689,12 +689,13 @@ private fun syncSubjectFromClass(store: LocalStore, classRecord: Record) {
     val existing = subjects.firstOrNull { it.title.equals(code, true) }
     val synced = if (existing == null) {
         Record(title=code, subtitle=classRecord.subtitle, extra=classRecord.extra,
-            professor=classRecord.professor, room=classRecord.room)
+            professor=classRecord.professor, room=classRecord.room, classType=classRecord.classType)
     } else {
         existing.copy(
             subtitle=if (classRecord.subtitle.isNotBlank()) classRecord.subtitle else existing.subtitle,
             professor=if (classRecord.professor.isNotBlank()) classRecord.professor else existing.professor,
-            room=if (classRecord.room.isNotBlank()) classRecord.room else existing.room
+            room=if (classRecord.room.isNotBlank()) classRecord.room else existing.room,
+            classType=classRecord.classType
         )
     }
     store.put("subjects", if (existing == null) subjects + synced
@@ -761,89 +762,85 @@ fun TimeWheelDialog(
 }
 
 @Composable
+@Composable
 fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
     var subject by remember { mutableStateOf("") }
     var fullName by remember { mutableStateOf("") }
-    var day by remember { mutableStateOf("Monday") }
-    var start by remember { mutableStateOf("07:00") }
-    var end by remember { mutableStateOf("08:00") }
     var room by remember { mutableStateOf("") }
     var professor by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
+    var classType by remember { mutableStateOf("Lecture") }
     var color by remember { mutableLongStateOf(0xFFE3F2FD) }
-    var showStartPicker by remember { mutableStateOf(false) }
-    var showEndPicker by remember { mutableStateOf(false) }
+    var selectedSlots by remember { mutableStateOf(setOf<String>()) }
     val colors = listOf(0xFFE3F2FDL,0xFFE8F5E9L,0xFFFFF3E0L,0xFFF3E5F5L,0xFFFFEBEEL,0xFFE0F7FAL)
+    val hours = (7..18).toList()
 
     AlertDialog(
         onDismissRequest = done,
         title = { Text("Add class") },
         text = {
-            Column(
-                Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(subject,{subject=it},Modifier.fillMaxWidth(),label={Text("Subject code")},placeholder={Text("e.g. DCIT 25")})
                 OutlinedTextField(fullName,{fullName=it},Modifier.fillMaxWidth(),label={Text("Whole subject name")})
-                Text("Day",fontWeight=FontWeight.SemiBold)
-                Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                    days.forEach { d -> FilterChip(day==d,{day=d},label={Text(d.take(3))}) }
+                Text("Option",fontWeight=FontWeight.SemiBold)
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    listOf("Lecture","Lab").forEach { option -> FilterChip(selected=classType==option,onClick={classType=option},label={Text(option)}) }
                 }
-                Text("Class time",fontWeight=FontWeight.SemiBold)
-                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick={showStartPicker=true},modifier=Modifier.weight(1f)) {
-                        Column(horizontalAlignment=Alignment.CenterHorizontally) {
-                            Text("Start",style=MaterialTheme.typography.labelSmall)
-                            Text(start,fontWeight=FontWeight.Bold)
+                Text("Pick class time(s) and day(s)",fontWeight=FontWeight.SemiBold)
+                Text("Tap cells to select. One subject can have multiple days and multiple 1-hour slots.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal=2.dp)) {
+                    Column {
+                        Row {
+                            Box(Modifier.width(52.dp).height(34.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center) { Text("Time",style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold) }
+                            days.forEach { d -> Box(Modifier.width(76.dp).height(34.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center) { Text(d.take(3),style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold) } }
+                        }
+                        hours.forEach { h ->
+                            Row {
+                                Box(Modifier.width(52.dp).height(48.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center) { Text("%02d:00".format(h),style=MaterialTheme.typography.labelSmall) }
+                                days.forEach { d ->
+                                    val key = "$d|$h"
+                                    val selected = key in selectedSlots
+                                    Box(Modifier.width(76.dp).height(48.dp).border(2.dp,if(selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline).background(if(selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface).clickable { selectedSlots = if(selected) selectedSlots - key else selectedSlots + key },contentAlignment=Alignment.Center) {
+                                        if(selected) {
+                                            Column(horizontalAlignment=Alignment.CenterHorizontally) { Text(classType,style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold,maxLines=1); Text("%02d–%02d".format(h,h+1),style=MaterialTheme.typography.labelSmall) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Row {
+                            Box(Modifier.width(52.dp).height(26.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center) { Text("19:00",style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold) }
+                            days.forEach { Box(Modifier.width(76.dp).height(26.dp).border(1.dp,MaterialTheme.colorScheme.outline)) }
                         }
                     }
-                    OutlinedButton(onClick={showEndPicker=true},modifier=Modifier.weight(1f)) {
-                        Column(horizontalAlignment=Alignment.CenterHorizontally) {
-                            Text("End",style=MaterialTheme.typography.labelSmall)
-                            Text(end,fontWeight=FontWeight.Bold)
-                        }
-                    }
                 }
-                Text("Classes are fixed to 1-hour slots: 07:00–08:00, 08:00–09:00, …, 18:00–19:00.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+                Text(if(selectedSlots.isEmpty()) "No time selected" else "${selectedSlots.size} slot(s) selected",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
                 OutlinedTextField(room,{room=it},Modifier.fillMaxWidth(),label={Text("Room number")})
                 OutlinedTextField(professor,{professor=it},Modifier.fillMaxWidth(),label={Text("Professor")})
                 OutlinedTextField(notes,{notes=it},Modifier.fillMaxWidth(),label={Text("Notes")})
                 Text("Class color",fontWeight=FontWeight.SemiBold)
                 Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                    colors.forEach { c ->
-                        Box(
-                            Modifier.size(40.dp)
-                                .border(3.dp,if(color==c) MaterialTheme.colorScheme.onSurface else Color.Transparent,RoundedCornerShape(50))
-                                .padding(4.dp)
-                                .background(Color(c),RoundedCornerShape(50))
-                                .clickable { color = c },
-                            contentAlignment=Alignment.Center
-                        ) {
-                            if(color==c) Text("✓",color=readableContentColor(Color(c)),fontWeight=FontWeight.Bold)
-                        }
-                    }
+                    colors.forEach { c -> Box(Modifier.size(40.dp).border(3.dp,if(color==c) MaterialTheme.colorScheme.onSurface else Color.Transparent,RoundedCornerShape(50)).padding(4.dp).background(Color(c),RoundedCornerShape(50)).clickable { color=c },contentAlignment=Alignment.Center) { if(color==c) Text("✓",color=readableContentColor(Color(c)),fontWeight=FontWeight.Bold) } }
                 }
             }
         },
         confirmButton={ Button({
-            if(subject.isNotBlank()&&start.toHourOrNull()!=null&&end.toHourOrNull()!=null) {
-                val classRecord=Record(title=subject.trim(),subtitle=fullName.trim(),extra=notes.trim(),
-                    day=day,startTime=start,endTime=end,room=room.trim(),professor=professor.trim(),color=color)
-                store.put("schedule",store.get("schedule")+classRecord)
-                syncSubjectFromClass(store,classRecord)
+            if(subject.isNotBlank() && selectedSlots.isNotEmpty()) {
+                val selected = selectedSlots.mapNotNull { key ->
+                    val parts=key.split("|")
+                    if(parts.size!=2) null else {
+                        val h=parts[1].toIntOrNull() ?: return@mapNotNull null
+                        Record(title=subject.trim(),subtitle=fullName.trim(),extra=notes.trim(),day=parts[0],startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=room.trim(),professor=professor.trim(),color=color,classType=classType)
+                    }
+                }
+                store.put("schedule",store.get("schedule")+selected)
+                selected.firstOrNull()?.let { syncSubjectFromClass(store,it) }
             }
             done()
         }) { Text("Save") } },
         dismissButton={ TextButton(done) { Text("Cancel") } }
     )
-    if (showStartPicker) {
-        TimeWheelDialog("Start time", start, { start = it; showStartPicker = false }, { showStartPicker = false })
-    }
-    if (showEndPicker) {
-        TimeWheelDialog("End time", end, { end = it; showEndPicker = false }, { showEndPicker = false })
-    }
 }
-
 private val days = listOf("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday")
 
 @Composable
