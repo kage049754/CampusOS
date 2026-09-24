@@ -1245,6 +1245,76 @@ fun AddRecordDialog(label:String,key:String,store:LocalStore,done:()->Unit){
         if(key=="grades"||key=="expenses")OutlinedTextField(value,{value=it},Modifier.fillMaxWidth(),label={Text(if(key=="grades")"Grade" else "Amount")})
     }},confirmButton={Button({if(title.isNotBlank()&&(!isTask||subjectId!=0L))store.put(key,store.get(key)+Record(title=title.trim(),subtitle=subtitle.trim(),extra=extra.trim(),value=value.toDoubleOrNull()?:0.0,subjectId=subjectId,dueDate=if(isTask)dueDate else "",dueTime=""));done()}){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})
 }
+                                PdfRenderer(descriptor).use { it.pageCount }
+                            }.getOrDefault(0)
+                        }
+                        Column(Modifier.fillMaxSize()) {
+                            if(pageCount>0) {
+                                renderPdfPage(file,pdfPage.coerceIn(0,pageCount-1))?.let { bitmap ->
+                                    Image(bitmap=bitmap.asImageBitmap(),contentDescription=file.name,
+                                        modifier=Modifier.fillMaxWidth().weight(1f),contentScale=ContentScale.Fit)
+                                } ?: EmptyCard("Unable to render this PDF.")
+                                Row(Modifier.fillMaxWidth().padding(8.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
+                                    Text("Page ${pdfPage+1} of $pageCount")
+                                    Row {
+                                        TextButton({if(pdfPage>0)pdfPage--},enabled=pdfPage>0){Text("Previous")}
+                                        TextButton({if(pdfPage<pageCount-1)pdfPage++},enabled=pdfPage<pageCount-1){Text("Next")}
+                                    }
+                                }
+                            } else EmptyCard("Unable to open this PDF.")
+                        }
+                    }
+                    ext in setOf("png","jpg","jpeg","webp","bmp","gif") -> {
+                        val bitmap=remember(file){BitmapFactory.decodeFile(file.absolutePath)}
+                        if(bitmap!=null) Image(bitmap=bitmap.asImageBitmap(),contentDescription=file.name,
+                            modifier=Modifier.fillMaxSize().padding(10.dp),contentScale=ContentScale.Fit)
+                        else EmptyCard("Unable to display this image.")
+                    }
+                    else -> {
+                        val text=remember(file){readDisplayText(file)}
+                        LazyColumn(Modifier.fillMaxSize().padding(16.dp)){item{Text(text,style=MaterialTheme.typography.bodyLarge)}}
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RecordCard(r: Record, key: String, store: LocalStore, refresh: () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(r.title, fontWeight = FontWeight.SemiBold)
+                if (r.subtitle.isNotBlank()) Text(r.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (r.extra.isNotBlank()) Text(r.extra, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (key == "tasks" && r.dueDate.isNotBlank()) Text("Due: ${r.dueDate} ${r.dueTime}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (key == "tasks" && r.subjectId != 0L) store.get("subjects").firstOrNull { it.id == r.subjectId }?.let { Text("Subject: ${it.title}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                if (key == "grades") Text("Grade: %.2f".format(r.value))
+                if (key == "expenses") Text("₱%.2f".format(r.value), fontWeight = FontWeight.Bold)
+            }
+            if (key == "tasks" || key == "attendance") Checkbox(r.done, {
+                store.put(key, store.get(key).map { if (it.id == r.id) it.copy(done = !it.done) else it }); refresh()
+            })
+            IconButton({ store.delete(key, r.id); refresh() }) { Icon(Icons.Default.Delete, "Delete") }
+        }
+    }
+}
+
+@Composable
+fun AddRecordDialog(label:String,key:String,store:LocalStore,done:()->Unit){
+    var subjectId by remember{mutableLongStateOf(0L)};var title by remember{mutableStateOf("")};var subtitle by remember{mutableStateOf("")};var extra by remember{mutableStateOf("")};var value by remember{mutableStateOf("")}
+    var dueDate by remember{mutableStateOf(SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date()))};var dueTime by remember{mutableStateOf("23:59")}
+    val subjects=store.get("subjects");val isTask=key=="tasks"
+    AlertDialog(onDismissRequest=done,title={Text("Add $label")},text={Column(Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
+        if(isTask){Text("Subject",fontWeight=FontWeight.Bold);if(subjects.isEmpty())Text("Add a class first so this task can be linked to a subject.",color=MaterialTheme.colorScheme.error)
+            else Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){subjects.forEach{s->FilterChip(subjectId==s.id,{subjectId=s.id},label={Text(s.title)})}}
+            OutlinedTextField(dueDate,{dueDate=it},Modifier.fillMaxWidth(),label={Text("Due date (YYYY-MM-DD)")});OutlinedTextField(dueTime,{dueTime=it},Modifier.fillMaxWidth(),label={Text("Due time (HH:MM, phone time)")})}
+        OutlinedTextField(title,{title=it},Modifier.fillMaxWidth(),label={Text("Title")});OutlinedTextField(subtitle,{subtitle=it},Modifier.fillMaxWidth(),label={Text("Description")})
+        if(key=="tasks"||key=="reviewers")OutlinedTextField(extra,{extra=it},Modifier.fillMaxWidth(),label={Text("Notes")})
+        if(key=="grades"||key=="expenses")OutlinedTextField(value,{value=it},Modifier.fillMaxWidth(),label={Text(if(key=="grades")"Grade" else "Amount")})
+    }},confirmButton={Button({if(title.isNotBlank()&&(!isTask||subjectId!=0L))store.put(key,store.get(key)+Record(title=title.trim(),subtitle=subtitle.trim(),extra=extra.trim(),value=value.toDoubleOrNull()?:0.0,subjectId=subjectId,dueDate=if(isTask)dueDate else "",dueTime=if(isTask)dueTime else ""));done()}){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})
+}
 @Composable
 fun FilesScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -1273,3 +1343,109 @@ fun FilesScreen() {
                     leadingContent = { Icon(Icons.Default.InsertDriveFile, null) },
                     trailingContent = { IconButton({ File(context.filesDir, f.name).delete(); files = listFiles(context) }) { Icon(Icons.Default.Delete, "Delete") } }
                 )}
+            }
+        }
+    }
+}
+private fun listFiles(context: Context) = context.filesDir.listFiles()?.filter { it.isFile }
+    ?.map { FileRecord(it.name, it.length()) }?.sortedBy { it.name.lowercase() } ?: emptyList()
+private fun queryName(context: Context, uri: Uri): String? {
+    context.contentResolver.query(
+        uri,
+        arrayOf(OpenableColumns.DISPLAY_NAME),
+        null,
+        null,
+        null
+    )?.use { cursor ->
+        if (cursor.moveToFirst()) {
+            return cursor.getString(0)
+                .replace("/", "_")
+                .replace("\\", "_")
+        }
+    }
+    return uri.lastPathSegment?.substringAfterLast("/")
+}
+
+private fun formatSize(size: Long) = when {
+    size < 1024 -> "$size B"
+    size < 1024*1024 -> "%.1f KB".format(size/1024.0)
+    else -> "%.1f MB".format(size/1024.0/1024.0)
+}
+
+@Composable
+fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit, lock: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var pin by remember { mutableStateOf(store.pin()) }
+    var lockOn by remember { mutableStateOf(store.lockEnabled()) }
+    var showPin by remember { mutableStateOf(false) }
+    val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        context.contentResolver.openOutputStream(uri)?.use { it.write(store.backupJson().toByteArray()) }
+    }
+    val restore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching { context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { store.restoreJson(it.readText()) } }
+    }
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+        item { Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Appearance", fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    listOf("system","light","dark").forEach { mode ->
+                        FilterChip(theme == mode, { setTheme(mode) }, label = { Text(mode.replaceFirstChar { it.uppercase() }) })
+                    }
+                }
+            }
+        }}
+        item { Card(Modifier.fillMaxWidth()) {
+            ListItem(headlineContent = { Text("App lock") },
+                supportingContent = { Text(if (pin.isBlank()) "Set a PIN first" else "Require PIN when opening CampusOS") },
+                trailingContent = { Switch(lockOn && pin.isNotBlank(), {
+                    lockOn = it; store.setLockEnabled(it); if (it) lock()
+                }) })
+            TextButton({ showPin = true }, Modifier.padding(start = 12.dp)) { Text(if (pin.isBlank()) "Set PIN" else "Change PIN") }
+        }}
+        item { Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Backup & restore", fontWeight = FontWeight.Bold)
+                Text("Export local data to JSON or restore it later.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 10.dp)) {
+                    Button({ backup.launch("CampusOS-backup.json") }) { Text("Backup") }
+                    OutlinedButton({ restore.launch(arrayOf("application/json","text/plain")) }) { Text("Restore") }
+                }
+            }
+        }}
+        item { Text("CampusOS 1.0.0 • Offline-first", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
+    if (showPin) {
+        var newPin by remember { mutableStateOf("") }
+        AlertDialog(onDismissRequest = { showPin = false }, title = { Text("Set 4–8 digit PIN") },
+            text = { OutlinedTextField(newPin, { newPin = it.filter(Char::isDigit).take(8) }, label = { Text("PIN") }) },
+            confirmButton = { Button({ if (newPin.length in 4..8) { pin = newPin; store.setPin(newPin); showPin = false } }) { Text("Save") } },
+            dismissButton = { TextButton({ showPin = false }) { Text("Cancel") } })
+    }
+}
+
+@Composable
+fun LockScreen(store: LocalStore, unlock: () -> Unit) {
+    var entered by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Icon(Icons.Default.Lock, null, Modifier.size(64.dp))
+        Spacer(Modifier.height(18.dp)); Text("CampusOS is locked", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Enter your PIN to continue.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(18.dp))
+        OutlinedTextField(entered, { entered = it.filter(Char::isDigit).take(8) }, label = { Text("PIN") })
+        if (error) Text("Incorrect PIN", color = MaterialTheme.colorScheme.error)
+        Spacer(Modifier.height(12.dp)); Button({ if (entered == store.pin()) unlock() else error = true }) { Text("Unlock") }
+    }
+}
+@Composable fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
+    Card(modifier) { Column(Modifier.padding(14.dp)) { Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+}
+@Composable fun SectionTitle(text: String) { Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+@Composable fun EmptyCard(text: String) { Card(Modifier.fillMaxWidth()) { Text(text, Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+@Composable fun SmallAction(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, click: () -> Unit) {
+    OutlinedButton(onClick = click, modifier = Modifier.fillMaxWidth()) { Icon(icon, null); Spacer(Modifier.width(4.dp)); Text(text) }
+}
