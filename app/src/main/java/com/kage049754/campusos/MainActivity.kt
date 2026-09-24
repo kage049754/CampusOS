@@ -265,7 +265,7 @@ fun CampusOSApp(activity: Activity) {
                 }
             },
             floatingActionButton = {
-                if (screen in listOf(Screen.SCHEDULE, Screen.TASKS, Screen.ACADEMICS, Screen.FINANCE))
+                if (screen in listOf(Screen.SCHEDULE, Screen.TASKS, Screen.FINANCE))
                     FloatingActionButton({ search = "__ADD__" }) { Icon(Icons.Default.Add, "Add") }
             }
         ) { padding ->
