@@ -529,7 +529,9 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
         BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal=4.dp)) {
             val dayWidth=(maxWidth-56.dp).coerceAtLeast(0.dp)/scheduleDays.size.coerceAtLeast(1)
 
-            Column {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max=430.dp).verticalScroll(rememberScrollState())
+            ) {
                 Row {
                     Box(
                         Modifier.width(56.dp).height(42.dp).background(tableBg).border(1.dp, tableBorder),
@@ -543,7 +545,12 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
                                 .background(if (isToday) dayHighlight.copy(alpha = 0.16f) else tableBg)
                                 .border(if (isToday) 2.dp else 1.dp, if (isToday) dayHighlight else tableBorder),
                             contentAlignment = Alignment.Center
-                        ) { Text(d.take(3), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall) }
+                        ) {
+                            Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(3.dp)) {
+                                if(isToday) Box(Modifier.size(7.dp).background(dayHighlight,RoundedCornerShape(50)))
+                                Text(d.take(3), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
                     }
                 }
 
@@ -555,11 +562,10 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
                                 .then(if (isCurrentHour) Modifier.border(2.dp, timeHighlight) else Modifier),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                "%02d:00".format(h),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.labelSmall
-                            )
+                            Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(3.dp)) {
+                                if(isCurrentHour) Box(Modifier.size(7.dp).background(timeHighlight,RoundedCornerShape(50)))
+                                Text("%02d:00".format(h),color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.labelSmall)
+                            }
                         }
 
                         scheduleDays.forEach { day ->
@@ -712,13 +718,14 @@ fun ScheduleHighlightColorDialog(store: LocalStore, done: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Today / day header", fontWeight = FontWeight.SemiBold)
-                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    colors.forEach { c -> FilterChip(dayColor == c, { dayColor = c }, label = { Text("●") }) }
+                Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    colors.forEach { c -> ColorChoiceCircle(c, dayColor == c) { dayColor = c } }
                 }
                 Text("Current time row", fontWeight = FontWeight.SemiBold)
-                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    colors.forEach { c -> FilterChip(timeColor == c, { timeColor = c }, label = { Text("●") }) }
+                Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    colors.forEach { c -> ColorChoiceCircle(c, timeColor == c) { timeColor = c } }
                 }
+                Text("The selected color is shown directly on the schedule.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = {
@@ -907,13 +914,43 @@ private val days = listOf("Monday","Tuesday","Wednesday","Thursday","Friday","Sa
 
 @Composable
 fun TaskCalendar(selectedDate:String,onSelect:(String)->Unit){
-    val cal=Calendar.getInstance();val sdf=SimpleDateFormat("yyyy-MM-dd",Locale.getDefault());val first=cal.clone() as Calendar
-    first.set(Calendar.DAY_OF_MONTH,1);val offset=(first.get(Calendar.DAY_OF_WEEK)-Calendar.MONDAY+7)%7;val max=first.getActualMaximum(Calendar.DAY_OF_MONTH)
-    Column(verticalArrangement=Arrangement.spacedBy(4.dp)){Text(SimpleDateFormat("MMMM yyyy",Locale.getDefault()).format(first.time),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
-        Row(Modifier.fillMaxWidth()){listOf("M","T","W","T","F","S","S").forEach{Text(it,Modifier.weight(1f),textAlign=androidx.compose.ui.text.style.TextAlign.Center,style=MaterialTheme.typography.labelSmall)}}
-        for(row in 0..5)Row(Modifier.fillMaxWidth()){for(col in 0..6){val n=row*7+col-offset+1;if(n in 1..max){val d=(first.clone() as Calendar).apply{set(Calendar.DAY_OF_MONTH,n)};val k=sdf.format(d.time);val today=k==sdf.format(cal.time)
-            Box(Modifier.weight(1f).padding(2.dp).height(34.dp).background(if(k==selectedDate)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,RoundedCornerShape(7.dp)).then(if(today)Modifier.border(2.dp,MaterialTheme.colorScheme.primary,RoundedCornerShape(7.dp))else Modifier).clickable{onSelect(k)},contentAlignment=Alignment.Center){Text(n.toString(),fontWeight=if(today)FontWeight.Bold else FontWeight.Normal)}
-        }else Box(Modifier.weight(1f).height(38.dp))}}}
+    val sdf=SimpleDateFormat("yyyy-MM-dd",Locale.getDefault())
+    val selectedCal=Calendar.getInstance().apply { runCatching { time=sdf.parse(selectedDate) ?: time } }
+    var monthOffset by remember(selectedDate) {
+        mutableIntStateOf(
+            ((Calendar.getInstance().get(Calendar.YEAR)-selectedCal.get(Calendar.YEAR))*12 +
+                Calendar.getInstance().get(Calendar.MONTH)-selectedCal.get(Calendar.MONTH))
+        )
+    }
+    val shown=Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH,1); add(Calendar.MONTH,-monthOffset) }
+    val first=shown.clone() as Calendar
+    val offset=(first.get(Calendar.DAY_OF_WEEK)-Calendar.MONDAY+7)%7
+    val max=first.getActualMaximum(Calendar.DAY_OF_MONTH)
+    val todayKey=sdf.format(Calendar.getInstance().time)
+    Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
+            IconButton({monthOffset++}){Icon(Icons.Default.ChevronLeft,"Previous month")}
+            Text(SimpleDateFormat("MMMM yyyy",Locale.getDefault()).format(first.time),Modifier.weight(1f),textAlign=androidx.compose.ui.text.style.TextAlign.Center,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+            IconButton({monthOffset--}){Icon(Icons.Default.ChevronRight,"Next month")}
+        }
+        Row(Modifier.fillMaxWidth()){
+            listOf("M","T","W","T","F","S","S").forEach{Text(it,Modifier.weight(1f),textAlign=androidx.compose.ui.text.style.TextAlign.Center,style=MaterialTheme.typography.labelSmall)}
+        }
+        for(row in 0..5) Row(Modifier.fillMaxWidth()){
+            for(col in 0..6){
+                val n=row*7+col-offset+1
+                if(n in 1..max){
+                    val d=(first.clone() as Calendar).apply{set(Calendar.DAY_OF_MONTH,n)}
+                    val k=sdf.format(d.time);val selected=k==selectedDate;val today=k==todayKey
+                    Box(Modifier.weight(1f).padding(2.dp).height(40.dp)
+                        .background(if(selected)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,RoundedCornerShape(8.dp))
+                        .then(if(today)Modifier.border(2.dp,MaterialTheme.colorScheme.primary,RoundedCornerShape(8.dp))else Modifier)
+                        .clickable{onSelect(k)},contentAlignment=Alignment.Center
+                    ){Text(n.toString(),fontWeight=if(selected||today)FontWeight.Bold else FontWeight.Normal)}
+                }else Box(Modifier.weight(1f).height(44.dp))
+            }
+        }
+    }
 }
 @Composable
 fun CrudScreen(title:String,key:String,store:LocalStore,query:String,clear:()->Unit){
@@ -1101,16 +1138,19 @@ fun RecordCard(r: Record, key: String, store: LocalStore, refresh: () -> Unit) {
 @Composable
 fun AddRecordDialog(label:String,key:String,store:LocalStore,done:()->Unit){
     var subjectId by remember{mutableLongStateOf(0L)};var title by remember{mutableStateOf("")};var subtitle by remember{mutableStateOf("")};var extra by remember{mutableStateOf("")};var value by remember{mutableStateOf("")}
-    var dueDate by remember{mutableStateOf(SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date()))};var dueTime by remember{mutableStateOf("23:59")}
+    var dueDate by remember{mutableStateOf(SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date()))}
+    var showDueDatePicker by remember{mutableStateOf(false)}
     val subjects=store.get("subjects");val isTask=key=="tasks"
     AlertDialog(onDismissRequest=done,title={Text("Add $label")},text={Column(Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
         if(isTask){Text("Subject",fontWeight=FontWeight.Bold);if(subjects.isEmpty())Text("Add a class first so this task can be linked to a subject.",color=MaterialTheme.colorScheme.error)
             else Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){subjects.forEach{s->FilterChip(subjectId==s.id,{subjectId=s.id},label={Text(s.title)})}}
-            OutlinedTextField(dueDate,{dueDate=it},Modifier.fillMaxWidth(),label={Text("Due date (YYYY-MM-DD)")});OutlinedTextField(dueTime,{dueTime=it},Modifier.fillMaxWidth(),label={Text("Due time (HH:MM, phone time)")})}
+            OutlinedButton(onClick={showDueDatePicker=true},modifier=Modifier.fillMaxWidth()){
+                Icon(Icons.Default.Event,null);Spacer(Modifier.width(8.dp));Text("Due date: $dueDate")
+            }}
         OutlinedTextField(title,{title=it},Modifier.fillMaxWidth(),label={Text("Title")});OutlinedTextField(subtitle,{subtitle=it},Modifier.fillMaxWidth(),label={Text("Description")})
         if(key=="tasks"||key=="reviewers")OutlinedTextField(extra,{extra=it},Modifier.fillMaxWidth(),label={Text("Notes")})
         if(key=="grades"||key=="expenses")OutlinedTextField(value,{value=it},Modifier.fillMaxWidth(),label={Text(if(key=="grades")"Grade" else "Amount")})
-    }},confirmButton={Button({if(title.isNotBlank()&&(!isTask||subjectId!=0L))store.put(key,store.get(key)+Record(title=title.trim(),subtitle=subtitle.trim(),extra=extra.trim(),value=value.toDoubleOrNull()?:0.0,subjectId=subjectId,dueDate=if(isTask)dueDate else "",dueTime=if(isTask)dueTime else ""));done()}){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})
+    }},confirmButton={Button({if(title.isNotBlank()&&(!isTask||subjectId!=0L))store.put(key,store.get(key)+Record(title=title.trim(),subtitle=subtitle.trim(),extra=extra.trim(),value=value.toDoubleOrNull()?:0.0,subjectId=subjectId,dueDate=if(isTask)dueDate else "",dueTime=""));done()}){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})
 }
 @Composable
 fun FilesScreen() {
@@ -1198,51 +1238,3 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
         item { Card(Modifier.fillMaxWidth()) {
             ListItem(headlineContent = { Text("App lock") },
                 supportingContent = { Text(if (pin.isBlank()) "Set a PIN first" else "Require PIN when opening CampusOS") },
-                trailingContent = { Switch(lockOn && pin.isNotBlank(), {
-                    lockOn = it; store.setLockEnabled(it); if (it) lock()
-                }) })
-            TextButton({ showPin = true }, Modifier.padding(start = 12.dp)) { Text(if (pin.isBlank()) "Set PIN" else "Change PIN") }
-        }}
-        item { Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("Backup & restore", fontWeight = FontWeight.Bold)
-                Text("Export local data to JSON or restore it later.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 10.dp)) {
-                    Button({ backup.launch("CampusOS-backup.json") }) { Text("Backup") }
-                    OutlinedButton({ restore.launch(arrayOf("application/json","text/plain")) }) { Text("Restore") }
-                }
-            }
-        }}
-        item { Text("CampusOS 1.0.0 • Offline-first", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-    }
-    if (showPin) {
-        var newPin by remember { mutableStateOf("") }
-        AlertDialog(onDismissRequest = { showPin = false }, title = { Text("Set 4–8 digit PIN") },
-            text = { OutlinedTextField(newPin, { newPin = it.filter(Char::isDigit).take(8) }, label = { Text("PIN") }) },
-            confirmButton = { Button({ if (newPin.length in 4..8) { pin = newPin; store.setPin(newPin); showPin = false } }) { Text("Save") } },
-            dismissButton = { TextButton({ showPin = false }) { Text("Cancel") } })
-    }
-}
-
-@Composable
-fun LockScreen(store: LocalStore, unlock: () -> Unit) {
-    var entered by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Icon(Icons.Default.Lock, null, Modifier.size(64.dp))
-        Spacer(Modifier.height(18.dp)); Text("CampusOS is locked", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("Enter your PIN to continue.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(18.dp))
-        OutlinedTextField(entered, { entered = it.filter(Char::isDigit).take(8) }, label = { Text("PIN") })
-        if (error) Text("Incorrect PIN", color = MaterialTheme.colorScheme.error)
-        Spacer(Modifier.height(12.dp)); Button({ if (entered == store.pin()) unlock() else error = true }) { Text("Unlock") }
-    }
-}
-@Composable fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier) { Column(Modifier.padding(14.dp)) { Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-}
-@Composable fun SectionTitle(text: String) { Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-@Composable fun EmptyCard(text: String) { Card(Modifier.fillMaxWidth()) { Text(text, Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-@Composable fun SmallAction(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, click: () -> Unit) {
-    OutlinedButton(onClick = click, modifier = Modifier.fillMaxWidth()) { Icon(icon, null); Spacer(Modifier.width(4.dp)); Text(text) }
-}
