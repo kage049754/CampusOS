@@ -126,6 +126,20 @@ private fun readOfficeText(file: File): String? = runCatching {
     }
 }.getOrNull()?.trim()?.takeIf { it.isNotBlank() }
 
+private fun readOfficeSlides(file: File): List<String> = runCatching {
+    ZipFile(file).use { zip ->
+        if (fileExtension(file) != "pptx") return@use emptyList<String>()
+        zip.entries().asSequence()
+            .filter { it.name.startsWith("ppt/slides/slide") && it.name.endsWith(".xml") }
+            .sortedBy { it.name }
+            .map { entry ->
+                zip.getInputStream(entry).use { stream ->
+                    DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(stream).documentElement.textContent.trim()
+                }
+            }.toList()
+    }
+}.getOrDefault(emptyList())
+
 private fun readDisplayText(file: File): String = when (fileExtension(file)) {
     "docx", "pptx", "xlsx" -> readOfficeText(file) ?: "No readable text was found in this Office file."
     "txt", "csv", "log", "json", "xml", "kt", "java", "md" ->
@@ -270,7 +284,7 @@ fun CampusOSApp(activity: Activity) {
                 }
             },
             floatingActionButton = {
-                if (screen == Screen.TASKS) {
+                if (screen == Screen.TASKS || screen == Screen.ACADEMICS) {
                     FloatingActionButton(onClick = { search = "__ADD__" }) {
                         Icon(Icons.Default.Add, "Add")
                     }
@@ -1017,114 +1031,177 @@ fun AcademicsScreen(store: LocalStore, query: String, clear: () -> Unit) {
 }
 
 @Composable
+@Composable
 fun SubjectNotepadDialog(subject: Record, store: LocalStore, done: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var note by remember { mutableStateOf(subject.extra) }
+    val savedNote = remember(subject) {
+        runCatching {
+            val o = JSONObject(subject.extra)
+            Pair(o.optString("title"), o.optString("body"))
+        }.getOrElse { Pair("", subject.extra) }
+    }
+    var noteTitle by remember { mutableStateOf(savedNote.first) }
+    var noteBody by remember { mutableStateOf(savedNote.second) }
     var files by remember { mutableStateOf(subjectFiles(context, subject.id)) }
     var viewingFile by remember { mutableStateOf<File?>(null) }
+    var showNoteEditor by remember { mutableStateOf(false) }
     val upload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
         copyUriToSubject(context, uri, subject.id)?.let { files = subjectFiles(context, subject.id) }
     }
-
+    fun saveNote() {
+        val noteJson = JSONObject().apply {
+            put("title", noteTitle.trim())
+            put("body", noteBody)
+        }.toString()
+        store.put("subjects", store.get("subjects").map {
+            if (it.id == subject.id) it.copy(extra = noteJson) else it
+        })
+    }
     AlertDialog(
-        onDismissRequest=done,
-        title={Text(subject.title+" Notepad")},
-        text={
-            Column(
-                Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement=Arrangement.spacedBy(10.dp)
-            ) {
-                if(subject.subtitle.isNotBlank()) Text(subject.subtitle,fontWeight=FontWeight.SemiBold)
-                if(subject.professor.isNotBlank()) Text("Professor: "+subject.professor,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedTextField(
-                    value=note,onValueChange={note=it},
-                    modifier=Modifier.fillMaxWidth().heightIn(min=180.dp),
-                    label={Text("Notes")},
-                    placeholder={Text("Write lessons, reminders, reviewer notes, or anything for this subject...")}
-                )
-                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Lesson files",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
-                        Text("Store lesson files inside this subject for offline access.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+        onDismissRequest = done,
+        title = { Text(subject.title) },
+        text = {
+            Column(Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (subject.subtitle.isNotBlank()) Text(subject.subtitle, fontWeight = FontWeight.SemiBold)
+                if (subject.professor.isNotBlank()) Text("Professor: " + subject.professor, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Lessons", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Card(onClick = { showNoteEditor = true }, modifier = Modifier.weight(1f)) {
+                        Column(Modifier.padding(16.dp)) {
+                            Icon(Icons.Default.Note, null)
+                            Spacer(Modifier.height(8.dp))
+                            Text("Note", fontWeight = FontWeight.Bold)
+                            Text(if (noteTitle.isBlank()) "Create new note" else noteTitle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                        }
                     }
-                    Button({upload.launch(arrayOf("*/*"))}) {
-                        Icon(Icons.Default.UploadFile,null); Spacer(Modifier.width(6.dp)); Text("Upload")
+                    Card(onClick = { upload.launch(arrayOf("*/*")) }, modifier = Modifier.weight(1f)) {
+                        Column(Modifier.padding(16.dp)) {
+                            Icon(Icons.Default.InsertDriveFile, null)
+                            Spacer(Modifier.height(8.dp))
+                            Text("File", fontWeight = FontWeight.Bold)
+                            Text("${files.size} stored", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
-                if(files.isEmpty()) EmptyCard("No lesson files yet. Upload your professor's lesson file here.")
-                else files.forEach { file ->
-                    Card(onClick={viewingFile=file},modifier=Modifier.fillMaxWidth()) {
-                        ListItem(
-                            headlineContent={Text(file.name,maxLines=2)},
-                            supportingContent={Text(formatSize(file.length()))},
-                            leadingContent={Icon(Icons.Default.InsertDriveFile,null)},
-                            trailingContent={
-                                IconButton({file.delete();files=subjectFiles(context,subject.id)}) {
-                                    Icon(Icons.Default.Delete,"Delete")
+                if (files.isEmpty()) {
+                    EmptyCard("No lesson files yet. Tap File to upload a PDF, PowerPoint, Word document, or other file.")
+                } else {
+                    files.forEach { file ->
+                        Card(onClick = { viewingFile = file }, modifier = Modifier.fillMaxWidth()) {
+                            ListItem(
+                                headlineContent = { Text(file.name, maxLines = 2) },
+                                supportingContent = { Text(formatSize(file.length())) },
+                                leadingContent = { Icon(Icons.Default.InsertDriveFile, null) },
+                                trailingContent = {
+                                    IconButton({
+                                        file.delete()
+                                        files = subjectFiles(context, subject.id)
+                                    }) { Icon(Icons.Default.Delete, "Delete") }
                                 }
-                            }
-                        )
+                            )
+                        }
                     }
                 }
             }
         },
-        confirmButton={
-            Button({
-                store.put("subjects",store.get("subjects").map { if(it.id==subject.id) it.copy(extra=note) else it })
-                done()
-            }) { Text("Save notes") }
-        },
-        dismissButton={TextButton(done){Text("Close")}}
+        confirmButton = { TextButton(done) { Text("Close") } }
     )
-    viewingFile?.let { file -> InAppFileViewerDialog(file){viewingFile=null} }
+    if (showNoteEditor) {
+        AlertDialog(
+            onDismissRequest = { showNoteEditor = false },
+            title = { Text("Create / edit note") },
+            text = {
+                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(noteTitle, { noteTitle = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Note title") }, placeholder = { Text("e.g. Introduction to DCIT 25") })
+                    OutlinedTextField(noteBody, { noteBody = it }, Modifier.fillMaxWidth().heightIn(min = 220.dp), label = { Text("Description / note") }, placeholder = { Text("Type your lesson note or description...") })
+                }
+            },
+            confirmButton = { Button({ saveNote(); showNoteEditor = false }) { Text("Save note") } },
+            dismissButton = { TextButton({ showNoteEditor = false }) { Text("Cancel") } }
+        )
+    }
+    viewingFile?.let { file -> InAppFileViewerDialog(file) { viewingFile = null } }
 }
 
 @Composable
+@Composable
 fun InAppFileViewerDialog(file: File, done: () -> Unit) {
-    var pdfPage by remember(file) { mutableIntStateOf(0) }
-    val ext=fileExtension(file)
-    Dialog(onDismissRequest=done) {
-        Card(Modifier.fillMaxWidth().fillMaxHeight(0.88f),shape=RoundedCornerShape(24.dp)) {
+    var page by remember(file) { mutableIntStateOf(0) }
+    var slide by remember(file) { mutableIntStateOf(0) }
+    var fullScreen by remember(file) { mutableStateOf(false) }
+    val ext = fileExtension(file)
+    Dialog(onDismissRequest = done) {
+        Card(Modifier.fillMaxWidth().fillMaxHeight(if (fullScreen) 1f else 0.92f), shape = if (fullScreen) RoundedCornerShape(0.dp) else RoundedCornerShape(24.dp)) {
             Column(Modifier.fillMaxSize()) {
-                Row(Modifier.fillMaxWidth().padding(horizontal=14.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
-                    Text(file.name,Modifier.weight(1f),maxLines=2,fontWeight=FontWeight.Bold)
-                    IconButton(done){Icon(Icons.Default.Close,"Close")}
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(file.name, Modifier.weight(1f), maxLines = 2, fontWeight = FontWeight.Bold)
+                    IconButton({ fullScreen = !fullScreen }) {
+                        Icon(if (fullScreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, "Toggle full screen")
+                    }
+                    IconButton(done) { Icon(Icons.Default.Close, "Close") }
                 }
                 HorizontalDivider()
                 when {
-                    ext=="pdf" -> {
-                        val pageCount=remember(file) {
+                    ext == "pdf" -> {
+                        val pageCount = remember(file) {
                             runCatching {
-                                val descriptor=ParcelFileDescriptor.open(file,ParcelFileDescriptor.MODE_READ_ONLY)
-                                PdfRenderer(descriptor).use { it.pageCount }
+                                ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+                                    PdfRenderer(descriptor).use { it.pageCount }
+                                }
                             }.getOrDefault(0)
                         }
                         Column(Modifier.fillMaxSize()) {
-                            if(pageCount>0) {
-                                renderPdfPage(file,pdfPage.coerceIn(0,pageCount-1))?.let { bitmap ->
-                                    Image(bitmap=bitmap.asImageBitmap(),contentDescription=file.name,
-                                        modifier=Modifier.fillMaxWidth().weight(1f),contentScale=ContentScale.Fit)
-                                } ?: EmptyCard("Unable to render this PDF.")
-                                Row(Modifier.fillMaxWidth().padding(8.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
-                                    Text("Page ${pdfPage+1} of $pageCount")
+                            if (pageCount > 0) {
+                                Box(Modifier.fillMaxWidth().weight(1f).padding(6.dp), contentAlignment = Alignment.Center) {
+                                    renderPdfPage(file, page.coerceIn(0, pageCount - 1))?.let { bitmap ->
+                                        Image(bitmap.asImageBitmap(), file.name, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                                    } ?: EmptyCard("Unable to render this PDF.")
+                                }
+                                Row(Modifier.fillMaxWidth().padding(6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Page ${page + 1} of $pageCount")
                                     Row {
-                                        TextButton({if(pdfPage>0)pdfPage--},enabled=pdfPage>0){Text("Previous")}
-                                        TextButton({if(pdfPage<pageCount-1)pdfPage++},enabled=pdfPage<pageCount-1){Text("Next")}
+                                        TextButton({ if (page > 0) page-- }, enabled = page > 0) { Text("Previous") }
+                                        TextButton({ if (page < pageCount - 1) page++ }, enabled = page < pageCount - 1) { Text("Next") }
                                     }
                                 }
                             } else EmptyCard("Unable to open this PDF.")
                         }
                     }
-                    ext in setOf("png","jpg","jpeg","webp","bmp","gif") -> {
-                        val bitmap=remember(file){BitmapFactory.decodeFile(file.absolutePath)}
-                        if(bitmap!=null) Image(bitmap=bitmap.asImageBitmap(),contentDescription=file.name,
-                            modifier=Modifier.fillMaxSize().padding(10.dp),contentScale=ContentScale.Fit)
-                        else EmptyCard("Unable to display this image.")
+                    ext == "pptx" || ext == "ppt" -> {
+                        val slides = remember(file) { readOfficeSlides(file) }
+                        Column(Modifier.fillMaxSize()) {
+                            if (slides.isNotEmpty()) {
+                                Box(Modifier.fillMaxWidth().weight(1f).padding(10.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                                    Text(slides[slide.coerceIn(0, slides.lastIndex)].ifBlank { "Blank slide" }, Modifier.padding(24.dp), style = MaterialTheme.typography.titleMedium)
+                                }
+                                Row(Modifier.fillMaxWidth().padding(6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Slide ${slide + 1} of ${slides.size}")
+                                    Row {
+                                        TextButton({ if (slide > 0) slide-- }, enabled = slide > 0) { Text("Previous") }
+                                        TextButton({ if (slide < slides.lastIndex) slide++ }, enabled = slide < slides.lastIndex) { Text("Next") }
+                                    }
+                                }
+                            } else EmptyCard("Unable to read this PowerPoint offline.")
+                        }
+                    }
+                    ext == "docx" -> {
+                        val text = remember(file) { readOfficeText(file) ?: "No readable text was found in this Word document." }
+                        LazyColumn(Modifier.fillMaxSize().padding(10.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                            item {
+                                Card(Modifier.fillMaxWidth().widthIn(max = 794.dp), shape = RoundedCornerShape(0.dp)) {
+                                    Column(Modifier.padding(36.dp)) {
+                                        Text("A4 Print Layout", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Spacer(Modifier.height(10.dp))
+                                        Text(text, style = MaterialTheme.typography.bodyLarge)
+                                    }
+                                }
+                            }
+                        }
                     }
                     else -> {
-                        val text=remember(file){readDisplayText(file)}
-                        LazyColumn(Modifier.fillMaxSize().padding(16.dp)){item{Text(text,style=MaterialTheme.typography.bodyLarge)}}
+                        val text = remember(file) { readDisplayText(file) }
+                        LazyColumn(Modifier.fillMaxSize().padding(16.dp)) { item { Text(text, style = MaterialTheme.typography.bodyLarge) } }
                     }
                 }
             }
@@ -1198,21 +1275,3 @@ fun FilesScreen() {
                     leadingContent = { Icon(Icons.Default.InsertDriveFile, null) },
                     trailingContent = { IconButton({ File(context.filesDir, f.name).delete(); files = listFiles(context) }) { Icon(Icons.Default.Delete, "Delete") } }
                 )}
-            }
-        }
-    }
-}
-private fun listFiles(context: Context) = context.filesDir.listFiles()?.filter { it.isFile }
-    ?.map { FileRecord(it.name, it.length()) }?.sortedBy { it.name.lowercase() } ?: emptyList()
-private fun queryName(context: Context, uri: Uri): String? {
-    context.contentResolver.query(
-        uri,
-        arrayOf(OpenableColumns.DISPLAY_NAME),
-        null,
-        null,
-        null
-    )?.use { cursor ->
-        if (cursor.moveToFirst()) {
-            return cursor.getString(0)
-                .replace("/", "_")
-                .replace("\\", "_")
