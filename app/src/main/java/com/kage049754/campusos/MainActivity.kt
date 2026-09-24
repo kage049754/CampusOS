@@ -1604,3 +1604,109 @@ fun FilesScreen() {
                     leadingContent = { Icon(Icons.Default.InsertDriveFile, null) },
                     trailingContent = { IconButton({ File(context.filesDir, f.name).delete(); files = listFiles(context) }) { Icon(Icons.Default.Delete, "Delete") } }
                 )}
+            }
+        }
+    }
+}
+private fun listFiles(context: Context) = context.filesDir.listFiles()?.filter { it.isFile }
+    ?.map { FileRecord(it.name, it.length()) }?.sortedBy { it.name.lowercase() } ?: emptyList()
+private fun queryName(context: Context, uri: Uri): String? {
+    context.contentResolver.query(
+        uri,
+        arrayOf(OpenableColumns.DISPLAY_NAME),
+        null,
+        null,
+        null
+    )?.use { cursor ->
+        if (cursor.moveToFirst()) {
+            return cursor.getString(0)
+                .replace("/", "_")
+                .replace("\\", "_")
+        }
+    }
+    return uri.lastPathSegment?.substringAfterLast("/")
+}
+
+private fun formatSize(size: Long) = when {
+    size < 1024 -> "$size B"
+    size < 1024*1024 -> "%.1f KB".format(size/1024.0)
+    else -> "%.1f MB".format(size/1024.0/1024.0)
+}
+
+@Composable
+fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit, lock: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var pin by remember { mutableStateOf(store.pin()) }
+    var lockOn by remember { mutableStateOf(store.lockEnabled()) }
+    var showPin by remember { mutableStateOf(false) }
+    val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        context.contentResolver.openOutputStream(uri)?.use { it.write(store.backupJson().toByteArray()) }
+    }
+    val restore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching { context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { store.restoreJson(it.readText()) } }
+    }
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+        item { Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Appearance", fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    listOf("system","light","dark").forEach { mode ->
+                        FilterChip(theme == mode, { setTheme(mode) }, label = { Text(mode.replaceFirstChar { it.uppercase() }) })
+                    }
+                }
+            }
+        }}
+        item { Card(Modifier.fillMaxWidth()) {
+            ListItem(headlineContent = { Text("App lock") },
+                supportingContent = { Text(if (pin.isBlank()) "Set a PIN first" else "Require PIN when opening CampusOS") },
+                trailingContent = { Switch(lockOn && pin.isNotBlank(), {
+                    lockOn = it; store.setLockEnabled(it); if (it) lock()
+                }) })
+            TextButton({ showPin = true }, Modifier.padding(start = 12.dp)) { Text(if (pin.isBlank()) "Set PIN" else "Change PIN") }
+        }}
+        item { Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Backup & restore", fontWeight = FontWeight.Bold)
+                Text("Export local data to JSON or restore it later.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 10.dp)) {
+                    Button({ backup.launch("CampusOS-backup.json") }) { Text("Backup") }
+                    OutlinedButton({ restore.launch(arrayOf("application/json","text/plain")) }) { Text("Restore") }
+                }
+            }
+        }}
+        item { Text("CampusOS 1.0.0 • Offline-first", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
+    if (showPin) {
+        var newPin by remember { mutableStateOf("") }
+        AlertDialog(onDismissRequest = { showPin = false }, title = { Text("Set 4–8 digit PIN") },
+            text = { OutlinedTextField(newPin, { newPin = it.filter(Char::isDigit).take(8) }, label = { Text("PIN") }) },
+            confirmButton = { Button({ if (newPin.length in 4..8) { pin = newPin; store.setPin(newPin); showPin = false } }) { Text("Save") } },
+            dismissButton = { TextButton({ showPin = false }) { Text("Cancel") } })
+    }
+}
+
+@Composable
+fun LockScreen(store: LocalStore, unlock: () -> Unit) {
+    var entered by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Icon(Icons.Default.Lock, null, Modifier.size(64.dp))
+        Spacer(Modifier.height(18.dp)); Text("CampusOS is locked", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Enter your PIN to continue.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(18.dp))
+        OutlinedTextField(entered, { entered = it.filter(Char::isDigit).take(8) }, label = { Text("PIN") })
+        if (error) Text("Incorrect PIN", color = MaterialTheme.colorScheme.error)
+        Spacer(Modifier.height(12.dp)); Button({ if (entered == store.pin()) unlock() else error = true }) { Text("Unlock") }
+    }
+}
+@Composable fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
+    Card(modifier) { Column(Modifier.padding(14.dp)) { Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+}
+@Composable fun SectionTitle(text: String) { Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+@Composable fun EmptyCard(text: String) { Card(Modifier.fillMaxWidth()) { Text(text, Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+@Composable fun SmallAction(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, click: () -> Unit) {
+    OutlinedButton(onClick = click, modifier = Modifier.fillMaxWidth()) { Icon(icon, null); Spacer(Modifier.width(4.dp)); Text(text) }
+}
