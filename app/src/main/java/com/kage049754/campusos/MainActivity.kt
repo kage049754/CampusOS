@@ -10,6 +10,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,7 +39,9 @@ data class Record(
     val subtitle: String = "",
     val extra: String = "",
     val value: Double = 0.0,
-    val done: Boolean = false
+    val done: Boolean = false,
+    val day: String = "", val startTime: String = "", val endTime: String = "",
+    val room: String = "", val professor: String = "", val color: Long = 0L
 )
 data class FileRecord(val name: String, val size: Long)
 
@@ -47,7 +53,8 @@ class LocalStore(context: Context) {
         for (i in 0 until a.length()) {
             val o = a.getJSONObject(i)
             out += Record(o.getLong("id"), o.getString("title"), o.optString("subtitle"),
-                o.optString("extra"), o.optDouble("value", 0.0), o.optBoolean("done", false))
+                o.optString("extra"), o.optDouble("value", 0.0), o.optBoolean("done", false),
+                o.optString("day"), o.optString("startTime"), o.optString("endTime"), o.optString("room"), o.optString("professor"), o.optLong("color", 0L))
         }
         return out
     }
@@ -56,6 +63,7 @@ class LocalStore(context: Context) {
         list.forEach { r -> a.put(JSONObject().apply {
             put("id", r.id); put("title", r.title); put("subtitle", r.subtitle)
             put("extra", r.extra); put("value", r.value); put("done", r.done)
+            put("day", r.day); put("startTime", r.startTime); put("endTime", r.endTime); put("room", r.room); put("professor", r.professor); put("color", r.color)
         }) }
         prefs.edit().putString(key, a.toString()).apply()
     }
@@ -137,7 +145,7 @@ fun CampusOSApp(activity: Activity) {
             Column(Modifier.fillMaxSize().padding(padding)) {
                 when (screen) {
                     Screen.HOME -> HomeScreen(store) { screen = it }
-                    Screen.SCHEDULE -> CrudScreen("Class Schedule", "schedule", store, search) { search = "" }
+                    Screen.SCHEDULE -> ScheduleScreen(store, search) { search = "" }
                     Screen.TASKS -> CrudScreen("Assignments & To-do", "tasks", store, search) { search = "" }
                     Screen.ACADEMICS -> AcademicsScreen(store, search) { search = "" }
                     Screen.FINANCE -> CrudScreen("Allowance & Expenses", "expenses", store, search) { search = "" }
@@ -205,6 +213,128 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
         }}
     }
 }
+
+@Composable
+fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
+    var refresh by remember { mutableIntStateOf(0) }
+    var showAdd by remember { mutableStateOf(false) }
+    LaunchedEffect(query) { if (query == "__ADD__") showAdd = true }
+    val all = remember(refresh, query) { store.get("schedule").filter {
+        query.isBlank() || query == "__ADD__" || (it.title+" "+it.subtitle+" "+it.extra+" "+it.day+" "+it.room+" "+it.professor).contains(query, true)
+    }}
+    val activeDays = days.filter { d -> all.any { it.day.equals(d, true) } }
+    val hours = if (all.isEmpty()) (7..18).toList() else {
+        val starts = all.mapNotNull { it.startTime.toHourOrNull() }
+        val ends = all.mapNotNull { it.endTime.toHourOrNull() }
+        val min = (starts.minOrNull() ?: 7).coerceAtLeast(0)
+        val max = (ends.maxOrNull() ?: 18).coerceAtMost(23)
+        (min until max.coerceAtLeast(min + 1)).toList()
+    }
+    Column(Modifier.fillMaxSize()) {
+        Text("Class Schedule", Modifier.padding(horizontal = 16.dp, vertical = 10.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        if (activeDays.isEmpty()) EmptyCard("No classes yet. Tap + to build your Monday–Saturday schedule.")
+        else {
+            Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
+                Column {
+                    Row {
+                        Box(Modifier.width(72.dp).height(48.dp), contentAlignment = Alignment.Center) { Text("Time", fontWeight = FontWeight.Bold) }
+                        activeDays.forEach { d -> Box(Modifier.width(118.dp).height(48.dp), contentAlignment = Alignment.Center) { Text(d.take(3), fontWeight = FontWeight.Bold) } }
+                    }
+                    hours.forEach { h ->
+                        Row {
+                            Box(Modifier.width(72.dp).height(74.dp), contentAlignment = Alignment.TopCenter) {
+                                Text(String.format(Locale.getDefault(), "%02d:00", h), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            activeDays.forEach { day ->
+                                val classes = all.filter { it.day.equals(day, true) && it.startTime.toHourOrNull() == h }
+                                Box(Modifier.width(118.dp).height(74.dp).padding(2.dp)) {
+                                    classes.firstOrNull()?.let { r ->
+                                        val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
+                                        Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = bg)) {
+                                            Column(Modifier.padding(7.dp)) {
+                                                Text(r.title, fontWeight = FontWeight.Bold, maxLines = 2)
+                                                if (r.room.isNotBlank()) Text(r.room, maxLines = 1)
+                                                if (r.endTime.isNotBlank()) Text("${r.startTime}-${r.endTime}", style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Text("Subject details", Modifier.padding(start = 16.dp, top = 14.dp, bottom = 8.dp), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(all, key = { it.id }) { r ->
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text(r.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        if (r.subtitle.isNotBlank()) Text(r.subtitle)
+                        if (r.professor.isNotBlank()) Text("Professor: ${r.professor}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (r.day.isNotBlank()) Text("${r.day} • ${r.startTime}-${r.endTime}${if (r.room.isNotBlank()) " • ${r.room}" else ""}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (r.extra.isNotBlank()) Text(r.extra, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            IconButton({ store.delete("schedule", r.id); refresh++ }) { Icon(Icons.Default.Delete, "Delete") }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (showAdd) ScheduleDialog(store) { showAdd = false; clear(); refresh++ }
+}
+
+private fun String.toHourOrNull(): Int? = substringBefore(":").toIntOrNull()
+
+@Composable
+fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
+    var subject by remember { mutableStateOf("") }
+    var fullName by remember { mutableStateOf("") }
+    var day by remember { mutableStateOf("Monday") }
+    var start by remember { mutableStateOf("07:00") }
+    var end by remember { mutableStateOf("08:00") }
+    var room by remember { mutableStateOf("") }
+    var professor by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+    var color by remember { mutableLongStateOf(0xFFE3F2FD) }
+    val colors = listOf(0xFFE3F2FDL,0xFFE8F5E9L,0xFFFFF3E0L,0xFFF3E5F5L,0xFFFFEBEEL,0xFFE0F7FAL)
+    AlertDialog(
+        onDismissRequest = done,
+        title = { Text("Add class") },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.heightIn(max = 560.dp)) {
+                item { OutlinedTextField(subject, { subject=it }, Modifier.fillMaxWidth(), label={Text("Subject code")}, placeholder={Text("e.g. DCIT 25")}) }
+                item { OutlinedTextField(fullName, { fullName=it }, Modifier.fillMaxWidth(), label={Text("Whole subject name")}) }
+                item { Text("Day", fontWeight=FontWeight.SemiBold) }
+                item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                    days.forEach { d -> FilterChip(day==d,{day=d},label={Text(d.take(3))}) }
+                }}
+                item { Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(start,{start=it},Modifier.weight(1f),label={Text("Start")})
+                    OutlinedTextField(end,{end=it},Modifier.weight(1f),label={Text("End")})
+                }}
+                item { OutlinedTextField(room,{room=it},Modifier.fillMaxWidth(),label={Text("Room number")}) }
+                item { OutlinedTextField(professor,{professor=it},Modifier.fillMaxWidth(),label={Text("Professor")}) }
+                item { OutlinedTextField(notes,{notes=it},Modifier.fillMaxWidth(),label={Text("Notes")}) }
+                item { Text("Class color", fontWeight=FontWeight.SemiBold) }
+                item { Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    colors.forEach { c -> FilterChip(color==c,{color=c},label={Text("●")}) }
+                }}
+            }
+        },
+        confirmButton = { Button({
+            if(subject.isNotBlank() && start.toHourOrNull()!=null && end.toHourOrNull()!=null) {
+                store.put("schedule", store.get("schedule") + Record(title=subject.trim(), subtitle=fullName.trim(), extra=notes.trim(), day=day, startTime=start, endTime=end, room=room.trim(), professor=professor.trim(), color=color))
+            }
+            done()
+        }) { Text("Save") } },
+        dismissButton = { TextButton(done) { Text("Cancel") } }
+    )
+}
+
+private val days = listOf("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday")
 
 @Composable
 fun CrudScreen(title: String, key: String, store: LocalStore, query: String, clear: () -> Unit) {
