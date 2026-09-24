@@ -1178,6 +1178,73 @@ fun InAppFileViewerDialog(file: File, done: () -> Unit) {
                                     Row {
                                         TextButton({ if (slide > 0) slide-- }, enabled = slide > 0) { Text("Previous") }
                                         TextButton({ if (slide < slides.lastIndex) slide++ }, enabled = slide < slides.lastIndex) { Text("Next") }
+                                    }
+                                }
+                            } else EmptyCard("Unable to read this PowerPoint offline.")
+                        }
+                    }
+                    ext == "docx" -> {
+                        val text = remember(file) { readOfficeText(file) ?: "No readable text was found in this Word document." }
+                        LazyColumn(Modifier.fillMaxSize().padding(10.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                            item {
+                                Card(Modifier.fillMaxWidth().widthIn(max = 794.dp), shape = RoundedCornerShape(0.dp)) {
+                                    Column(Modifier.padding(36.dp)) {
+                                        Text("A4 Print Layout", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Spacer(Modifier.height(10.dp))
+                                        Text(text, style = MaterialTheme.typography.bodyLarge)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else -> {
+                        val text = remember(file) { readDisplayText(file) }
+                        LazyColumn(Modifier.fillMaxSize().padding(16.dp)) { item { Text(text, style = MaterialTheme.typography.bodyLarge) } }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RecordCard(r: Record, key: String, store: LocalStore, refresh: () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(r.title, fontWeight = FontWeight.SemiBold)
+                if (r.subtitle.isNotBlank()) Text(r.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (r.extra.isNotBlank()) Text(r.extra, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (key == "tasks" && r.dueDate.isNotBlank()) Text("Due: ${r.dueDate} ${r.dueTime}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (key == "tasks" && r.subjectId != 0L) store.get("subjects").firstOrNull { it.id == r.subjectId }?.let { Text("Subject: ${it.title}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                if (key == "grades") Text("Grade: %.2f".format(r.value))
+                if (key == "expenses") Text("₱%.2f".format(r.value), fontWeight = FontWeight.Bold)
+            }
+            if (key == "tasks" || key == "attendance") Checkbox(r.done, {
+                store.put(key, store.get(key).map { if (it.id == r.id) it.copy(done = !it.done) else it }); refresh()
+            })
+            IconButton({ store.delete(key, r.id); refresh() }) { Icon(Icons.Default.Delete, "Delete") }
+        }
+    }
+}
+
+@Composable
+fun AddRecordDialog(label:String,key:String,store:LocalStore,done:()->Unit){
+    var subjectId by remember{mutableLongStateOf(0L)};var title by remember{mutableStateOf("")};var subtitle by remember{mutableStateOf("")};var extra by remember{mutableStateOf("")};var value by remember{mutableStateOf("")}
+    var dueDate by remember{mutableStateOf(SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date()))}
+    var showDueDatePicker by remember{mutableStateOf(false)}
+    val subjects=store.get("subjects");val isTask=key=="tasks"
+    AlertDialog(onDismissRequest=done,title={Text("Add $label")},text={Column(Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
+        if(isTask){Text("Subject",fontWeight=FontWeight.Bold);if(subjects.isEmpty())Text("Add a class first so this task can be linked to a subject.",color=MaterialTheme.colorScheme.error)
+            else Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){subjects.forEach{s->FilterChip(subjectId==s.id,{subjectId=s.id},label={Text(s.title)})}}
+            OutlinedButton(onClick={showDueDatePicker=true},modifier=Modifier.fillMaxWidth()){
+                Icon(Icons.Default.Event,null);Spacer(Modifier.width(8.dp));Text("Due date: $dueDate")
+            }}
+        OutlinedTextField(title,{title=it},Modifier.fillMaxWidth(),label={Text("Title")});OutlinedTextField(subtitle,{subtitle=it},Modifier.fillMaxWidth(),label={Text("Description")})
+        if(key=="tasks"||key=="reviewers")OutlinedTextField(extra,{extra=it},Modifier.fillMaxWidth(),label={Text("Notes")})
+        if(key=="grades"||key=="expenses")OutlinedTextField(value,{value=it},Modifier.fillMaxWidth(),label={Text(if(key=="grades")"Grade" else "Amount")})
+    }},confirmButton={Button({if(title.isNotBlank()&&(!isTask||subjectId!=0L))store.put(key,store.get(key)+Record(title=title.trim(),subtitle=subtitle.trim(),extra=extra.trim(),value=value.toDoubleOrNull()?:0.0,subjectId=subjectId,dueDate=if(isTask)dueDate else "",dueTime=""));done()}){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})
+
 @Composable
 fun FilesScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
