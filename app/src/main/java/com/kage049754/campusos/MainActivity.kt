@@ -1145,8 +1145,7 @@ fun InAppFileViewerDialog(file: File, done: () -> Unit) {
                         val pageCount = remember(file) {
                             runCatching {
                                 ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
-    @Composable
-fun FilesScreen() {
+    fun FilesScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
     var files by remember { mutableStateOf(listFiles(context)) }
     val open = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
