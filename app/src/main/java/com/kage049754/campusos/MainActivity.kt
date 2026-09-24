@@ -395,7 +395,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                         Text(r.title, fontWeight = FontWeight.Bold)
                         if (r.subtitle.isNotBlank()) Text(r.subtitle, maxLines = 2)
                         if (r.dueDate.isNotBlank()) {
-                            Text("Due: ${r.dueDate} ${r.dueTime}", style = MaterialTheme.typography.labelMedium)
+                            Text("Due: ${r.dueDate}", style = MaterialTheme.typography.labelMedium)
                         }
                         if (r.subjectId != 0L) {
                             store.get("subjects").firstOrNull { it.id == r.subjectId }?.let { sub ->
@@ -1031,7 +1031,6 @@ fun AcademicsScreen(store: LocalStore, query: String, clear: () -> Unit) {
 }
 
 @Composable
-@Composable
 fun SubjectNotepadDialog(subject: Record, store: LocalStore, done: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val savedNote = remember(subject) {
@@ -1124,7 +1123,6 @@ fun SubjectNotepadDialog(subject: Record, store: LocalStore, done: () -> Unit) {
     viewingFile?.let { file -> InAppFileViewerDialog(file) { viewingFile = null } }
 }
 
-@Composable
 @Composable
 fun InAppFileViewerDialog(file: File, done: () -> Unit) {
     var page by remember(file) { mutableIntStateOf(0) }
