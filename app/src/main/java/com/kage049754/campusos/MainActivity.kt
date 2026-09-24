@@ -212,6 +212,7 @@ enum class Screen(val label: String) {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CampusOSApp(activity: Activity) {
     val store = remember { LocalStore(activity) }
@@ -230,27 +231,42 @@ fun CampusOSApp(activity: Activity) {
         "light" -> false
         else -> androidx.compose.foundation.isSystemInDarkTheme()
     }
+
     MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
         Scaffold(
             topBar = {
                 TopAppBar(
                     title = { Text("CampusOS", fontWeight = FontWeight.Bold) },
                     actions = {
-                        IconButton({ showHomeSettings = true }) { Icon(Icons.Default.Settings, "CampusOS settings") }
-                    }) { Icon(if (theme == "dark") Icons.Default.LightMode else Icons.Default.DarkMode, "Toggle dark mode") }
+                        IconButton(onClick = { showHomeSettings = true }) {
+                            Icon(Icons.Default.Settings, "CampusOS settings")
+                        }
                     }
                 )
             },
             bottomBar = {
                 NavigationBar {
-                    listOf(Screen.HOME, Screen.SCHEDULE, Screen.TASKS, Screen.ACADEMICS, Screen.FINANCE).forEach {
-                        NavigationBarItem(screen == it, { screen = it }, icon = { Icon(iconFor(it), it.label) }, label = { Text(it.label) })
+                    listOf(
+                        Screen.HOME,
+                        Screen.SCHEDULE,
+                        Screen.TASKS,
+                        Screen.ACADEMICS
+                    ).forEach {
+                        NavigationBarItem(
+                            selected = screen == it,
+                            onClick = { screen = it },
+                            icon = { Icon(iconFor(it), it.label) },
+                            label = { Text(it.label) }
+                        )
                     }
                 }
             },
             floatingActionButton = {
-                if (screen in listOf(Screen.TASKS, Screen.FINANCE))
-                    FloatingActionButton({ search = "__ADD__" }) { Icon(Icons.Default.Add, "Add") }
+                if (screen == Screen.TASKS) {
+                    FloatingActionButton(onClick = { search = "__ADD__" }) {
+                        Icon(Icons.Default.Add, "Add")
+                    }
+                }
             }
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
@@ -259,7 +275,6 @@ fun CampusOSApp(activity: Activity) {
                     Screen.SCHEDULE -> ScheduleScreen(store, search) { search = "" }
                     Screen.TASKS -> CrudScreen("Assignments & To-do", "tasks", store, search) { search = "" }
                     Screen.ACADEMICS -> AcademicsScreen(store, search) { search = "" }
-                    Screen.FINANCE -> CrudScreen("Allowance & Expenses", "expenses", store, search) { search = "" }
                     Screen.FILES -> FilesScreen()
                     Screen.SETTINGS -> SettingsScreen(store, theme, { theme = it; store.setTheme(it) }) { locked = true }
                 }
@@ -270,13 +285,22 @@ fun CampusOSApp(activity: Activity) {
                             onValueChange = { search = it },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
-                            label = { Text("Search "+screen.label) },
+                            label = { Text("Search " + screen.label) },
                             leadingIcon = { Icon(Icons.Default.Search, null) }
                         )
                     }
                 }
             }
-            if (showHomeSettings) HomeSettingsDialog(store, theme, { theme = it; store.setTheme(it) }, { showHomeAdd = true; showHomeSettings = false }, { showHomeColors = true; showHomeSettings = false }, { showHomeSettings = false })
+            if (showHomeSettings) {
+                HomeSettingsDialog(
+                    store = store,
+                    theme = theme,
+                    setTheme = { theme = it; store.setTheme(it) },
+                    onAddClass = { showHomeAdd = true; showHomeSettings = false },
+                    onAppearance = { showHomeColors = true; showHomeSettings = false },
+                    done = { showHomeSettings = false }
+                )
+            }
             if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
             if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }) { showHomeColors = false }
         }
@@ -288,7 +312,6 @@ private fun iconFor(s: Screen) = when(s) {
     Screen.SCHEDULE -> Icons.Default.CalendarMonth
     Screen.TASKS -> Icons.Default.CheckCircle
     Screen.ACADEMICS -> Icons.Default.School
-    Screen.FINANCE -> Icons.Default.AccountBalanceWallet
     Screen.FILES -> Icons.Default.Folder
     Screen.SETTINGS -> Icons.Default.Settings
 }
@@ -576,6 +599,83 @@ private fun syncSubjectFromClass(store: LocalStore, classRecord: Record) {
 }
 
 @Composable
+fun TimeWheelDialog(
+    title: String,
+    initial: String,
+    done: (String) -> Unit,
+    cancel: () -> Unit
+) {
+    val parts = initial.split(":")
+    var hour by remember { mutableIntStateOf(parts.getOrNull(0)?.toIntOrNull()?.coerceIn(0, 23) ?: 7) }
+    var minute by remember { mutableIntStateOf(parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: 0) }
+
+    AlertDialog(
+        onDismissRequest = cancel,
+        title = { Text(title) },
+        text = {
+            Column(
+                Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    "%02d:%02d".format(hour, minute),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Scroll the wheels like an alarm clock",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AndroidView(
+                        factory = { context ->
+                            android.widget.NumberPicker(context).apply {
+                                minValue = 0
+                                maxValue = 23
+                                value = hour
+                                wrapSelectorWheel = true
+                                setOnValueChangedListener { _, _, newValue -> hour = newValue }
+                            }
+                        },
+                        update = { picker ->
+                            if (picker.value != hour) picker.value = hour
+                        },
+                        modifier = Modifier.width(110.dp).height(180.dp)
+                    )
+                    Text(":", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    AndroidView(
+                        factory = { context ->
+                            android.widget.NumberPicker(context).apply {
+                                minValue = 0
+                                maxValue = 59
+                                value = minute
+                                wrapSelectorWheel = true
+                                setOnValueChangedListener { _, _, newValue -> minute = newValue }
+                            }
+                        },
+                        update = { picker ->
+                            if (picker.value != minute) picker.value = minute
+                        },
+                        modifier = Modifier.width(110.dp).height(180.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { done("%02d:%02d".format(hour, minute)) }) {
+                Text("Set time")
+            }
+        },
+        dismissButton = { TextButton(onClick = cancel) { Text("Cancel") } }
+    )
+}
+
+@Composable
 fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
     var subject by remember { mutableStateOf("") }
     var fullName by remember { mutableStateOf("") }
@@ -586,7 +686,10 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
     var professor by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var color by remember { mutableLongStateOf(0xFFE3F2FD) }
+    var showStartPicker by remember { mutableStateOf(false) }
+    var showEndPicker by remember { mutableStateOf(false) }
     val colors = listOf(0xFFE3F2FDL,0xFFE8F5E9L,0xFFFFF3E0L,0xFFF3E5F5L,0xFFFFEBEEL,0xFFE0F7FAL)
+
     AlertDialog(
         onDismissRequest = done,
         title = { Text("Add class") },
@@ -601,10 +704,22 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                 Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
                     days.forEach { d -> FilterChip(day==d,{day=d},label={Text(d.take(3))}) }
                 }
-                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(start,{start=it},Modifier.weight(1f),label={Text("Start")})
-                    OutlinedTextField(end,{end=it},Modifier.weight(1f),label={Text("End")})
+                Text("Class time",fontWeight=FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick={showStartPicker=true},modifier=Modifier.weight(1f)) {
+                        Column(horizontalAlignment=Alignment.CenterHorizontally) {
+                            Text("Start",style=MaterialTheme.typography.labelSmall)
+                            Text(start,fontWeight=FontWeight.Bold)
+                        }
+                    }
+                    OutlinedButton(onClick={showEndPicker=true},modifier=Modifier.weight(1f)) {
+                        Column(horizontalAlignment=Alignment.CenterHorizontally) {
+                            Text("End",style=MaterialTheme.typography.labelSmall)
+                            Text(end,fontWeight=FontWeight.Bold)
+                        }
+                    }
                 }
+                Text("Use the scrolling hour/minute wheels to choose the time.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
                 OutlinedTextField(room,{room=it},Modifier.fillMaxWidth(),label={Text("Room number")})
                 OutlinedTextField(professor,{professor=it},Modifier.fillMaxWidth(),label={Text("Professor")})
                 OutlinedTextField(notes,{notes=it},Modifier.fillMaxWidth(),label={Text("Notes")})
@@ -636,6 +751,12 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
         }) { Text("Save") } },
         dismissButton={ TextButton(done) { Text("Cancel") } }
     )
+    if (showStartPicker) {
+        TimeWheelDialog("Start time", start, { start = it; showStartPicker = false }, { showStartPicker = false })
+    }
+    if (showEndPicker) {
+        TimeWheelDialog("End time", end, { end = it; showEndPicker = false }, { showEndPicker = false })
+    }
 }
 
 private val days = listOf("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday")
@@ -673,7 +794,7 @@ fun AcademicsScreen(store: LocalStore, query: String, clear: () -> Unit) {
         ScrollableTabRow(selectedTabIndex = tab, edgePadding = 12.dp) {
             labels.forEachIndexed { i, label -> Tab(tab == i, { tab = i }, text = { Text(label) }) }
         }
-        if (list.isEmpty()) EmptyCard("No "+labels[tab].lowercase()+" yet. Use + to add.")
+        if (list.isEmpty()) EmptyCard("No "+labels[tab].lowercase()+" yet. Add classes from Home Settings or use your existing data.")
         else LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(list, key = { it.id }) { r ->
                 Card(onClick = { if (tab == 0) selectedSubject = r }, modifier = Modifier.fillMaxWidth()) {
