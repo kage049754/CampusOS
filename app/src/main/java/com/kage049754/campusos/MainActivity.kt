@@ -93,7 +93,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen(val label: String) {
+enum class Screen(val label: String) {
     HOME("Home"), SCHEDULE("Schedule"), TASKS("Tasks"), ACADEMICS("Academics"),
     FINANCE("Finance"), FILES("Files"), SETTINGS("Settings")
 }
@@ -419,5 +419,5 @@ fun LockScreen(store: LocalStore, unlock: () -> Unit) {
 @Composable fun SectionTitle(text: String) { Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
 @Composable fun EmptyCard(text: String) { Card(Modifier.fillMaxWidth()) { Text(text, Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) } }
 @Composable fun SmallAction(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, click: () -> Unit) {
-    OutlinedButton(onClick = click, modifier = Modifier.weight(1f)) { Icon(icon, null); Spacer(Modifier.width(4.dp)); Text(text) }
+    OutlinedButton(onClick = click, modifier = Modifier.fillMaxWidth()) { Icon(icon, null); Spacer(Modifier.width(4.dp)); Text(text) }
 }
