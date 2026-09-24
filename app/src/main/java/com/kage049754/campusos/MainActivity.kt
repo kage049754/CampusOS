@@ -221,6 +221,7 @@ fun CampusOSApp(activity: Activity) {
     var search by remember { mutableStateOf("") }
     var showHomeAdd by remember { mutableStateOf(false) }
     var showHomeColors by remember { mutableStateOf(false) }
+    var showHomeSettings by remember { mutableStateOf(false) }
 
     if (locked) { LockScreen(store) { locked = false }; return }
 
@@ -235,12 +236,8 @@ fun CampusOSApp(activity: Activity) {
                 TopAppBar(
                     title = { Text("CampusOS", fontWeight = FontWeight.Bold) },
                     actions = {
-                        IconButton({ showHomeAdd = true }) { Icon(Icons.Default.Add, "Add class") }
-                        IconButton({ showHomeColors = true }) { Icon(Icons.Default.Palette, "Appearance") }
-                        IconButton({
-                            val next = if (theme == "dark") "light" else "dark"
-                            theme = next; store.setTheme(next)
-                        }) { Icon(if (theme == "dark") Icons.Default.LightMode else Icons.Default.DarkMode, "Toggle dark mode") }
+                        IconButton({ showHomeSettings = true }) { Icon(Icons.Default.Settings, "CampusOS settings") }
+                    }) { Icon(if (theme == "dark") Icons.Default.LightMode else Icons.Default.DarkMode, "Toggle dark mode") }
                     }
                 )
             },
@@ -252,7 +249,7 @@ fun CampusOSApp(activity: Activity) {
                 }
             },
             floatingActionButton = {
-                if (screen in listOf(Screen.SCHEDULE, Screen.TASKS, Screen.FINANCE))
+                if (screen in listOf(Screen.TASKS, Screen.FINANCE))
                     FloatingActionButton({ search = "__ADD__" }) { Icon(Icons.Default.Add, "Add") }
             }
         ) { padding ->
@@ -279,6 +276,7 @@ fun CampusOSApp(activity: Activity) {
                     }
                 }
             }
+            if (showHomeSettings) HomeSettingsDialog(store, theme, { theme = it; store.setTheme(it) }, { showHomeAdd = true; showHomeSettings = false }, { showHomeColors = true; showHomeSettings = false }, { showHomeSettings = false })
             if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
             if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }) { showHomeColors = false }
         }
@@ -296,14 +294,25 @@ private fun iconFor(s: Screen) = when(s) {
 }
 
 @Composable
+fun HomeSettingsDialog(store: LocalStore, theme: String, setTheme: (String) -> Unit, onAddClass: () -> Unit, onAppearance: () -> Unit, done: () -> Unit) {
+    AlertDialog(onDismissRequest = done, title = { Text("CampusOS Settings") }, text = {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(onClick = onAddClass, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("Add Class") }
+            OutlinedButton(onClick = onAppearance, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Palette, null); Spacer(Modifier.width(8.dp)); Text("Colors & Appearance") }
+            OutlinedButton(onClick = { setTheme(if (theme == "dark") "light" else "dark") }, modifier = Modifier.fillMaxWidth()) {
+                Icon(if (theme == "dark") Icons.Default.LightMode else Icons.Default.DarkMode, null); Spacer(Modifier.width(8.dp)); Text(if (theme == "dark") "Switch to Light Mode" else "Switch to Dark Mode")
+            }
+        }
+    }, confirmButton = { TextButton(done) { Text("Close") } })
+}
+
+@Composable
 fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     var tick by remember { mutableIntStateOf(0) }
     val tasks = remember(tick) { store.get("tasks") }
     val schedule = remember(tick) { store.get("schedule") }
-    val grades = remember(tick) { store.get("grades") }
     val expenses = remember(tick) { store.get("expenses") }
     val attendance = remember(tick) { store.get("attendance") }
-    val gpa = if (grades.isEmpty()) 0.0 else grades.sumOf { it.value } / grades.size
     val spent = expenses.sumOf { it.value }
     val date = SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date())
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -311,7 +320,6 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
         item { Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
             StatCard("Classes", schedule.size.toString(), Modifier.weight(1f))
             StatCard("Tasks", tasks.count { !it.done }.toString(), Modifier.weight(1f))
-            StatCard("GPA", "%.2f".format(gpa), Modifier.weight(1f))
         }}
         item { SectionTitle("Today") }
         if (schedule.isEmpty()) item { EmptyCard("No classes yet. Add your schedule.") }
@@ -342,9 +350,9 @@ fun HomeTodayClassCard(r: Record) {
         Column(Modifier.padding(14.dp)) {
             Text(r.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             if (r.subtitle.isNotBlank()) Text(r.subtitle)
-            if (r.day.isNotBlank()) Text("undefined • undefined-undefined", style = MaterialTheme.typography.labelMedium)
-            if (r.room.isNotBlank()) Text("Room: undefined")
-            if (r.professor.isNotBlank()) Text("Professor: undefined")
+            if (r.day.isNotBlank()) Text("${r.day} • ${r.startTime}-${r.endTime}", style = MaterialTheme.typography.labelMedium)
+            if (r.room.isNotBlank()) Text("Room: ${r.room}")
+            if (r.professor.isNotBlank()) Text("Professor: ${r.professor}")
         }
     }
 }
@@ -607,7 +615,8 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                             Modifier.size(40.dp)
                                 .border(3.dp,if(color==c) MaterialTheme.colorScheme.onSurface else Color.Transparent,RoundedCornerShape(50))
                                 .padding(4.dp)
-                                .background(Color(c),RoundedCornerShape(50)),
+                                .background(Color(c),RoundedCornerShape(50))
+                                .clickable { color = c },
                             contentAlignment=Alignment.Center
                         ) {
                             if(color==c) Text("✓",color=readableContentColor(Color(c)),fontWeight=FontWeight.Bold)
