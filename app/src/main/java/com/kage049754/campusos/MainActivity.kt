@@ -334,9 +334,6 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     var tick by remember { mutableIntStateOf(0) }
     val tasks = remember(tick) { store.get("tasks") }
     val schedule = remember(tick) { store.get("schedule") }
-    val expenses = remember(tick) { store.get("expenses") }
-    val attendance = remember(tick) { store.get("attendance") }
-    val spent = expenses.sumOf { it.value }
     val date = SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date())
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Good day 👋", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text(date, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -349,11 +346,6 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
         items(schedule.take(5), key = { it.id }) { r ->
             HomeTodayClassCard(r)
         }
-        item { SectionTitle("Academic snapshot") }
-        item { Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            StatCard("Attendance", attendance.count { it.done }.toString(), Modifier.weight(1f))
-            StatCard("Spent", "₱%.0f".format(spent), Modifier.weight(1f))
-        }}
         item { SectionTitle("Quick access") }
         item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             SmallAction("Subjects", Icons.Default.School) { go(Screen.ACADEMICS) }
