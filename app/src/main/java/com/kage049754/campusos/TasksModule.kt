@@ -18,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -170,8 +171,19 @@ fun TasksScreen(store: LocalStore, query: String, clear: () -> Unit, openSubject
     }}
 }
 
-@Composable private fun TaskBoard(tasks:List<Record>,store:LocalStore,subjects:List<Record>,open:(Long)->Unit,openSubject:(Long)->Unit)=Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){
-    listOf("Not started" to "TO DO","In progress" to "IN PROGRESS","Completed" to "DONE").forEach{(state,label)->Card(Modifier.width(290.dp)){Column(Modifier.padding(8.dp)){Text(label,fontWeight=FontWeight.Bold);tasks.filter{taskMeta(it).status==state}.forEach{r->TaskCard(r,store,subjects,{open(r.id)},openSubject)}}}}
+@Composable private fun TaskBoard(tasks:List<Record>,store:LocalStore,subjects:List<Record>,open:(Long)->Unit,openSubject:(Long)->Unit){
+    Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+        for ((state,label) in listOf("Not started" to "TO DO","In progress" to "IN PROGRESS","Completed" to "DONE")) {
+            Card(Modifier.width(290.dp)) {
+                Column(Modifier.padding(8.dp)) {
+                    Text(label,fontWeight=FontWeight.Bold)
+                    for (r in tasks.filter { taskMeta(it).status==state }) {
+                        TaskCard(r,store,subjects,{open(r.id)},openSubject)
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable private fun TaskCalendar(tasks:List<Record>,selected:String,onSelect:(String)->Unit){
