@@ -1279,6 +1279,835 @@ private fun formatSize(size: Long) = when {
     else -> "%.1f MB".format(size/1024.0/1024.0)
 }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var notificationsOn by remember {{
+        item { Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Notifications", fontWeight = FontWeight.Bold)
+                Text("Get reminders before your next class and upcoming task deadlines.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (notificationsOn && CampusReminders.notificationsEnabled(context)) "Enabled" else "Off")
+                    Switch(
+                        checked = notificationsOn,
+                        onCheckedChange = { enabled ->
+                            if (!enabled) {
+                                notificationsOn = false
+                                context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", false).apply()
+                                CampusReminders.reschedule(context)
+                            } else if (android.os.Build.VERSION.SDK_INT >= 33) {
+                                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                notificationsOn = true
+                                context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", true).apply()
+                                CampusReminders.reschedule(context)
+                            }
+                        }
+                    )
+                }
+            }
+        }}
+ mutableStateOf(context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).getBoolean("enabled", false) && CampusReminders.notificationsEnabled(context)) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) { notificationsOn = true; context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", true).apply(); CampusReminders.reschedule(context) }
+    }
+
+@Composable
+fun ScheduleDaySetupDialog(store: LocalStore, done: () -> Unit) {
+    val allDays=listOf("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"); var chosen by remember{mutableStateOf(emptySet<String>())}
+    AlertDialog(onDismissRequest={},title={Text("Set up your class days")},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(4.dp)){
+        Text("Choose the days you normally have classes. Only these days will appear in your schedule.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(6.dp));allDays.forEach{day->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Checkbox(chosen.contains(day),{chosen=if(day in chosen)chosen-day else chosen+day});Text(day)}}
+    }},confirmButton={Button(enabled=chosen.isNotEmpty(),onClick={store.setScheduleDays(allDays.filter{it in chosen});done()}){Text("Continue")}})
+}
+@Composable
+fun ScheduleSettingsDialog(store:LocalStore,done:()->Unit){
+    val allDays=listOf("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday");var chosen by remember{mutableStateOf(store.scheduleDays().toSet())};var start by remember{mutableIntStateOf(store.scheduleStartHour())};var end by remember{mutableIntStateOf(store.scheduleEndHour())}
+    AlertDialog(onDismissRequest=done,title={Text("Class Schedule Settings")},text={Column(Modifier.heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(6.dp)){
+        Text("Show only the days you have class",fontWeight=FontWeight.Bold);allDays.forEach{day->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Checkbox(chosen.contains(day),{chosen=if(day in chosen)chosen-day else chosen+day});Text(day)}}
+        Text("Time range",fontWeight=FontWeight.Bold);Text("%02d:00 – %02d:00".format(start,end),style=MaterialTheme.typography.titleMedium)
+        Row(horizontalArrangement=Arrangement.spacedBy(5.dp)){OutlinedButton({if(start>0)start--}){Text("Start −")};OutlinedButton({if(start<end-1)start++}){Text("Start +")};OutlinedButton({if(end<24)end++}){Text("End +")};OutlinedButton({if(end>start+1)end--}){Text("End −")}}
+    }},confirmButton={Button({if(chosen.isNotEmpty()){store.setScheduleDays(allDays.filter{it in chosen});store.setScheduleHours(start,end)};done()}){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})}
+@Composable
+fun HomeAppearanceDialog(store: LocalStore, theme: String, setTheme: (String) -> Unit, done: () -> Unit) {
+    var tableBg by remember { mutableLongStateOf(store.scheduleTableBackground()) }
+    var border by remember { mutableLongStateOf(store.scheduleTableBorder()) }
+    val colors = listOf(0xFF000000L,0xFFFFFFFFL,0xFF263238L,0xFF37474FL,0xFFECEFF1L,0xFFF5F5F5L,0xFF1976D2L,0xFF7B1FA2L,0xFFC62828L,0xFF00897BL)
+    AlertDialog(
+        onDismissRequest=done,
+        title={Text("CampusOS appearance")},
+        text={
+            Column(Modifier.heightIn(max=560.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                Text("Theme",fontWeight=FontWeight.SemiBold)
+                Row(horizontalArrangement=Arrangement.spacedBy(7.dp)) {
+                    listOf("system","light","dark").forEach { mode ->
+                        FilterChip(theme==mode,{setTheme(mode)},label={Text(mode.replaceFirstChar{it.uppercase()})})
+                    }
+                }
+                Text("Schedule table background",fontWeight=FontWeight.SemiBold)
+                Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(9.dp)) {
+                    colors.forEach { c -> ColorChoiceCircle(c,tableBg==c){tableBg=c} }
+                }
+                Text("Schedule table border",fontWeight=FontWeight.SemiBold)
+                Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(9.dp)) {
+                    colors.forEach { c -> ColorChoiceCircle(c,border==c){border=c} }
+                }
+            }
+        },
+        confirmButton={
+            Button({
+                store.setScheduleTableBackground(tableBg)
+                store.setScheduleTableBorder(border)
+                done()
+            }){Text("Save")}
+        },
+        dismissButton={TextButton(done){Text("Cancel")}}
+    )
+}
+
+@Composable
+fun ColorChoiceCircle(value: Long, selected: Boolean, click: () -> Unit) {
+    Box(
+        Modifier.size(40.dp).border(3.dp,if(selected) MaterialTheme.colorScheme.onSurface else Color.Transparent,RoundedCornerShape(50))
+            .padding(4.dp).background(Color(value),RoundedCornerShape(50)).clickable(onClick=click),
+        contentAlignment=Alignment.Center
+    ) { if(selected) Text("✓",color=readableContentColor(Color(value)),fontWeight=FontWeight.Bold) }
+}
+
+@Composable
+fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFullscreen: (Boolean) -> Unit, clear: () -> Unit) {
+    val revision = store.revision
+    var refresh by remember { mutableIntStateOf(0) }
+    var showAdd by remember { mutableStateOf(false) }
+    var showDaySetup by remember { mutableStateOf(!store.scheduleDaysConfigured()) }
+    var showDetails by remember { mutableStateOf(false) }
+    var showScheduleSettings by remember { mutableStateOf(false) }
+    var nowTick by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            nowTick = System.currentTimeMillis()
+            kotlinx.coroutines.delay(30000)
+        }
+    }
+    LaunchedEffect(query) { if (query == "__ADD__") showAdd = true }
+
+    val all = remember(refresh, revision, query) {
+        store.get("schedule").filter {
+            query.isBlank() || query == "__ADD__" ||
+                (it.title + " " + it.subtitle + " " + it.extra + " " + it.day + " " + it.room + " " + it.professor).contains(query, true)
+        }
+    }
+
+    val scheduleDays = store.scheduleDays()
+    val startHour = store.scheduleStartHour().coerceIn(0, 23)
+    val endHour = store.scheduleEndHour().coerceIn(startHour + 1, 24)
+    val hours = (startHour until endHour).toList()
+    val calendar = remember(nowTick) { Calendar.getInstance() }
+    val today = SimpleDateFormat("EEEE", Locale.getDefault()).format(calendar.time)
+    val currentHour = calendar.get(Calendar.HOUR_OF_DAY)
+    val dayHighlight = Color(store.scheduleDayHighlight())
+    val timeHighlight = Color(store.scheduleTimeHighlight())
+    val tableBgValue = store.scheduleTableBackground()
+    val tableBg = if (tableBgValue == 0L) Color.Transparent else Color(tableBgValue)
+    val tableBorder = Color(store.scheduleTableBorder())
+
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Class Schedule", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    scheduleDays.joinToString(" • ") + " • " + "%02d:00–%02d:00".format(startHour, endHour),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1
+                )
+            }
+            IconButton({ showDetails = true }) { Icon(Icons.Default.Info, "Subject details") }
+            IconButton({ showScheduleSettings = true }) { Icon(Icons.Default.Settings, "Schedule settings") }
+            IconButton({ setFullscreen(!fullscreen) }) {
+                Icon(if (fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, "Full screen schedule")
+            }
+        }
+
+        BoxWithConstraints(
+            Modifier.fillMaxWidth().weight(1f).padding(horizontal = 4.dp)
+        ) {
+            val dayWidth = (maxWidth - 56.dp).coerceAtLeast(0.dp) / scheduleDays.size.coerceAtLeast(1)
+            val headerHeight = 38.dp
+            val footerHeight = 24.dp
+            val rowHeight = ((maxHeight - headerHeight - footerHeight) / hours.size.coerceAtLeast(1)).coerceAtLeast(28.dp)
+
+            Column(Modifier.fillMaxSize()) {
+                Row(Modifier.height(headerHeight)) {
+                    Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) {
+                        Text("Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                    }
+                    scheduleDays.forEach { d ->
+                        val isToday = d.equals(today, true)
+                        Box(
+                            Modifier.width(dayWidth).fillMaxHeight()
+                                .background(if (isToday) dayHighlight.copy(alpha = 0.16f) else tableBg)
+                                .border(if (isToday) 2.dp else 1.dp, if (isToday) dayHighlight else tableBorder),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                if (isToday) Box(Modifier.size(6.dp).background(dayHighlight, RoundedCornerShape(50)))
+                                Text(d.take(3), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
+
+                hours.forEach { h ->
+                    val isCurrentHour = h == currentHour
+                    Row(Modifier.height(rowHeight)) {
+                        Box(
+                            Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder)
+                                .then(if (isCurrentHour) Modifier.border(2.dp, timeHighlight) else Modifier),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                if (isCurrentHour) Box(Modifier.size(6.dp).background(timeHighlight, RoundedCornerShape(50)))
+                                Text("%02d:00".format(h), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+
+                        scheduleDays.forEach { day ->
+                            val classes = all.filter { it.day.equals(day, true) && it.startTime.toHourOrNull() == h }
+                            Box(
+                                Modifier.width(dayWidth).fillMaxHeight()
+                                    .background(if (day.equals(today, true) && isCurrentHour) timeHighlight.copy(alpha = 0.10f) else tableBg)
+                                    .border(if (day.equals(today, true) && isCurrentHour) 2.dp else 1.dp, if (day.equals(today, true) && isCurrentHour) timeHighlight else tableBorder)
+                                    .padding(1.dp)
+                            ) {
+                                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                    classes.take(2).forEach { r ->
+                                        val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
+                                        Card(
+                                            Modifier.fillMaxWidth().weight(1f, fill = false),
+                                            colors = CardDefaults.cardColors(containerColor = bg, contentColor = readableContentColor(bg)),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Column(Modifier.fillMaxSize().padding(horizontal = 3.dp, vertical = 2.dp), verticalArrangement = Arrangement.Center) {
+                                                Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                                                Text(r.classType, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Row(Modifier.height(footerHeight)) {
+                    Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) {
+                        Text("%02d:00".format(endHour), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    }
+                    scheduleDays.forEach { Box(Modifier.width(dayWidth).fillMaxHeight().background(tableBg).border(1.dp, tableBorder)) }
+                }
+            }
+        }
+    }
+
+    if (showAdd) ScheduleDialog(store) { showAdd = false; clear(); refresh++ }
+    if (showDetails) SubjectDetailsDialog(all, { showDetails = false })
+    if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
+    if (showDaySetup) ScheduleDaySetupDialog(store) { showDaySetup = false }
+}
+
+@Composable
+fun SubjectDetailsDialog(all: List<Record>, done: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = done,
+        title = { Text("Subject details") },
+        text = {
+            if (all.isEmpty()) {
+                EmptyCard("No classes in the current schedule.")
+            } else {
+                LazyColumn(
+                    Modifier.fillMaxWidth().heightIn(max = 520.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(all, key = { it.id }) { r ->
+                        Card(Modifier.fillMaxWidth()) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    Modifier.size(width = 4.dp, height = 48.dp).background(
+                                        if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primary,
+                                        RoundedCornerShape(4.dp)
+                                    )
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                                        if (r.room.isNotBlank()) Text("  •  " + r.room, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    if (r.subtitle.isNotBlank()) Text(r.subtitle, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                                    if (r.professor.isNotBlank()) Text(r.professor, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                    Text(r.day + " • " + r.startTime + "-" + r.endTime + " • " + r.classType, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(done) { Text("Close") } }
+    )
+}
+
+@Composable
+fun ScheduleHighlightColorDialog(store: LocalStore, done: () -> Unit) {
+    var dayColor by remember { mutableLongStateOf(store.scheduleDayHighlight()) }
+    var timeColor by remember { mutableLongStateOf(store.scheduleTimeHighlight()) }
+    val colors = listOf(0xFF1976D2L,0xFF7B1FA2L,0xFFC62828L,0xFF00897BL,0xFFF9A825L,0xFF5D4037L)
+    AlertDialog(
+        onDismissRequest = done,
+        title = { Text("Schedule highlight colors") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Today / day header", fontWeight = FontWeight.SemiBold)
+                Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    colors.forEach { c -> ColorChoiceCircle(c, dayColor == c) { dayColor = c } }
+                }
+                Text("Current time row", fontWeight = FontWeight.SemiBold)
+                Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    colors.forEach { c -> ColorChoiceCircle(c, timeColor == c) { timeColor = c } }
+                }
+                Text("The selected color is shown directly on the schedule.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = {
+            Button({
+                store.setScheduleDayHighlight(dayColor)
+                store.setScheduleTimeHighlight(timeColor)
+                done()
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(done) { Text("Cancel") } }
+    )
+}
+
+private fun String.toHourOrNull(): Int? = substringBefore(":").toIntOrNull()
+
+private fun deleteScheduleAndSync(store: LocalStore, classRecord: Record) {
+    store.delete("schedule", classRecord.id)
+    val remaining = store.get("schedule").any { it.title.equals(classRecord.title, true) }
+    if (!remaining) {
+        store.put("subjects", store.get("subjects").filterNot { it.title.equals(classRecord.title, true) })
+    } else {
+        val latest = store.get("schedule").last { it.title.equals(classRecord.title, true) }
+        syncSubjectFromClass(store, latest)
+    }
+}
+
+private fun syncSubjectFromClass(store: LocalStore, classRecord: Record) {
+    val code = classRecord.title.trim()
+    if (code.isBlank()) return
+    val subjects = store.get("subjects")
+    val existing = subjects.firstOrNull { it.title.equals(code, true) }
+    val synced = if (existing == null) {
+        Record(title=code, subtitle=classRecord.subtitle, extra=classRecord.extra,
+            professor=classRecord.professor, room=classRecord.room, classType=classRecord.classType)
+    } else {
+        existing.copy(
+            subtitle=if (classRecord.subtitle.isNotBlank()) classRecord.subtitle else existing.subtitle,
+            professor=if (classRecord.professor.isNotBlank()) classRecord.professor else existing.professor,
+            room=if (classRecord.room.isNotBlank()) classRecord.room else existing.room,
+            classType=classRecord.classType
+        )
+    }
+    store.put("subjects", if (existing == null) subjects + synced
+        else subjects.map { if (it.id == existing.id) synced else it })
+}
+
+@Composable
+fun TimeWheelDialog(
+    title: String,
+    initial: String,
+    done: (String) -> Unit,
+    cancel: () -> Unit
+) {
+    val initialHour = initial.substringBefore(":").toIntOrNull()?.coerceIn(7, 18) ?: 7
+    var hour by remember { mutableIntStateOf(initialHour) }
+
+    AlertDialog(
+        onDismissRequest = cancel,
+        title = { Text(title) },
+        text = {
+            Column(
+                Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    "%02d:00".format(hour),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Choose a 1-hour class slot",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                AndroidView(
+                    factory = { context ->
+                        android.widget.NumberPicker(context).apply {
+                            minValue = 7
+                            maxValue = 18
+                            value = hour
+                            wrapSelectorWheel = false
+                            displayedValues = (7..18).map { "%02d:00".format(it) }.toTypedArray()
+                            setOnValueChangedListener { _, _, newValue -> hour = newValue }
+                        }
+                    },
+                    update = { picker ->
+                        if (picker.value != hour) picker.value = hour
+                    },
+                    modifier = Modifier.width(150.dp).height(190.dp)
+                )
+                Text(
+                    "%02d:00 – %02d:00".format(hour, hour + 1),
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { done("%02d:00".format(hour)) }) {
+                Text("Set time")
+            }
+        },
+        dismissButton = { TextButton(onClick = cancel) { Text("Cancel") } }
+    )
+}
+
+@Composable
+fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
+    var subject by remember { mutableStateOf("") }; var fullName by remember { mutableStateOf("") }
+    var room by remember { mutableStateOf("") }; var professor by remember { mutableStateOf("") }; var notes by remember { mutableStateOf("") }
+    var classType by remember { mutableStateOf("Lecture") }; var color by remember { mutableLongStateOf(0xFFE3F2FD) }
+    var selectedSlots by remember { mutableStateOf(setOf<String>()) }
+    val colors=listOf(0xFFE3F2FDL,0xFFE8F5E9L,0xFFFFF3E0L,0xFFF3E5F5L,0xFFFFEBEEL,0xFFE0F7FAL)
+    val hours=(7..18).toList(); val weekDays=listOf("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday")
+    AlertDialog(onDismissRequest=done,title={Text("Add class")},text={
+        Column(Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){
+            OutlinedTextField(subject,{subject=it},Modifier.fillMaxWidth(),label={Text("Subject code")},placeholder={Text("e.g. DCIT 25")})
+            OutlinedTextField(fullName,{fullName=it},Modifier.fillMaxWidth(),label={Text("Whole subject name")})
+            Text("Type for the next slots",fontWeight=FontWeight.SemiBold)
+            Text("Changing Lecture/Lab keeps previous selections. You can add Lecture and Lab in the same Save.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Lecture","Lab").forEach{option->FilterChip(selected=classType==option,onClick={classType=option},label={Text(option)})}}
+            Text("Pick class time(s) and day(s)",fontWeight=FontWeight.SemiBold)
+            Text("Tap a cell to add/remove the selected type. Lecture and Lab can share one day and hour.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+            Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal=2.dp)){Column{
+                Row{Box(Modifier.width(52.dp).height(34.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text("Time",style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)}
+                    weekDays.forEach{d->Box(Modifier.width(76.dp).height(34.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text(d.take(3),style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)}}}
+                hours.forEach{h->Row{
+                    Box(Modifier.width(52.dp).height(48.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text("%02d:00".format(h),style=MaterialTheme.typography.labelSmall)}
+                    weekDays.forEach{d->
+                        val selectedTypes=listOf("Lecture","Lab").filter{type->"$d|$h|$type" in selectedSlots}; val currentKey="$d|$h|$classType"; val selected=currentKey in selectedSlots
+                        Box(Modifier.width(76.dp).height(48.dp).border(2.dp,if(selectedTypes.isNotEmpty())MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline).background(if(selectedTypes.isNotEmpty())MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface).clickable{selectedSlots=if(selected)selectedSlots-currentKey else selectedSlots+currentKey},contentAlignment=Alignment.Center){
+                            if(selectedTypes.isNotEmpty())Column(horizontalAlignment=Alignment.CenterHorizontally){Text(selectedTypes.joinToString(" + "),style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold,maxLines=1);Text("%02d–%02d".format(h,h+1),style=MaterialTheme.typography.labelSmall)}
+                        }
+                    }
+                }}
+                Row{Box(Modifier.width(52.dp).height(26.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text("19:00",style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)};weekDays.forEach{Box(Modifier.width(76.dp).height(26.dp).border(1.dp,MaterialTheme.colorScheme.outline))}}
+            }}
+            Text(if(selectedSlots.isEmpty())"No time selected" else selectedSlots.size.toString()+" slot(s) selected",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+            OutlinedTextField(room,{room=it},Modifier.fillMaxWidth(),label={Text("Room number")});OutlinedTextField(professor,{professor=it},Modifier.fillMaxWidth(),label={Text("Professor")});OutlinedTextField(notes,{notes=it},Modifier.fillMaxWidth(),label={Text("Notes")})
+            Text("Class color",fontWeight=FontWeight.SemiBold)
+            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(10.dp)){colors.forEach{c->Box(Modifier.size(40.dp).border(3.dp,if(color==c)MaterialTheme.colorScheme.onSurface else Color.Transparent,RoundedCornerShape(50)).padding(4.dp).background(Color(c),RoundedCornerShape(50)).clickable{color=c},contentAlignment=Alignment.Center){if(color==c)Text("✓",color=readableContentColor(Color(c)),fontWeight=FontWeight.Bold)}}}
+        }
+    },confirmButton={Button({
+        if(subject.isNotBlank()&&selectedSlots.isNotEmpty()){
+            val existingSchedule=store.get("schedule"); val idBase=maxOf(System.currentTimeMillis(),(existingSchedule.maxOfOrNull{it.id}?:0L)+1L)
+            val selected=selectedSlots.mapIndexed{index,key->val parts=key.split("|");val h=parts.getOrNull(1)?.toIntOrNull()?:7
+                Record(id=idBase+index,title=subject.trim(),subtitle=fullName.trim(),extra=notes.trim(),day=parts.getOrNull(0)?:"",startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=room.trim(),professor=professor.trim(),color=color,classType=parts.getOrNull(2)?:classType)}
+            store.put("schedule",existingSchedule+selected);selected.firstOrNull()?.let{syncSubjectFromClass(store,it)}
+        };done()
+    }){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})
+}
+
+@Composable
+fun TaskCalendar(selectedDate:String,onSelect:(String)->Unit){
+    val sdf=SimpleDateFormat("yyyy-MM-dd",Locale.getDefault())
+    val selectedCal=Calendar.getInstance().apply { runCatching { time=sdf.parse(selectedDate) ?: time } }
+    var monthOffset by remember(selectedDate) {
+        mutableIntStateOf(
+            ((Calendar.getInstance().get(Calendar.YEAR)-selectedCal.get(Calendar.YEAR))*12 +
+                Calendar.getInstance().get(Calendar.MONTH)-selectedCal.get(Calendar.MONTH))
+        )
+    }
+    val shown=Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH,1); add(Calendar.MONTH,-monthOffset) }
+    val first=shown.clone() as Calendar
+    val offset=(first.get(Calendar.DAY_OF_WEEK)-Calendar.MONDAY+7)%7
+    val max=first.getActualMaximum(Calendar.DAY_OF_MONTH)
+    val todayKey=sdf.format(Calendar.getInstance().time)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                var dragTotal = 0f
+                detectHorizontalDragGestures(
+                    onHorizontalDrag = { _, amount -> dragTotal += amount },
+                    onDragEnd = {
+                        if (dragTotal > 80f) monthOffset++
+                        else if (dragTotal < -80f) monthOffset--
+                        dragTotal = 0f
+                    },
+                    onDragCancel = { dragTotal = 0f }
+                )
+            },
+        verticalArrangement=Arrangement.spacedBy(6.dp)
+    ) {
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
+            IconButton({monthOffset++}){Icon(Icons.Default.ChevronLeft,"Previous month")}
+            Text(SimpleDateFormat("MMMM yyyy",Locale.getDefault()).format(first.time),Modifier.weight(1f),textAlign=androidx.compose.ui.text.style.TextAlign.Center,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+            IconButton({monthOffset--}){Icon(Icons.Default.ChevronRight,"Next month")}
+        }
+        Row(Modifier.fillMaxWidth()){
+            listOf("M","T","W","T","F","S","S").forEach{Text(it,Modifier.weight(1f),textAlign=androidx.compose.ui.text.style.TextAlign.Center,style=MaterialTheme.typography.labelSmall)}
+        }
+        for(row in 0..5) Row(Modifier.fillMaxWidth()){
+            for(col in 0..6){
+                val n=row*7+col-offset+1
+                if(n in 1..max){
+                    val d=(first.clone() as Calendar).apply{set(Calendar.DAY_OF_MONTH,n)}
+                    val k=sdf.format(d.time);val selected=k==selectedDate;val today=k==todayKey
+                    Box(Modifier.weight(1f).padding(2.dp).height(40.dp)
+                        .background(if(selected)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,RoundedCornerShape(8.dp))
+                        .then(if(today)Modifier.border(2.dp,MaterialTheme.colorScheme.primary,RoundedCornerShape(8.dp))else Modifier)
+                        .clickable{onSelect(k)},contentAlignment=Alignment.Center
+                    ){Text(n.toString(),fontWeight=if(selected||today)FontWeight.Bold else FontWeight.Normal)}
+                }else Box(Modifier.weight(1f).height(44.dp))
+            }
+        }
+    }
+}
+@Composable
+fun CrudScreen(title:String,key:String,store:LocalStore,query:String,clear:()->Unit){
+    val revision = store.revision
+    var refresh by remember{mutableIntStateOf(0)};var showAdd by remember{mutableStateOf(false)};var selectedDate by remember{mutableStateOf(SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date()))}
+    LaunchedEffect(query){if(query=="__ADD__")showAdd=true}
+    val list=remember(refresh,revision,query){store.get(key).filter{query.isBlank()||query=="__ADD__"||(it.title+" "+it.subtitle+" "+it.extra).contains(query,true)}.sortedWith(compareBy<Record>({it.done},{it.dueDate},{it.dueTime}))}
+    Column(Modifier.fillMaxSize()){
+        if(key=="tasks")Card(Modifier.fillMaxWidth().padding(12.dp)){Column(Modifier.padding(12.dp)){TaskCalendar(selectedDate){selectedDate=it};Text("Selected: $selectedDate",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
+        Text(title,Modifier.padding(horizontal=16.dp,vertical=6.dp),style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
+        if(list.isEmpty())EmptyCard("No tasks yet. Tap + to add a task.") else LazyColumn(Modifier.fillMaxSize().padding(horizontal=16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){items(list,key={it.id}){r->RecordCard(r,key,store){refresh++}}}
+    }
+    if(showAdd)AddRecordDialog(title,key,store){showAdd=false;clear();refresh++}
+}
+@Composable
+fun AcademicsScreen(store: LocalStore, query: String, clear: () -> Unit) {
+    val revision = store.revision
+    var tab by remember { mutableIntStateOf(0) }
+    var refresh by remember { mutableIntStateOf(0) }
+    var selectedSubject by remember { mutableStateOf<Record?>(null) }
+    val labels = listOf("Subjects","Reviewers")
+    val keys = listOf("subjects","reviewers")
+    val list = remember(refresh, revision, query, tab) { store.get(keys[tab]).filter {
+        query.isBlank() || query == "__ADD__" || (it.title+" "+it.subtitle+" "+it.extra).contains(query, true)
+    }}
+    Column(Modifier.fillMaxSize()) {
+        Text("Academics", Modifier.padding(16.dp), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        ScrollableTabRow(selectedTabIndex = tab, edgePadding = 12.dp) {
+            labels.forEachIndexed { i, label -> Tab(tab == i, { tab = i }, text = { Text(label) }) }
+        }
+        if (list.isEmpty()) EmptyCard("No "+labels[tab].lowercase()+" yet. Add classes from Home Settings or use your existing data.")
+        else LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(list, key = { it.id }) { r ->
+                Card(onClick = { if (tab == 0) selectedSubject = r }, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text(r.title, fontWeight = FontWeight.SemiBold)
+                        if (r.subtitle.isNotBlank()) Text(r.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (r.extra.isNotBlank()) Text(r.extra, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                    }
+                }
+            }
+        }
+    }
+    if (query == "__ADD__") AddRecordDialog(labels[tab], keys[tab], store) { clear(); refresh++ }
+    selectedSubject?.let { subject ->
+        SubjectNotepadDialog(subject, store) { selectedSubject = null; refresh++ }
+    }
+}
+
+@Composable
+fun SubjectNotepadDialog(subject: Record, store: LocalStore, done: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val savedNote = remember(subject) {
+        runCatching {
+            val o = JSONObject(subject.extra)
+            Pair(o.optString("title"), o.optString("body"))
+        }.getOrElse { Pair("", subject.extra) }
+    }
+    var noteTitle by remember { mutableStateOf(savedNote.first) }
+    var noteBody by remember { mutableStateOf(savedNote.second) }
+    var files by remember { mutableStateOf(subjectFiles(context, subject.id)) }
+    var viewingFile by remember { mutableStateOf<File?>(null) }
+    var showNoteEditor by remember { mutableStateOf(false) }
+    val upload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        copyUriToSubject(context, uri, subject.id)?.let { files = subjectFiles(context, subject.id) }
+    }
+    fun saveNote() {
+        val noteJson = JSONObject().apply {
+            put("title", noteTitle.trim())
+            put("body", noteBody)
+        }.toString()
+        store.put("subjects", store.get("subjects").map {
+            if (it.id == subject.id) it.copy(extra = noteJson) else it
+        })
+    }
+    AlertDialog(
+        onDismissRequest = done,
+        title = { Text(subject.title) },
+        text = {
+            Column(Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (subject.subtitle.isNotBlank()) Text(subject.subtitle, fontWeight = FontWeight.SemiBold)
+                if (subject.professor.isNotBlank()) Text("Professor: " + subject.professor, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Lessons", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Card(onClick = { showNoteEditor = true }, modifier = Modifier.weight(1f)) {
+                        Column(Modifier.padding(16.dp)) {
+                            Icon(Icons.Default.Note, null)
+                            Spacer(Modifier.height(8.dp))
+                            Text("Note", fontWeight = FontWeight.Bold)
+                            Text(if (noteTitle.isBlank()) "Create new note" else noteTitle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                        }
+                    }
+                    Card(onClick = { upload.launch(arrayOf("*/*")) }, modifier = Modifier.weight(1f)) {
+                        Column(Modifier.padding(16.dp)) {
+                            Icon(Icons.Default.InsertDriveFile, null)
+                            Spacer(Modifier.height(8.dp))
+                            Text("File", fontWeight = FontWeight.Bold)
+                            Text("${files.size} stored", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                if (files.isEmpty()) {
+                    EmptyCard("No lesson files yet. Tap File to upload a PDF, PowerPoint, Word document, or other file.")
+                } else {
+                    files.forEach { file ->
+                        Card(onClick = { viewingFile = file }, modifier = Modifier.fillMaxWidth()) {
+                            ListItem(
+                                headlineContent = { Text(file.name, maxLines = 2) },
+                                supportingContent = { Text(formatSize(file.length())) },
+                                leadingContent = { Icon(Icons.Default.InsertDriveFile, null) },
+                                trailingContent = {
+                                    IconButton({
+                                        file.delete()
+                                        files = subjectFiles(context, subject.id)
+                                    }) { Icon(Icons.Default.Delete, "Delete") }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(done) { Text("Close") } }
+    )
+    if (showNoteEditor) {
+        AlertDialog(
+            onDismissRequest = { showNoteEditor = false },
+            title = { Text("Create / edit note") },
+            text = {
+                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(noteTitle, { noteTitle = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Note title") }, placeholder = { Text("e.g. Introduction to DCIT 25") })
+                    OutlinedTextField(noteBody, { noteBody = it }, Modifier.fillMaxWidth().heightIn(min = 220.dp), label = { Text("Description / note") }, placeholder = { Text("Type your lesson note or description...") })
+                }
+            },
+            confirmButton = { Button({ saveNote(); showNoteEditor = false }) { Text("Save note") } },
+            dismissButton = { TextButton({ showNoteEditor = false }) { Text("Cancel") } }
+        )
+    }
+    viewingFile?.let { file -> InAppFileViewerDialog(file) { viewingFile = null } }
+}
+
+@Composable
+fun InAppFileViewerDialog(file: File, done: () -> Unit) {
+    var page by remember(file) { mutableIntStateOf(0) }
+    var slide by remember(file) { mutableIntStateOf(0) }
+    var fullScreen by remember(file) { mutableStateOf(false) }
+    val ext = fileExtension(file)
+    Dialog(onDismissRequest = done) {
+        Card(Modifier.fillMaxWidth().fillMaxHeight(if (fullScreen) 1f else 0.92f), shape = if (fullScreen) RoundedCornerShape(0.dp) else RoundedCornerShape(24.dp)) {
+            Column(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(file.name, Modifier.weight(1f), maxLines = 2, fontWeight = FontWeight.Bold)
+                    IconButton({ fullScreen = !fullScreen }) {
+                        Icon(if (fullScreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, "Toggle full screen")
+                    }
+                    IconButton(done) { Icon(Icons.Default.Close, "Close") }
+                }
+                HorizontalDivider()
+                when {
+                    ext == "pdf" -> {
+                        val pageCount = remember(file) {
+                            runCatching {
+                                ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+                                    PdfRenderer(descriptor).use { it.pageCount }
+                                }
+                            }.getOrDefault(0)
+                        }
+                        Column(Modifier.fillMaxSize()) {
+                            if (pageCount > 0) {
+                                Box(Modifier.fillMaxWidth().weight(1f).padding(6.dp), contentAlignment = Alignment.Center) {
+                                    renderPdfPage(file, page.coerceIn(0, pageCount - 1))?.let { bitmap ->
+                                        Image(bitmap.asImageBitmap(), file.name, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                                    } ?: EmptyCard("Unable to render this PDF.")
+                                }
+                                Row(Modifier.fillMaxWidth().padding(6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Page ${page + 1} of $pageCount")
+                                    Row {
+                                        TextButton({ if (page > 0) page-- }, enabled = page > 0) { Text("Previous") }
+                                        TextButton({ if (page < pageCount - 1) page++ }, enabled = page < pageCount - 1) { Text("Next") }
+                                    }
+                                }
+                            } else EmptyCard("Unable to open this PDF.")
+                        }
+                    }
+                    ext == "pptx" || ext == "ppt" -> {
+                        val slides = remember(file) { readOfficeSlides(file) }
+                        Column(Modifier.fillMaxSize()) {
+                            if (slides.isNotEmpty()) {
+                                Box(Modifier.fillMaxWidth().weight(1f).padding(10.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                                    Text(slides[slide.coerceIn(0, slides.lastIndex)].ifBlank { "Blank slide" }, Modifier.padding(24.dp), style = MaterialTheme.typography.titleMedium)
+                                }
+                                Row(Modifier.fillMaxWidth().padding(6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Slide ${slide + 1} of ${slides.size}")
+                                    Row {
+                                        TextButton({ if (slide > 0) slide-- }, enabled = slide > 0) { Text("Previous") }
+                                        TextButton({ if (slide < slides.lastIndex) slide++ }, enabled = slide < slides.lastIndex) { Text("Next") }
+                                    }
+                                }
+                            } else EmptyCard("Unable to read this PowerPoint offline.")
+                        }
+                    }
+                    ext == "docx" -> {
+                        val text = remember(file) { readOfficeText(file) ?: "No readable text was found in this Word document." }
+                        LazyColumn(Modifier.fillMaxSize().padding(10.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                            item {
+                                Card(Modifier.fillMaxWidth().widthIn(max = 794.dp), shape = RoundedCornerShape(0.dp)) {
+                                    Column(Modifier.padding(36.dp)) {
+                                        Text("A4 Print Layout", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Spacer(Modifier.height(10.dp))
+                                        Text(text, style = MaterialTheme.typography.bodyLarge)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else -> {
+                        val text = remember(file) { readDisplayText(file) }
+                        LazyColumn(Modifier.fillMaxSize().padding(16.dp)) { item { Text(text, style = MaterialTheme.typography.bodyLarge) } }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RecordCard(r: Record, key: String, store: LocalStore, refresh: () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(r.title, fontWeight = FontWeight.SemiBold)
+                if (r.subtitle.isNotBlank()) Text(r.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (r.extra.isNotBlank()) Text(r.extra, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (key == "tasks" && r.dueDate.isNotBlank()) Text("Due: ${r.dueDate} ${r.dueTime}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (key == "tasks" && r.subjectId != 0L) store.get("subjects").firstOrNull { it.id == r.subjectId }?.let { Text("Subject: ${it.title}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                if (key == "grades") Text("Grade: %.2f".format(r.value))
+                if (key == "expenses") Text("₱%.2f".format(r.value), fontWeight = FontWeight.Bold)
+            }
+            if (key == "tasks" || key == "attendance") Checkbox(r.done, {
+                store.put(key, store.get(key).map { if (it.id == r.id) it.copy(done = !it.done) else it }); refresh()
+            })
+            IconButton({ store.delete(key, r.id); refresh() }) { Icon(Icons.Default.Delete, "Delete") }
+        }
+    }
+}
+
+@Composable
+fun AddRecordDialog(label:String,key:String,store:LocalStore,done:()->Unit){
+    var subjectId by remember{mutableLongStateOf(0L)};var title by remember{mutableStateOf("")};var subtitle by remember{mutableStateOf("")};var extra by remember{mutableStateOf("")};var value by remember{mutableStateOf("")}
+    var dueDate by remember{mutableStateOf(SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date()))}
+    var showDueDatePicker by remember{mutableStateOf(false)}
+    val subjects=store.get("subjects");val isTask=key=="tasks"
+    AlertDialog(onDismissRequest=done,title={Text("Add $label")},text={Column(Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
+        if(isTask){Text("Subject",fontWeight=FontWeight.Bold);if(subjects.isEmpty())Text("Add a class first so this task can be linked to a subject.",color=MaterialTheme.colorScheme.error)
+            else Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){subjects.forEach{s->FilterChip(subjectId==s.id,{subjectId=s.id},label={Text(s.title)})}}
+            OutlinedButton(onClick={showDueDatePicker=true},modifier=Modifier.fillMaxWidth()){
+                Icon(Icons.Default.Event,null);Spacer(Modifier.width(8.dp));Text("Due date: $dueDate")
+            }}
+        OutlinedTextField(title,{title=it},Modifier.fillMaxWidth(),label={Text("Title")});OutlinedTextField(subtitle,{subtitle=it},Modifier.fillMaxWidth(),label={Text("Description")})
+        if(key=="tasks"||key=="reviewers")OutlinedTextField(extra,{extra=it},Modifier.fillMaxWidth(),label={Text("Notes")})
+        if(key=="grades"||key=="expenses")OutlinedTextField(value,{value=it},Modifier.fillMaxWidth(),label={Text(if(key=="grades")"Grade" else "Amount")})
+    }},confirmButton={Button({if(title.isNotBlank()&&(!isTask||subjectId!=0L))store.put(key,store.get(key)+Record(title=title.trim(),subtitle=subtitle.trim(),extra=extra.trim(),value=value.toDoubleOrNull()?:0.0,subjectId=subjectId,dueDate=if(isTask)dueDate else "",dueTime=""));done()}){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})
+}
+
+@Composable
+fun FilesScreen() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var files by remember { mutableStateOf(listFiles(context)) }
+    val open = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        val name = queryName(context, uri) ?: "document"
+        val target = File(context.filesDir, name)
+        runCatching { context.contentResolver.openInputStream(uri)?.use { input -> target.outputStream().use { input.copyTo(it) } } }
+        files = listFiles(context)
+    }
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("School Files", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("Stored only on this device.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Button({ open.launch(arrayOf("*/*")) }) { Icon(Icons.Default.UploadFile, null); Spacer(Modifier.width(6.dp)); Text("Import") }
+        }
+        Spacer(Modifier.height(12.dp))
+        if (files.isEmpty()) EmptyCard("Import PDFs, documents, images, or other school files.")
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(files, key = { it.name }) { f ->
+                Card(Modifier.fillMaxWidth()) { ListItem(
+                    headlineContent = { Text(f.name) }, supportingContent = { Text(formatSize(f.size)) },
+                    leadingContent = { Icon(Icons.Default.InsertDriveFile, null) },
+                    trailingContent = { IconButton({ File(context.filesDir, f.name).delete(); files = listFiles(context) }) { Icon(Icons.Default.Delete, "Delete") } }
+                )}
+            }
+        }
+    }
+}
+private fun listFiles(context: Context) = context.filesDir.listFiles()?.filter { it.isFile }
+    ?.map { FileRecord(it.name, it.length()) }?.sortedBy { it.name.lowercase() } ?: emptyList()
+private fun queryName(context: Context, uri: Uri): String? {
+    context.contentResolver.query(
+        uri,
+        arrayOf(OpenableColumns.DISPLAY_NAME),
+        null,
+        null,
+        null
+    )?.use { cursor ->
+        if (cursor.moveToFirst()) {
+            return cursor.getString(0)
+                .replace("/", "_")
+                .replace("\\", "_")
+        }
+    }
+    return uri.lastPathSegment?.substringAfterLast("/")
+}
+
+private fun formatSize(size: Long) = when {
+    size < 1024 -> "$size B"
+    size < 1024*1024 -> "%.1f KB".format(size/1024.0)
+    else -> "%.1f MB".format(size/1024.0/1024.0)
+}
+
 @Composable
 fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit, lock: () -> Unit, openScheduleSettings: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
