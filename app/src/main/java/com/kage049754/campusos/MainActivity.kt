@@ -625,7 +625,7 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
                                     val isCurrentClass = day.equals(today, true) && isCurrentHour
                                     val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
                                     Card(
-                                        Modifier.fillMaxSize()
+                                        Modifier.fillMaxWidth().height(28.dp)
                                             .then(if (isCurrentClass) Modifier.border(3.dp, dayHighlight, RoundedCornerShape(10.dp)) else Modifier),
                                         colors = CardDefaults.cardColors(
                                             containerColor = if (isCurrentClass) bg.copy(alpha = 0.92f) else bg,
