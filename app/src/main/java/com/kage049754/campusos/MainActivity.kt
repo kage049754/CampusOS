@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
@@ -330,6 +331,44 @@ fun CampusOSApp(activity: Activity) {
     var locked by remember { mutableStateOf(store.lockEnabled() && store.pin().isNotBlank()) }
     var screenName by rememberSaveable { mutableStateOf(Screen.HOME.name) }
     val screen = Screen.valueOf(screenName)
+    BackHandler(enabled = true) {
+        when {
+            subjectPageId != 0L && subjectOpenedFile.isNotBlank() -> subjectOpenedFile = ""
+            subjectPageId != 0L -> { subjectPageId = 0L; subjectOpenedFile = "" }
+            showScheduleDetails -> showScheduleDetails = false
+            showScheduleTableSettings -> showScheduleTableSettings = false
+            showScheduleManager -> showScheduleManager = false
+            showScheduleSettings -> {
+                showScheduleSettings = false
+                settingsModule = settingsParent
+                settingsParent = null
+            }
+            showProfile -> {
+                showProfile = false
+                settingsModule = settingsParent
+                settingsParent = null
+            }
+            showHomeColors -> {
+                showHomeColors = false
+                settingsModule = settingsParent
+                settingsParent = null
+            }
+            showHomeAdd -> {
+                showHomeAdd = false
+                settingsModule = settingsParent
+                settingsParent = null
+            }
+            showHomeSettings -> showHomeSettings = false
+            settingsModule != null -> {
+                settingsModule = null
+                settingsParent = null
+                showHomeSettings = true
+            }
+            scheduleFullscreen -> scheduleFullscreen = false
+            screen != Screen.HOME -> screenName = Screen.HOME.name
+            else -> Unit
+        }
+    }
     var search by rememberSaveable { mutableStateOf("") }
     var showHomeAdd by remember { mutableStateOf(false) }
     var showHomeColors by remember { mutableStateOf(false) }
@@ -340,6 +379,7 @@ fun CampusOSApp(activity: Activity) {
     var showScheduleManager by remember { mutableStateOf(false) }
     var showScheduleDetails by remember { mutableStateOf(false) }
     var settingsModule by remember { mutableStateOf<String?>(null) }
+    var settingsParent by rememberSaveable { mutableStateOf<String?>(null) }
     var scheduleFullscreen by rememberSaveable { mutableStateOf(false) }
     var subjectPageId by rememberSaveable { mutableLongStateOf(0L) }
     var subjectPageMode by rememberSaveable { mutableIntStateOf(0) }
@@ -443,7 +483,7 @@ fun CampusOSApp(activity: Activity) {
                 }
             }
             if (showHomeSettings) {
-                HomeSettingsDialog(onModule = { settingsModule = it; showHomeSettings = false }, onAppearance = { showHomeColors = true; showHomeSettings = false }, done = { showHomeSettings = false })
+                HomeSettingsDialog(onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, done = { showHomeSettings = false })
             }
             if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
             if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }) { showHomeColors = false }
@@ -451,7 +491,7 @@ fun CampusOSApp(activity: Activity) {
             if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
             if (showScheduleTableSettings) ScheduleTableSettingsDialog(store) { showScheduleTableSettings = false }
             if (showScheduleManager) ScheduleManagerDialog(store) { showScheduleManager = false }
-            settingsModule?.let { module -> ModuleSettingsDialog(module, { settingsModule = null }, { settingsModule = null; showProfile = true }, { settingsModule = null; showScheduleManager = true }, { settingsModule = null; showScheduleSettings = true }, { settingsModule = null; showScheduleTableSettings = true }, { settingsModule = null; showHomeAdd = true }, { settingsModule = null; screenName = Screen.TASKS.name }, { settingsModule = null; screenName = Screen.ACADEMICS.name }) }
+            settingsModule?.let { module -> ModuleSettingsDialog(module, { settingsModule = null; settingsParent = null; showHomeSettings = true }, { settingsParent = module; settingsModule = null; showProfile = true }, { settingsParent = module; settingsModule = null; showScheduleManager = true }, { settingsParent = module; settingsModule = null; showScheduleSettings = true }, { settingsParent = module; settingsModule = null; showScheduleTableSettings = true }, { settingsParent = module; settingsModule = null; showHomeAdd = true }, { settingsModule = null; settingsParent = null; screenName = Screen.TASKS.name }, { settingsModule = null; settingsParent = null; screenName = Screen.ACADEMICS.name }) }
             if (showScheduleDetails) SubjectDetailsDialog(store.get("schedule"), { showScheduleDetails = false })
         }
         }
