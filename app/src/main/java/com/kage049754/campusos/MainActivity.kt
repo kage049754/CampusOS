@@ -266,6 +266,7 @@ fun CampusOSApp(activity: Activity) {
     var showHomeColors by remember { mutableStateOf(false) }
     var showHomeSettings by remember { mutableStateOf(false) }
     var showScheduleSettings by remember { mutableStateOf(false) }
+    var showScheduleDetails by remember { mutableStateOf(false) }
     var scheduleFullscreen by remember { mutableStateOf(false) }
 
     if (locked) { LockScreen(store) { locked = false }; return }
@@ -283,8 +284,15 @@ fun CampusOSApp(activity: Activity) {
                     TopAppBar(
                         title = { Text("CampusOS", fontWeight = FontWeight.Bold) },
                         actions = {
-                            IconButton(onClick = { showHomeSettings = true }) {
-                                Icon(Icons.Default.Settings, "CampusOS settings")
+                            if (screen == Screen.SCHEDULE) {
+                                IconButton(onClick = { showScheduleDetails = true }) {
+                                    Icon(Icons.Default.Info, "Subject details")
+                                }
+                            }
+                            IconButton(onClick = {
+                                if (screen == Screen.SCHEDULE) showScheduleSettings = true else showHomeSettings = true
+                            }) {
+                                Icon(Icons.Default.Settings, "Settings")
                             }
                         }
                     )
@@ -320,7 +328,7 @@ fun CampusOSApp(activity: Activity) {
             Column(Modifier.fillMaxSize().padding(padding)) {
                 when (screen) {
                     Screen.HOME -> HomeScreen(store) { screen = it }
-                    Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }) { search = "" }
+                    Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }, { showScheduleDetails = true }) { search = "" }
                     Screen.TASKS -> CrudScreen("Assignments & To-do", "tasks", store, search) { search = "" }
                     Screen.ACADEMICS -> AcademicsScreen(store, search) { search = "" }
                     Screen.FILES -> FilesScreen()
@@ -353,6 +361,7 @@ fun CampusOSApp(activity: Activity) {
             if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
             if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }) { showHomeColors = false }
             if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
+            if (showScheduleDetails) SubjectDetailsDialog(store.get("schedule"), { showScheduleDetails = false })
         }
     }
 }
@@ -522,7 +531,7 @@ fun ColorChoiceCircle(value: Long, selected: Boolean, click: () -> Unit) {
 }
 
 @Composable
-fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFullscreen: (Boolean) -> Unit, clear: () -> Unit) {
+fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFullscreen: (Boolean) -> Unit, openDetails: () -> Unit, clear: () -> Unit) {
     val revision = store.revision
     var refresh by remember { mutableIntStateOf(0) }
     var showAdd by remember { mutableStateOf(false) }
@@ -560,27 +569,6 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
     val tableBorder = Color(store.scheduleTableBorder())
 
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("Class Schedule", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text(
-                    "Class days: " + scheduleDays.joinToString(" • "),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                )
-            }
-            IconButton({ showDetails = true }) { Icon(Icons.Default.Info, "Subject details and class information") }
-            IconButton({ showScheduleSettings = true }) { Icon(Icons.Default.Settings, "Schedule settings") }
-            IconButton({ setFullscreen(!fullscreen) }) {
-                Icon(if (fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, "Full screen schedule")
-            }
-        }
-
         BoxWithConstraints(
             Modifier.fillMaxWidth().weight(1f).padding(horizontal = 4.dp)
         ) {
