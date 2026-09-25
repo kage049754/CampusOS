@@ -283,6 +283,15 @@ class LocalStore(context: Context) {
         prefs.edit().putString("pinned_class_ids", ids.filter { it > 0L }.joinToString(",")).apply()
         revision++
     }
+    fun classRemindersEnabled(id: Long): Boolean =
+        id !in (prefs.getString("disabled_class_reminders", "") ?: "").split(",").mapNotNull { it.toLongOrNull() }.toSet()
+    fun setClassRemindersEnabled(id: Long, enabled: Boolean) {
+        val ids = (prefs.getString("disabled_class_reminders", "") ?: "").split(",").mapNotNull { it.toLongOrNull() }.toMutableSet()
+        if (enabled) ids.remove(id) else ids.add(id)
+        prefs.edit().putString("disabled_class_reminders", ids.joinToString(",")).apply()
+        revision++
+        CampusReminders.reschedule(appContext)
+    }
     fun setHomeWidgetHidden(hidden: Set<String>) {
         prefs.edit().putString("home_widget_hidden", hidden.joinToString(",")).apply()
         revision++
