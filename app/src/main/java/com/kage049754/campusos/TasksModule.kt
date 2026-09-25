@@ -21,6 +21,7 @@ import androidx.compose.ui.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.unit.dp
 import org.json.JSONArray
 import org.json.JSONObject
@@ -31,14 +32,14 @@ import java.util.Date
 import java.util.Locale
 
 private const val TASK_PREFS="campusos_tasks"
-private data class TaskSub(val id:Long,val title:String,val done:Boolean)
-private data class TaskMeta(
+data class TaskSub(val id:Long,val title:String,val done:Boolean)
+data class TaskMeta(
     val type:String="Assignment",val priority:String="Medium",val status:String="Not started",
     val reminders:List<Long> = emptyList(),val attachments:List<String> = emptyList(),
     val link:String="",val location:String="",val notes:String="",val pinned:Boolean=false,
     val semester:String="2026–2027 1st Semester",val subtasks:List<TaskSub> = emptyList()
 )
-private fun taskMeta(r:Record)=runCatching{
+fun taskMeta(r:Record)=runCatching{
     val o=JSONObject(r.extra)
     if(!o.has("_task")) return@runCatching TaskMeta(notes=r.extra,status=if(r.done)"Completed" else "Not started")
     val rem=mutableListOf<Long>();val ra=o.optJSONArray("reminders")?:JSONArray();for(i in 0 until ra.length())rem+=ra.optLong(i)
