@@ -1296,6 +1296,18 @@ fun SubjectNotepadDialog(subject: Record, store: LocalStore, startMode: Int = 0,
                     placeholder = { Text("Search this subject's notes") }
                 )
 
+                if (mode == 0) Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Sort:", style = MaterialTheme.typography.labelLarge)
+                    listOf("Modified", "Created", "Alphabetical").forEach { option ->
+                        TextButton(onClick = { noteSort = option }) { Text(if (noteSort == option) "✓ $option" else option) }
+                    }
+                } else Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Sort:", style = MaterialTheme.typography.labelLarge)
+                    listOf("Newest", "Oldest", "Alphabetical").forEach { option ->
+                        TextButton(onClick = { fileSort = option }) { Text(if (fileSort == option) "✓ $option" else option) }
+                    }
+                }
+
                 Column(
                     Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1332,6 +1344,8 @@ fun SubjectNotepadDialog(subject: Record, store: LocalStore, startMode: Int = 0,
                         }
                     }
 
+                    }
+                    if (mode == 1) {
                     HorizontalDivider(Modifier.padding(vertical = 4.dp))
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -1367,8 +1381,13 @@ fun SubjectNotepadDialog(subject: Record, store: LocalStore, startMode: Int = 0,
                                         )
                                     },
                                     trailingContent = {
+                                        val marker = File(context.filesDir, "subject_favorite_" + subject.id + "_" + file.name)
+                                        IconButton(onClick = { if (marker.exists()) marker.delete() else marker.createNewFile() }) {
+                                            Icon(if (marker.exists()) Icons.Default.Star else Icons.Default.StarBorder, "Favorite")
+                                        }
                                         IconButton(onClick = {
                                             file.delete()
+                                            marker.delete()
                                             files = subjectFiles(context, subject.id)
                                         }) {
                                             Icon(Icons.Default.Delete, "Delete lecture file")
@@ -1377,6 +1396,7 @@ fun SubjectNotepadDialog(subject: Record, store: LocalStore, startMode: Int = 0,
                                 )
                             }
                         }
+                    }
                     }
                 }
             }
