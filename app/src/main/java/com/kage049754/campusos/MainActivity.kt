@@ -205,6 +205,11 @@ class LocalStore(context: Context) {
     fun setTheme(v: String) { prefs.edit().putString("theme", v).apply(); revision++ }
     fun lockEnabled() = prefs.getBoolean("lock", false)
     fun setLockEnabled(v: Boolean) { prefs.edit().putBoolean("lock", v).apply(); revision++ }
+    fun profileName() = prefs.getString("profile_name", "") ?: ""
+    fun profileStudentId() = prefs.getString("profile_student_id", "") ?: ""
+    fun profileSection() = prefs.getString("profile_section", "") ?: ""
+    fun profilePhotoPath() = prefs.getString("profile_photo_path", "") ?: ""
+    fun setProfile(name: String, studentId: String, section: String, photoPath: String) { prefs.edit().putString("profile_name", name).putString("profile_student_id", studentId).putString("profile_section", section).putString("profile_photo_path", photoPath).apply(); revision++; CampusWidgets.updateAll(appContext) }
     fun scheduleDayHighlight() = prefs.getLong("schedule_day_highlight", 0xFF1976D2L)
     fun setScheduleDayHighlight(v: Long) { prefs.edit().putLong("schedule_day_highlight", v) .apply(); revision++ }
     fun scheduleTimeHighlight() = prefs.getLong("schedule_time_highlight", 0xFF43A047L)
@@ -265,6 +270,7 @@ fun CampusOSApp(activity: Activity) {
     var showHomeAdd by remember { mutableStateOf(false) }
     var showHomeColors by remember { mutableStateOf(false) }
     var showHomeSettings by remember { mutableStateOf(false) }
+    var showProfile by remember { mutableStateOf(false) }
     var showScheduleSettings by remember { mutableStateOf(false) }
     var showScheduleDetails by remember { mutableStateOf(false) }
     var scheduleFullscreen by remember { mutableStateOf(false) }
@@ -289,10 +295,8 @@ fun CampusOSApp(activity: Activity) {
                                     Icon(Icons.Default.Info, "Subject details")
                                 }
                             }
-                            IconButton(onClick = {
-                                if (screen == Screen.SCHEDULE) showScheduleSettings = true else showHomeSettings = true
-                            }) {
-                                Icon(Icons.Default.Settings, "Settings")
+                            IconButton(onClick = { showHomeSettings = true }) {
+                                Icon(Icons.Default.Settings, "CampusOS settings")
                             }
                         }
                     )
@@ -355,11 +359,13 @@ fun CampusOSApp(activity: Activity) {
                     onAddClass = { showHomeAdd = true; showHomeSettings = false },
                     onScheduleSettings = { showScheduleSettings = true; showHomeSettings = false },
                     onAppearance = { showHomeColors = true; showHomeSettings = false },
+                    onProfile = { showProfile = true; showHomeSettings = false },
                     done = { showHomeSettings = false }
                 )
             }
             if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
             if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }) { showHomeColors = false }
+            if (showProfile) ProfileDialog(store) { showProfile = false }
             if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
             if (showScheduleDetails) SubjectDetailsDialog(store.get("schedule"), { showScheduleDetails = false })
         }
@@ -376,18 +382,20 @@ private fun iconFor(s: Screen) = when(s) {
 }
 
 @Composable
-fun HomeSettingsDialog(store: LocalStore, theme: String, setTheme: (String) -> Unit, onAddClass: () -> Unit, onScheduleSettings: () -> Unit, onAppearance: () -> Unit, done: () -> Unit) {
+fun HomeSettingsDialog(store: LocalStore, theme: String, setTheme: (String) -> Unit, onAddClass: () -> Unit, onScheduleSettings: () -> Unit, onAppearance: () -> Unit, onProfile: () -> Unit, done: () -> Unit) {
     AlertDialog(onDismissRequest = done, title = { Text("CampusOS Settings") }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.heightIn(max = 620.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Personal", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            OutlinedButton(onClick = onProfile, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Person, null); Spacer(Modifier.width(8.dp)); Text("Profile") }
+            Text("Campus", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             Button(onClick = onAddClass, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("Add Class") }
+            OutlinedButton(onClick = onScheduleSettings, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.CalendarMonth, null); Spacer(Modifier.width(8.dp)); Text("Class Schedule Settings") }
+            Text("Appearance", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             OutlinedButton(onClick = onAppearance, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Palette, null); Spacer(Modifier.width(8.dp)); Text("Colors & Appearance") }
-            OutlinedButton(onClick = { setTheme(if (theme == "dark") "light" else "dark") }, modifier = Modifier.fillMaxWidth()) {
-                Icon(if (theme == "dark") Icons.Default.LightMode else Icons.Default.DarkMode, null); Spacer(Modifier.width(8.dp)); Text(if (theme == "dark") "Switch to Light Mode" else "Switch to Dark Mode")
-            }
+            OutlinedButton(onClick = { setTheme(if (theme == "dark") "light" else "dark") }, modifier = Modifier.fillMaxWidth()) { Icon(if (theme == "dark") Icons.Default.LightMode else Icons.Default.DarkMode, null); Spacer(Modifier.width(8.dp)); Text(if (theme == "dark") "Switch to Light Mode" else "Switch to Dark Mode") }
         }
     }, confirmButton = { TextButton(done) { Text("Close") } })
 }
-
 @Composable
 fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     val revision = store.revision
