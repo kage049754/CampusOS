@@ -22,8 +22,38 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import org.json.JSONObject
 
 private const val TASK_PREFS = "campusos_tasks"
+
+data class TaskSub(val id: Long, val title: String, val done: Boolean)
+data class TaskMeta(
+    val type: String = "Task",
+    val priority: String = "Medium",
+    val status: String = "Not started",
+    val reminders: List<Long> = emptyList(),
+    val attachments: List<String> = emptyList(),
+    val link: String = "",
+    val location: String = "",
+    val notes: String = "",
+    val pinned: Boolean = false,
+    val semester: String = "2026–2027 1st Semester",
+    val subtasks: List<TaskSub> = emptyList()
+)
+fun taskMeta(r: Record): TaskMeta {
+    return runCatching {
+        val o = JSONObject(r.extra)
+        val reminders = mutableListOf<Long>()
+        val a = o.optJSONArray("reminders")
+        if (a != null) for (i in 0 until a.length()) reminders += a.optLong(i)
+        TaskMeta(
+            type = o.optString("type", "Task"),
+            priority = o.optString("priority", "Medium"),
+            status = if (r.done) "Completed" else o.optString("status", "Not started"),
+            reminders = reminders
+        )
+    }.getOrElse { TaskMeta(status = if (r.done) "Completed" else "Not started") }
+}
 
 fun taskDue(r: Record): Long {
     if (r.dueDate.isBlank()) return Long.MAX_VALUE
