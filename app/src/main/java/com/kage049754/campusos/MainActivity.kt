@@ -1175,7 +1175,13 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
                                 },
                                 leadingContent = { Icon(Icons.Default.EventNote, null) },
                                 trailingContent = {
-                                    Row {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        val remindersOn = store.classRemindersEnabled(r.id)
+                                        Switch(
+                                            checked = remindersOn,
+                                            onCheckedChange = { store.setClassRemindersEnabled(r.id, it) },
+                                            modifier = Modifier.width(48.dp)
+                                        )
                                         IconButton({ editing = r }) { Icon(Icons.Default.Edit, "Edit class") }
                                         IconButton({
                                             deleteScheduleAndSync(store, r)
@@ -2076,7 +2082,7 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Notifications", fontWeight = FontWeight.Bold)
-                    Text("Get reminders before your next class and upcoming task deadlines.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Class reminders: 30 minutes and 10 minutes before each class. Task deadline reminders are also supported.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text(if (notificationsOn && CampusReminders.notificationsEnabled(context)) "Enabled" else "Off")
                         Switch(
