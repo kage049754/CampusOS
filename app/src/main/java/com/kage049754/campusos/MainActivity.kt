@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -327,8 +328,9 @@ fun CampusOSApp(activity: Activity) {
     val store = remember { LocalStore(activity) }
     var theme by remember { mutableStateOf(store.theme()) }
     var locked by remember { mutableStateOf(store.lockEnabled() && store.pin().isNotBlank()) }
-    var screen by remember { mutableStateOf(Screen.HOME) }
-    var search by remember { mutableStateOf("") }
+    var screenName by rememberSaveable { mutableStateOf(Screen.HOME.name) }
+    val screen = Screen.valueOf(screenName)
+    var search by rememberSaveable { mutableStateOf("") }
     var showHomeAdd by remember { mutableStateOf(false) }
     var showHomeColors by remember { mutableStateOf(false) }
     var showHomeSettings by remember { mutableStateOf(false) }
@@ -338,7 +340,10 @@ fun CampusOSApp(activity: Activity) {
     var showScheduleManager by remember { mutableStateOf(false) }
     var showScheduleDetails by remember { mutableStateOf(false) }
     var settingsModule by remember { mutableStateOf<String?>(null) }
-    var scheduleFullscreen by remember { mutableStateOf(false) }
+    var scheduleFullscreen by rememberSaveable { mutableStateOf(false) }
+    var subjectPageId by rememberSaveable { mutableLongStateOf(0L) }
+    var subjectPageMode by rememberSaveable { mutableIntStateOf(0) }
+    var subjectOpenedFile by rememberSaveable { mutableStateOf("") }
 
     if (locked) { LockScreen(store) { locked = false }; return }
 
@@ -349,6 +354,21 @@ fun CampusOSApp(activity: Activity) {
     }
 
     MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
+        if (subjectPageId != 0L) {
+            val subject = store.get("subjects").firstOrNull { it.id == subjectPageId }
+            if (subject == null) {
+                subjectPageId = 0L
+                subjectOpenedFile = ""
+            } else if (subjectOpenedFile.isNotBlank()) {
+                val file = File(subjectFolder(activity, subject.id), subjectOpenedFile)
+                if (file.exists()) InAppFileViewerPage(file) { subjectOpenedFile = "" }
+                else subjectOpenedFile = ""
+            } else if (subjectPageMode == 0) {
+                SubjectNotepadPage(subject, store) { subjectPageId = 0L }
+            } else {
+                SubjectLectureFilesPage(subject, { subjectOpenedFile = it }) { subjectPageId = 0L }
+            }
+        } else {
         Scaffold(
             topBar = {
                 if (!scheduleFullscreen) {
@@ -378,7 +398,7 @@ fun CampusOSApp(activity: Activity) {
                         ).forEach {
                             NavigationBarItem(
                                 selected = screen == it,
-                                onClick = { screen = it },
+                                onClick = { screenName = it.name },
                                 icon = { Icon(iconFor(it), it.label) },
                                 label = { Text(it.label) }
                             )
@@ -396,10 +416,10 @@ fun CampusOSApp(activity: Activity) {
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
                 when (screen) {
-                    Screen.HOME -> HomeScreen(store) { screen = it }
+                    Screen.HOME -> HomeScreen(store) { screenName = it.name }
                     Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }, { showScheduleDetails = true }) { search = "" }
                     Screen.TASKS -> CrudScreen("Assignments & To-do", "tasks", store, search) { search = "" }
-                    Screen.ACADEMICS -> AcademicsScreen(store, search) { search = "" }
+                    Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 })
                     Screen.FILES -> FilesScreen()
                     Screen.SETTINGS -> SettingsScreen(
                         store, theme,
@@ -431,13 +451,12 @@ fun CampusOSApp(activity: Activity) {
             if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
             if (showScheduleTableSettings) ScheduleTableSettingsDialog(store) { showScheduleTableSettings = false }
             if (showScheduleManager) ScheduleManagerDialog(store) { showScheduleManager = false }
-            settingsModule?.let { module -> ModuleSettingsDialog(module, { settingsModule = null }, { settingsModule = null; showProfile = true }, { settingsModule = null; showScheduleManager = true }, { settingsModule = null; showScheduleSettings = true }, { settingsModule = null; showScheduleTableSettings = true }, { settingsModule = null; showHomeAdd = true }, { settingsModule = null; screen = Screen.TASKS }, { settingsModule = null; screen = Screen.ACADEMICS }) }
+            settingsModule?.let { module -> ModuleSettingsDialog(module, { settingsModule = null }, { settingsModule = null; showProfile = true }, { settingsModule = null; showScheduleManager = true }, { settingsModule = null; showScheduleSettings = true }, { settingsModule = null; showScheduleTableSettings = true }, { settingsModule = null; showHomeAdd = true }, { settingsModule = null; screenName = Screen.TASKS.name }, { settingsModule = null; screenName = Screen.ACADEMICS.name }) }
             if (showScheduleDetails) SubjectDetailsDialog(store.get("schedule"), { showScheduleDetails = false })
         }
+        }
     }
-}
-
-private fun iconFor(s: Screen) = when(s) {
+}private fun iconFor(s: Screen) = when(s) {
     Screen.HOME -> Icons.Default.Home
     Screen.SCHEDULE -> Icons.Default.CalendarMonth
     Screen.TASKS -> Icons.Default.CheckCircle
@@ -1290,41 +1309,51 @@ fun CrudScreen(title:String,key:String,store:LocalStore,query:String,clear:()->U
     }
     if(showAdd)AddRecordDialog(title,key,store){showAdd=false;clear();refresh++}
 }
+
 @Composable
-fun AcademicsScreen(store: LocalStore, query: String, clear: () -> Unit) {
+fun AcademicsScreen(
+    store: LocalStore,
+    query: String,
+    clear: () -> Unit,
+    openNotepad: (Record) -> Unit,
+    openLectureFiles: (Record) -> Unit
+) {
     val revision = store.revision
     var tab by remember { mutableIntStateOf(0) }
     var refresh by remember { mutableIntStateOf(0) }
-    var selectedSubject by remember { mutableStateOf<Record?>(null) }
-    var subjectWorkspaceMode by remember { mutableIntStateOf(0) }
-    val labels = listOf("Subjects","Reviewers")
-    val keys = listOf("subjects","reviewers")
-    val list = remember(refresh, revision, query, tab) { store.get(keys[tab]).filter {
-        query.isBlank() || query == "__ADD__" || (it.title+" "+it.subtitle+" "+it.extra).contains(query, true)
-    }}
+    val labels = listOf("Subjects", "Reviewers")
+    val keys = listOf("subjects", "reviewers")
+    val list = remember(refresh, revision, query, tab) {
+        store.get(keys[tab]).filter {
+            query.isBlank() || query == "__ADD__" || (it.title + " " + it.subtitle + " " + it.extra).contains(query, true)
+        }
+    }
     Column(Modifier.fillMaxSize()) {
         Text("Academics", Modifier.padding(16.dp), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         ScrollableTabRow(selectedTabIndex = tab, edgePadding = 12.dp) {
             labels.forEachIndexed { i, label -> Tab(tab == i, { tab = i }, text = { Text(label) }) }
         }
-        if (list.isEmpty()) EmptyCard("No "+labels[tab].lowercase()+" yet. Add classes from Home Settings or use your existing data.")
-        else LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(list, key = { it.id }) { r ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(r.title, fontWeight = FontWeight.SemiBold)
-                            if (r.subtitle.isNotBlank()) Text(r.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                        }
-                        TextButton(onClick = { selectedSubject = r; subjectWorkspaceMode = 0 }) {
-                            Icon(Icons.Default.StickyNote2, null)
-                            Spacer(Modifier.width(4.dp))
-                            Text("Notepad")
-                        }
-                        TextButton(onClick = { selectedSubject = r; subjectWorkspaceMode = 1 }) {
-                            Icon(Icons.Default.Folder, null)
-                            Spacer(Modifier.width(4.dp))
-                            Text("Lecture Files")
+        if (list.isEmpty()) {
+            EmptyCard("No " + labels[tab].lowercase() + " yet. Add classes from Home Settings or use your existing data.")
+        } else {
+            LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(list, key = { it.id }) { r ->
+                    Card(Modifier.fillMaxWidth()) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(r.title, fontWeight = FontWeight.SemiBold)
+                                if (r.subtitle.isNotBlank()) Text(r.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            }
+                            TextButton(onClick = { openNotepad(r) }) {
+                                Icon(Icons.Default.StickyNote2, null)
+                                Spacer(Modifier.width(4.dp))
+                                Text("Notepad")
+                            }
+                            TextButton(onClick = { openLectureFiles(r) }) {
+                                Icon(Icons.Default.Folder, null)
+                                Spacer(Modifier.width(4.dp))
+                                Text("Lecture Files")
+                            }
                         }
                     }
                 }
@@ -1332,56 +1361,45 @@ fun AcademicsScreen(store: LocalStore, query: String, clear: () -> Unit) {
         }
     }
     if (query == "__ADD__") AddRecordDialog(labels[tab], keys[tab], store) { clear(); refresh++ }
-    selectedSubject?.let { subject ->
-        SubjectNotepadDialog(subject, store, subjectWorkspaceMode) { selectedSubject = null; refresh++ }
-    }
 }
 
 @Composable
-fun SubjectNotepadDialog(subject: Record, store: LocalStore, startMode: Int = 0, done: () -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var notes by remember(subject.id, store.revision) { mutableStateOf(store.subjectNotes(subject.id)) }
-    var files by remember(subject.id) { mutableStateOf(subjectFiles(context, subject.id)) }
-    var viewingFile by remember { mutableStateOf<File?>(null) }
-    var editingNote by remember { mutableStateOf<SubjectNote?>(null) }
-    var showNoteEditor by remember { mutableStateOf(false) }
-    var noteTitle by remember { mutableStateOf("") }
-    var noteBody by remember { mutableStateOf("") }
-    var noteQuery by remember { mutableStateOf("") }
-    var mode by remember { mutableIntStateOf(startMode) }
-    var noteSort by remember { mutableStateOf("Modified") }
-    var fileSort by remember { mutableStateOf("Newest") }
+fun SubjectNotepadPage(subject: Record, store: LocalStore, done: () -> Unit) {
+    val revision = store.revision
+    var notes by remember(subject.id, revision) { mutableStateOf(store.subjectNotes(subject.id)) }
+    var noteQuery by rememberSaveable(subject.id) { mutableStateOf("") }
+    var noteSort by rememberSaveable(subject.id) { mutableStateOf("Modified") }
+    var editingNoteId by rememberSaveable(subject.id) { mutableStateOf<Long?>(null) }
+    var noteTitle by rememberSaveable(subject.id) { mutableStateOf("") }
+    var noteBody by rememberSaveable(subject.id) { mutableStateOf("") }
 
-    fun openNewNote() {
-        editingNote = null
+    fun beginNewNote() {
+        editingNoteId = -1L
         noteTitle = ""
         noteBody = ""
-        showNoteEditor = true
     }
-
-    fun openNote(note: SubjectNote) {
-        editingNote = note
+    fun editNote(note: SubjectNote) {
+        editingNoteId = note.id
         noteTitle = note.title
         noteBody = note.body
-        showNoteEditor = true
     }
-
-    fun saveCurrentNote() {
+    fun saveNote() {
         if (noteTitle.isBlank() && noteBody.isBlank()) return
         val now = System.currentTimeMillis()
+        val old = if (editingNoteId != null && editingNoteId != -1L) notes.firstOrNull { it.id == editingNoteId } else null
         val note = SubjectNote(
-            id = editingNote?.id ?: maxOf(now, (notes.maxOfOrNull { it.id } ?: 0L) + 1L),
+            id = old?.id ?: maxOf(now, (notes.maxOfOrNull { it.id } ?: 0L) + 1L),
             title = noteTitle.trim().ifBlank { "Untitled note" },
             body = noteBody,
-            updatedAt = now
+            updatedAt = now,
+            favorite = old?.favorite ?: false,
+            order = old?.order ?: ((notes.maxOfOrNull { it.order } ?: 0L) + 1L)
         )
-        val updated = if (editingNote == null) notes + note
-        else notes.map { if (it.id == editingNote!!.id) note else it }
+        val updated = if (old == null) notes + note else notes.map { if (it.id == old.id) note else it }
         store.saveSubjectNotes(subject.id, updated)
         notes = store.subjectNotes(subject.id)
-        showNoteEditor = false
+        editingNoteId = null
     }
-
     fun deleteNote(note: SubjectNote) {
         store.saveSubjectNotes(subject.id, notes.filterNot { it.id == note.id })
         notes = store.subjectNotes(subject.id)
@@ -1389,306 +1407,252 @@ fun SubjectNotepadDialog(subject: Record, store: LocalStore, startMode: Int = 0,
 
     LaunchedEffect(subject.id) {
         if (notes.isEmpty()) {
-            val legacy = runCatching {
+            runCatching {
                 val o = JSONObject(subject.extra)
                 val title = o.optString("title")
                 val body = o.optString("body")
-                if (title.isBlank() && body.isBlank()) null
-                else SubjectNote(
-                    id = maxOf(System.currentTimeMillis(), 1L),
-                    title = title.ifBlank { "Untitled note" },
-                    body = body,
-                    updatedAt = System.currentTimeMillis()
-                )
-            }.getOrNull()
-            if (legacy != null) {
-                store.saveSubjectNotes(subject.id, listOf(legacy))
-                notes = store.subjectNotes(subject.id)
+                if (title.isNotBlank() || body.isNotBlank()) {
+                    val legacy = SubjectNote(maxOf(System.currentTimeMillis(), 1L), title.ifBlank { "Untitled note" }, body, System.currentTimeMillis())
+                    store.saveSubjectNotes(subject.id, listOf(legacy))
+                    notes = store.subjectNotes(subject.id)
+                }
             }
         }
     }
 
-    val filteredNotes = notes.filter {
-        noteQuery.isBlank() || (it.title + " " + it.body).contains(noteQuery, true)
-    }
-
-    val noteList = filteredNotes.sortedWith(compareByDescending<SubjectNote> { it.favorite }.thenBy { when (noteSort) { "Created" -> -it.id; "Alphabetical" -> it.title.lowercase(); "Manual" -> it.order; else -> -it.updatedAt } })
-    val fileList = files.sortedWith(compareByDescending<File> { File(context.filesDir, "subject_favorite_" + subject.id + "_" + it.name).exists() }.thenBy { when (fileSort) { "Alphabetical" -> it.name.lowercase(); "Oldest" -> it.lastModified(); "Manual" -> it.name.lowercase(); else -> -it.lastModified() } } )
-
-    val upload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        uri ?: return@rememberLauncherForActivityResult
-        copyUriToSubject(context, uri, subject.id)?.let {
-            files = subjectFiles(context, subject.id)
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = done,
-        title = {
-            Column {
-                Text(subject.title, fontWeight = FontWeight.Bold)
-                Text(
-                    "Notes & Lecture Files",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+    val filtered = notes.filter { noteQuery.isBlank() || (it.title + " " + it.body).contains(noteQuery, true) }
+    val noteList = filtered.sortedWith(
+        compareByDescending<SubjectNote> { it.favorite }.thenBy {
+            when (noteSort) {
+                "Created" -> -it.id
+                "Alphabetical" -> it.title.lowercase()
+                "Manual" -> it.order
+                else -> -it.updatedAt
             }
-        },
-        text = {
-            Column(
-                Modifier.fillMaxWidth().heightIn(max = 680.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                if (subject.subtitle.isNotBlank()) Text(subject.subtitle, fontWeight = FontWeight.SemiBold)
-                if (subject.professor.isNotBlank()) Text("Professor: " + subject.professor, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    )
 
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(mode == 0, { mode = 0 }, label = { Text("Notepad") }, leadingIcon = { Icon(Icons.Default.StickyNote2, null) })
-                    FilterChip(mode == 1, { mode = 1 }, label = { Text("Lecture Files") }, leadingIcon = { Icon(Icons.Default.Folder, null) })
+    Column(Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = {
+                Column {
+                    Text("Notepad", fontWeight = FontWeight.Bold)
+                    Text(subject.title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (mode == 0) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = ::openNewNote, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.NoteAdd, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("New note")
-                    }
-                    OutlinedButton(onClick = { upload.launch(arrayOf("*/*")) }, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.UploadFile, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Lecture file")
-                    }
-                }
-
-                if (mode == 0) OutlinedTextField(
+            },
+            navigationIcon = {
+                IconButton(onClick = done) { Icon(Icons.Default.ArrowBack, "Back to Academics") }
+            },
+            actions = {
+                if (editingNoteId == null) IconButton(onClick = { beginNewNote() }) { Icon(Icons.Default.NoteAdd, "New note") }
+            }
+        )
+        if (editingNoteId == null) {
+            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                OutlinedTextField(
                     value = noteQuery,
                     onValueChange = { noteQuery = it },
-                    modifier = Modifier.fillMaxWidth(),
+                    Modifier.fillMaxWidth().padding(top = 8.dp),
                     singleLine = true,
                     leadingIcon = { Icon(Icons.Default.Search, null) },
-                    label = { Text("Search notes") },
-                    placeholder = { Text("Search this subject's notes") }
+                    placeholder = { Text("Search notes") }
                 )
-
-                if (mode == 0) Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Sort:", style = MaterialTheme.typography.labelLarge)
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Sort:", fontWeight = FontWeight.SemiBold)
                     listOf("Modified", "Created", "Alphabetical", "Manual").forEach { option ->
-                        TextButton(onClick = { noteSort = option }) { Text(if (noteSort == option) "✓ $option" else option) }
-                    }
-                } else Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Sort:", style = MaterialTheme.typography.labelLarge)
-                    listOf("Newest", "Oldest", "Alphabetical", "Manual").forEach { option ->
-                        TextButton(onClick = { fileSort = option }) { Text(if (fileSort == option) "✓ $option" else option) }
+                        TextButton(onClick = { noteSort = option }) { Text(if (noteSort == option) "✓ " + option else option) }
                     }
                 }
-
-                Column(
-                    Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("Keep Notes / Notepad", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    if (filteredNotes.isEmpty()) {
-                        EmptyCard("No notes yet. Tap New note to create a note for " + subject.title + ".")
-                    } else {
-                        noteList.forEach { note ->
-                            Card(onClick = { openNote(note) }, modifier = Modifier.fillMaxWidth()) {
-                                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (noteList.isEmpty()) {
+                    EmptyCard("No notes yet. Tap + to create a note for " + subject.title + ".")
+                } else {
+                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(noteList, key = { it.id }) { note ->
+                            Card(onClick = { editNote(note) }, Modifier.fillMaxWidth()) {
+                                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.StickyNote2, null)
                                     Spacer(Modifier.width(10.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(note.title, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                        if (note.body.isNotBlank()) {
-                                            Text(
-                                                note.body,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                maxLines = 3,
-                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                            )
-                                        }
-                                        Text(
-                                            SimpleDateFormat("MMM d, yyyy h:mm a", Locale.getDefault()).format(Date(note.updatedAt)),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                        if (note.body.isNotBlank()) Text(note.body, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                        Text(SimpleDateFormat("MMM d, yyyy h:mm a", Locale.getDefault()).format(Date(note.updatedAt)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
-                                    IconButton(onClick = { store.saveSubjectNotes(subject.id, notes.map { if (it.id == note.id) it.copy(favorite = !it.favorite) else it }); notes = store.subjectNotes(subject.id) }) { Icon(if (note.favorite) Icons.Default.Star else Icons.Default.StarBorder, "Favorite") }
+                                    IconButton(onClick = {
+                                        store.saveSubjectNotes(subject.id, notes.map { if (it.id == note.id) it.copy(favorite = !it.favorite) else it })
+                                        notes = store.subjectNotes(subject.id)
+                                    }) { Icon(if (note.favorite) Icons.Default.Star else Icons.Default.StarBorder, "Favorite") }
                                     IconButton(onClick = { deleteNote(note) }) { Icon(Icons.Default.Delete, "Delete note") }
                                 }
                             }
                         }
                     }
-
-                    if (mode == 1) {
-                    HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Lecture / Lesson Files", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text(
-                                "Keep PDFs, PowerPoint, Word, images, and other lecture files with this subject.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        IconButton(onClick = { upload.launch(arrayOf("*/*")) }) {
-                            Icon(Icons.Default.Add, "Add lecture file")
-                        }
-                    }
-
-                    if (files.isEmpty()) {
-                        EmptyCard("No lecture files yet. Add the professor's PDF, PPT/PPTX, DOC/DOCX, or another file here.")
-                    } else {
-                        fileList.forEachIndexed { index, file ->
-                            Card(onClick = { viewingFile = file }, modifier = Modifier.fillMaxWidth()) {
-                                ListItem(
-                                    headlineContent = { Text(file.name, maxLines = 2) },
-                                    supportingContent = { Text("Lecture " + (index + 1) + " • " + formatSize(file.length())) },
-                                    leadingContent = {
-                                        Icon(
-                                            when (fileExtension(file)) {
-                                                "pdf" -> Icons.Default.PictureAsPdf
-                                                "ppt", "pptx" -> Icons.Default.Slideshow
-                                                "doc", "docx" -> Icons.Default.Description
-                                                else -> Icons.Default.InsertDriveFile
-                                            },
-                                            null
-                                        )
-                                    },
-                                    trailingContent = {
-                                        val marker = File(context.filesDir, "subject_favorite_" + subject.id + "_" + file.name)
-                                        IconButton(onClick = { if (marker.exists()) marker.delete() else marker.createNewFile() }) {
-                                            Icon(if (marker.exists()) Icons.Default.Star else Icons.Default.StarBorder, "Favorite")
-                                        }
-                                        IconButton(onClick = {
-                                            file.delete()
-                                            marker.delete()
-                                            files = subjectFiles(context, subject.id)
-                                        }) {
-                                            Icon(Icons.Default.Delete, "Delete lecture file")
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                    }
-                    }
                 }
             }
-        },
-        confirmButton = { TextButton(done) { Text("Close") } }
-    )
-
-    if (showNoteEditor) {
-        AlertDialog(
-            onDismissRequest = { showNoteEditor = false },
-            title = { Text(if (editingNote == null) "New note" else "Edit note") },
-            text = {
-                Column(
-                    Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedTextField(
-                        value = noteTitle,
-                        onValueChange = { noteTitle = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        label = { Text("Title") },
-                        placeholder = { Text("e.g. DCIT 25 Lecture 1") }
-                    )
-                    OutlinedTextField(
-                        value = noteBody,
-                        onValueChange = { noteBody = it },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 260.dp),
-                        label = { Text("Note / lecture notes") },
-                        placeholder = { Text("Write your notes, explanations, reminders, or reviewer here...") }
-                    )
+        } else {
+            Column(Modifier.fillMaxSize().padding(16.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { editingNoteId = null }) { Icon(Icons.Default.ArrowBack, "Back to notes") }
+                    Text(if (editingNoteId == -1L) "New note" else "Edit note", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 }
-            },
-            confirmButton = { Button(onClick = ::saveCurrentNote) { Text("Save note") } },
-            dismissButton = { TextButton(onClick = { showNoteEditor = false }) { Text("Cancel") } }
-        )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(noteTitle, { noteTitle = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Title") })
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(noteBody, { noteBody = it }, Modifier.fillMaxWidth().weight(1f), label = { Text("Note") }, placeholder = { Text("Write your notes here...") })
+                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { editingNoteId = null }, Modifier.weight(1f)) { Text("Cancel") }
+                    Button(onClick = { saveNote() }, Modifier.weight(1f)) { Text("Save") }
+                }
+            }
+        }
     }
-
-    viewingFile?.let { file -> InAppFileViewerDialog(file) { viewingFile = null } }
 }
 
 @Composable
-fun InAppFileViewerDialog(file: File, done: () -> Unit) {
-    var page by remember(file) { mutableIntStateOf(0) }
-    var slide by remember(file) { mutableIntStateOf(0) }
-    var fullScreen by remember(file) { mutableStateOf(false) }
-    val ext = fileExtension(file)
-    Dialog(onDismissRequest = done) {
-        Card(Modifier.fillMaxWidth().fillMaxHeight(if (fullScreen) 1f else 0.92f), shape = if (fullScreen) RoundedCornerShape(0.dp) else RoundedCornerShape(24.dp)) {
-            Column(Modifier.fillMaxSize()) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(file.name, Modifier.weight(1f), maxLines = 2, fontWeight = FontWeight.Bold)
-                    IconButton({ fullScreen = !fullScreen }) {
-                        Icon(if (fullScreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, "Toggle full screen")
-                    }
-                    IconButton(done) { Icon(Icons.Default.Close, "Close") }
+fun SubjectLectureFilesPage(subject: Record, openFile: (String) -> Unit, done: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var files by remember(subject.id) { mutableStateOf(subjectFiles(context, subject.id)) }
+    var fileSort by rememberSaveable(subject.id) { mutableStateOf("Newest") }
+    val upload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        copyUriToSubject(context, uri, subject.id)?.let { files = subjectFiles(context, subject.id) }
+    }
+    val fileList = files.sortedWith(
+        compareByDescending<File> { File(context.filesDir, "subject_favorite_" + subject.id + "_" + it.name).exists() }.thenBy {
+            when (fileSort) {
+                "Alphabetical" -> it.name.lowercase()
+                "Oldest" -> it.lastModified()
+                "Manual" -> it.name.lowercase()
+                else -> -it.lastModified()
+            }
+        }
+    )
+    Column(Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = {
+                Column {
+                    Text("Lecture Files", fontWeight = FontWeight.Bold)
+                    Text(subject.title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                HorizontalDivider()
-                when {
-                    ext == "pdf" -> {
-                        val pageCount = remember(file) {
-                            runCatching {
-                                ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
-                                    PdfRenderer(descriptor).use { it.pageCount }
+            },
+            navigationIcon = { IconButton(onClick = done) { Icon(Icons.Default.ArrowBack, "Back to Academics") } },
+            actions = { IconButton(onClick = { upload.launch(arrayOf("*/*")) }) { Icon(Icons.Default.Add, "Add lecture file") } }
+        )
+        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                Text("Sort:", fontWeight = FontWeight.SemiBold)
+                listOf("Newest", "Oldest", "Alphabetical", "Manual").forEach { option ->
+                    TextButton(onClick = { fileSort = option }) { Text(if (fileSort == option) "✓ " + option else option) }
+                }
+            }
+            if (fileList.isEmpty()) {
+                EmptyCard("No lecture files yet. Tap + to add a PDF, PowerPoint, Word file, image, or other lecture file.")
+            } else {
+                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(fileList, key = { it.name }) { file ->
+                        val marker = File(context.filesDir, "subject_favorite_" + subject.id + "_" + file.name)
+                        Card(onClick = { openFile(file.name) }, Modifier.fillMaxWidth()) {
+                            ListItem(
+                                headlineContent = { Text(file.name, maxLines = 2) },
+                                supportingContent = { Text("Lecture " + (fileList.indexOf(file) + 1) + " • " + formatSize(file.length())) },
+                                leadingContent = {
+                                    Icon(when (fileExtension(file)) {
+                                        "pdf" -> Icons.Default.PictureAsPdf
+                                        "ppt", "pptx" -> Icons.Default.Slideshow
+                                        "doc", "docx" -> Icons.Default.Description
+                                        else -> Icons.Default.InsertDriveFile
+                                    }, null)
+                                },
+                                trailingContent = {
+                                    IconButton(onClick = {
+                                        if (marker.exists()) marker.delete() else marker.createNewFile()
+                                        files = subjectFiles(context, subject.id)
+                                    }) { Icon(if (marker.exists()) Icons.Default.Star else Icons.Default.StarBorder, "Favorite") }
+                                    IconButton(onClick = {
+                                        file.delete()
+                                        marker.delete()
+                                        files = subjectFiles(context, subject.id)
+                                    }) { Icon(Icons.Default.Delete, "Delete lecture file") }
                                 }
-                            }.getOrDefault(0)
-                        }
-                        Column(Modifier.fillMaxSize()) {
-                            if (pageCount > 0) {
-                                Box(Modifier.fillMaxWidth().weight(1f).padding(6.dp), contentAlignment = Alignment.Center) {
-                                    renderPdfPage(file, page.coerceIn(0, pageCount - 1))?.let { bitmap ->
-                                        Image(bitmap.asImageBitmap(), file.name, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-                                    } ?: EmptyCard("Unable to render this PDF.")
-                                }
-                                Row(Modifier.fillMaxWidth().padding(6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Page ${page + 1} of $pageCount")
-                                    Row {
-                                        TextButton({ if (page > 0) page-- }, enabled = page > 0) { Text("Previous") }
-                                        TextButton({ if (page < pageCount - 1) page++ }, enabled = page < pageCount - 1) { Text("Next") }
-                                    }
-                                }
-                            } else EmptyCard("Unable to open this PDF.")
+                            )
                         }
                     }
-                    ext == "pptx" || ext == "ppt" -> {
-                        val slides = remember(file) { readOfficeSlides(file) }
-                        Column(Modifier.fillMaxSize()) {
-                            if (slides.isNotEmpty()) {
-                                Box(Modifier.fillMaxWidth().weight(1f).padding(10.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                                    Text(slides[slide.coerceIn(0, slides.lastIndex)].ifBlank { "Blank slide" }, Modifier.padding(24.dp), style = MaterialTheme.typography.titleMedium)
-                                }
-                                Row(Modifier.fillMaxWidth().padding(6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Slide ${slide + 1} of ${slides.size}")
-                                    Row {
-                                        TextButton({ if (slide > 0) slide-- }, enabled = slide > 0) { Text("Previous") }
-                                        TextButton({ if (slide < slides.lastIndex) slide++ }, enabled = slide < slides.lastIndex) { Text("Next") }
-                                    }
-                                }
-                            } else EmptyCard("Unable to read this PowerPoint offline.")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun InAppFileViewerPage(file: File, done: () -> Unit) {
+    var page by rememberSaveable(file.absolutePath) { mutableIntStateOf(0) }
+    var slide by rememberSaveable(file.absolutePath) { mutableIntStateOf(0) }
+    val ext = fileExtension(file)
+    Column(Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text(file.name, maxLines = 2, fontWeight = FontWeight.Bold) },
+            navigationIcon = { IconButton(onClick = done) { Icon(Icons.Default.ArrowBack, "Back to Lecture Files") } }
+        )
+        HorizontalDivider()
+        when {
+            ext == "pdf" -> {
+                val pageCount = remember(file) {
+                    runCatching {
+                        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+                            PdfRenderer(descriptor).use { it.pageCount }
                         }
-                    }
-                    ext == "docx" -> {
-                        val text = remember(file) { readOfficeText(file) ?: "No readable text was found in this Word document." }
-                        LazyColumn(Modifier.fillMaxSize().padding(10.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
-                            item {
-                                Card(Modifier.fillMaxWidth().widthIn(max = 794.dp), shape = RoundedCornerShape(0.dp)) {
-                                    Column(Modifier.padding(36.dp)) {
-                                        Text("A4 Print Layout", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Spacer(Modifier.height(10.dp))
-                                        Text(text, style = MaterialTheme.typography.bodyLarge)
-                                    }
-                                }
+                    }.getOrDefault(0)
+                }
+                Column(Modifier.fillMaxSize()) {
+                    if (pageCount > 0) {
+                        Box(Modifier.fillMaxWidth().weight(1f).padding(6.dp), contentAlignment = Alignment.Center) {
+                            renderPdfPage(file, page.coerceIn(0, pageCount - 1))?.let { bitmap ->
+                                Image(bitmap.asImageBitmap(), file.name, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                            } ?: EmptyCard("Unable to render this PDF.")
+                        }
+                        Row(Modifier.fillMaxWidth().padding(6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Page " + (page + 1) + " of " + pageCount)
+                            Row {
+                                TextButton({ if (page > 0) page-- }, enabled = page > 0) { Text("Previous") }
+                                TextButton({ if (page < pageCount - 1) page++ }, enabled = page < pageCount - 1) { Text("Next") }
+                            }
+                        }
+                    } else EmptyCard("Unable to open this PDF.")
+                }
+            }
+            ext == "pptx" || ext == "ppt" -> {
+                val slides = remember(file) { readOfficeSlides(file) }
+                Column(Modifier.fillMaxSize()) {
+                    if (slides.isNotEmpty()) {
+                        Box(Modifier.fillMaxWidth().weight(1f).padding(10.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                            Text(slides[slide.coerceIn(0, slides.lastIndex)].ifBlank { "Blank slide" }, Modifier.padding(24.dp), style = MaterialTheme.typography.titleMedium)
+                        }
+                        Row(Modifier.fillMaxWidth().padding(6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Slide " + (slide + 1) + " of " + slides.size)
+                            Row {
+                                TextButton({ if (slide > 0) slide-- }, enabled = slide > 0) { Text("Previous") }
+                                TextButton({ if (slide < slides.lastIndex) slide++ }, enabled = slide < slides.lastIndex) { Text("Next") }
+                            }
+                        }
+                    } else EmptyCard("Unable to read this PowerPoint offline.")
+                }
+            }
+            ext == "docx" -> {
+                val text = remember(file) { readOfficeText(file) ?: "No readable text was found in this Word document." }
+                LazyColumn(Modifier.fillMaxSize().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    item {
+                        Card(Modifier.fillMaxWidth().widthIn(max = 794.dp), shape = RoundedCornerShape(0.dp)) {
+                            Column(Modifier.padding(36.dp)) {
+                                Text("A4 Print Layout", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(Modifier.height(10.dp))
+                                Text(text, style = MaterialTheme.typography.bodyLarge)
                             }
                         }
                     }
-                    else -> {
-                        val text = remember(file) { readDisplayText(file) }
-                        LazyColumn(Modifier.fillMaxSize().padding(16.dp)) { item { Text(text, style = MaterialTheme.typography.bodyLarge) } }
-                    }
                 }
+            }
+            else -> {
+                val text = remember(file) { readDisplayText(file) }
+                LazyColumn(Modifier.fillMaxSize().padding(16.dp)) { item { Text(text, style = MaterialTheme.typography.bodyLarge) } }
             }
         }
     }
