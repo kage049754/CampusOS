@@ -1,6 +1,7 @@
 package com.kage049754.campusos
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,7 +23,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-private data class TaskInfo(val type:String="Assignment",val priority:String="Medium",val status:String="Not started",val reminder:String="",val link:String="",val location:String="",val semester:String="2026–2027 • 1st Semester",val archived:Boolean=false,val pinned:Boolean=false,val notes:String="",val subtasks:List<Pair<String,Boolean>>=emptyList())
+private data class TaskInfo(val type:String="Assignment",val priority:String="Medium",val status:String="Not started",val reminder:String="",val link:String="",val location:String="",val semester:String="2026–2027 • 1st Semester",val archived:Boolean=false,val pinned:Boolean=false,val notes:String="",val subtasks:List<Pair<String,Boolean>> = emptyList())
 private fun taskInfo(r:Record):TaskInfo=runCatching{val o=JSONObject(r.extra);val a=o.optJSONArray("subtasks")?:JSONArray();TaskInfo(o.optString("type","Assignment"),o.optString("priority","Medium"),o.optString("status",if(r.done)"Completed" else "Not started"),o.optString("reminder"),o.optString("link"),o.optString("location"),o.optString("semester","2026–2027 • 1st Semester"),o.optBoolean("archived"),o.optBoolean("pinned"),o.optString("notes"),(0 until a.length()).mapNotNull{i->a.optJSONObject(i)?.let{it.optString("title") to it.optBoolean("done")}})}.getOrElse{TaskInfo(notes=r.extra)}
 private fun taskExtra(m:TaskInfo):String{val a=JSONArray();m.subtasks.forEach{(t,d)->a.put(JSONObject().apply{put("title",t);put("done",d)})};return JSONObject().apply{put("type",m.type);put("priority",m.priority);put("status",m.status);put("reminder",m.reminder);put("link",m.link);put("location",m.location);put("semester",m.semester);put("archived",m.archived);put("pinned",m.pinned);put("notes",m.notes);put("subtasks",a)}.toString()}
 private fun taskDay(n:Int=0)=SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Calendar.getInstance().apply{add(Calendar.DAY_OF_YEAR,n)}.time)
