@@ -669,19 +669,31 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
     val tableFontSize = remember(revision) { store.scheduleTableFontSize() }
     val customDayWidth = remember(revision) { store.scheduleTableDayWidth() }
     val customRowHeight = remember(revision) { store.scheduleTableRowHeight() }
+    var zoom by remember(revision) { mutableFloatStateOf(1f) }
 
     Column(Modifier.fillMaxSize()) {
         BoxWithConstraints(
             Modifier.fillMaxWidth().weight(1f).padding(horizontal = 4.dp)
         ) {
-            val dayWidth = if (customDayWidth > 0f) customDayWidth.dp else (maxWidth - 56.dp).coerceAtLeast(0.dp) / scheduleDays.size.coerceAtLeast(1)
+            val baseDayWidth = if (customDayWidth > 0f) customDayWidth.dp else (maxWidth - 56.dp).coerceAtLeast(0.dp) / scheduleDays.size.coerceAtLeast(1)
+            val dayWidth = baseDayWidth * zoom
             val headerHeight = 34.dp
             val footerHeight = 0.dp
-            val rowHeight = if (customRowHeight > 0f) customRowHeight.dp else ((maxHeight - headerHeight - footerHeight) / hours.size.coerceAtLeast(1)).coerceAtLeast(30.dp)
+            val baseRowHeight = if (customRowHeight > 0f) customRowHeight.dp else ((maxHeight - headerHeight - footerHeight) / hours.size.coerceAtLeast(1)).coerceAtLeast(30.dp)
+            val rowHeight = baseRowHeight * zoom
 
             Column(Modifier.fillMaxSize()
                 .then(if (horizontalScrollEnabled) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
                 .then(if (verticalScrollEnabled) Modifier.verticalScroll(rememberScrollState()) else Modifier)) {
+                if (horizontalScrollEnabled || verticalScrollEnabled) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Zoom ${zoom.toInt()}x", style = MaterialTheme.typography.labelSmall)
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(onClick = { zoom = (zoom - 0.25f).coerceAtLeast(1f) }) { Text("−") }
+                        TextButton(onClick = { zoom = (zoom + 0.25f).coerceAtMost(3f) }) { Text("+") }
+                        TextButton(onClick = { zoom = 1f }) { Text("Reset") }
+                    }
+                }
                 Row(Modifier.height(headerHeight)) {
                     Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) {
                         Text("Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
@@ -739,7 +751,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                                             Column(Modifier.fillMaxSize().padding(horizontal = 4.dp, vertical = 2.dp), verticalArrangement = Arrangement.Center) {
                                                 Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                                 Text(types.ifBlank { "Class" }, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                                                if (rooms.isNotBlank()) Text("Room: $rooms", style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                if (rooms.isNotBlank()) Text("Room: $rooms", style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 3, softWrap = true, overflow = androidx.compose.ui.text.style.TextOverflow.Clip)
                                             }
                                         }
                                     }
