@@ -234,14 +234,66 @@ fun TasksScreen(store: LocalStore, query: String, clear: () -> Unit, openSubject
 }
 
 @Composable private fun TaskDetail(r:Record,store:LocalStore,subjects:List<Record>,openSubject:(Long)->Unit,done:()->Unit){
-    val m=taskMeta(r);val s=subjects.firstOrNull{it.id==r.subjectId};var edit by remember{mutableStateOf(false)}
+    val context=androidx.compose.ui.platform.LocalContext.current
+    val m=taskMeta(r);val s=subjects.firstOrNull{it.id==r.subjectId}
+    var edit by remember{mutableStateOf(false)}
+    var viewerFile by remember{mutableStateOf<File?>(null)}
     if(edit){TaskEditor(store,subjects,m.semester,r){edit=false;done()};return}
+
+    viewerFile?.let { file ->
+        Dialog(onDismissRequest={viewerFile=null}) {
+            Surface(Modifier.fillMaxSize(), shape=RoundedCornerShape(0.dp)) {
+                if(file.exists()) InAppFileViewerPage(file){viewerFile=null}
+                else Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement=Arrangement.Center, horizontalAlignment=Alignment.CenterHorizontally) {
+                    Text("Attachment is no longer available.", fontWeight=FontWeight.Bold)
+                    Text(file.name, color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(12.dp))
+                    Button({viewerFile=null}){Text("Close")}
+                }
+            }
+        }
+    }
+
     AlertDialog(onDismissRequest=done,title={Text(r.title)},text={Column(Modifier.heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(7.dp)){
-        Text(pIcon(m.priority)+" "+m.priority+" priority • "+m.status,fontWeight=FontWeight.Bold);s?.let{Text("📚 "+it.title,color=MaterialTheme.colorScheme.primary,modifier=Modifier.clickable{openSubject(it.id)})};Text("📅 "+taskLabel(r));if(taskOverdue(r))Text("⚠️ OVERDUE",color=MaterialTheme.colorScheme.error,fontWeight=FontWeight.Bold)
-        if(r.subtitle.isNotBlank())Text(r.subtitle);if(m.location.isNotBlank())Text("📍 "+m.location);if(m.link.isNotBlank())Text("🔗 "+m.link);if(m.notes.isNotBlank())Text("📝 "+m.notes)
-        if(m.subtasks.isNotEmpty()){Text("Checklist",fontWeight=FontWeight.Bold);m.subtasks.forEach{sub->Row(verticalAlignment=Alignment.CenterVertically){Checkbox(sub.done,{val nm=m.copy(subtasks=m.subtasks.map{if(it.id==sub.id)it.copy(done=!sub.done)else it});store.put("tasks",store.get("tasks").map{if(it.id==r.id)saveTask(it,nm)else it})});Text(sub.title)}}}
-        if(m.attachments.isNotEmpty()){Text("Attachments",fontWeight=FontWeight.Bold);m.attachments.forEach{Text("📎 "+it,style=MaterialTheme.typography.bodySmall)}}
-    }},confirmButton={Button({edit=true}){Text("Edit")}},dismissButton={Row{TextButton({val nm=m.copy(status="Completed");store.put("tasks",store.get("tasks").map{if(it.id==r.id)saveTask(it,nm)else it});done()}){Text("Complete")};TextButton({store.put("tasks",store.get("tasks").filterNot{it.id==r.id});done()}){Text("Delete")}}})
+        Text(pIcon(m.priority)+" "+m.priority+" priority • "+m.status,fontWeight=FontWeight.Bold)
+        s?.let{Text("📚 "+it.title,color=MaterialTheme.colorScheme.primary,modifier=Modifier.clickable{openSubject(it.id)})}
+        Text("📅 "+taskLabel(r))
+        if(taskOverdue(r))Text("⚠️ OVERDUE",color=MaterialTheme.colorScheme.error,fontWeight=FontWeight.Bold)
+        if(r.subtitle.isNotBlank())Text(r.subtitle)
+        if(m.location.isNotBlank())Text("📍 "+m.location)
+        if(m.link.isNotBlank())Text("🔗 "+m.link)
+        if(m.notes.isNotBlank())Text("📝 "+m.notes)
+        if(m.subtasks.isNotEmpty()){
+            Text("Checklist",fontWeight=FontWeight.Bold)
+            m.subtasks.forEach{sub->
+                Row(verticalAlignment=Alignment.CenterVertically){
+                    Checkbox(sub.done,{
+                        val nm=m.copy(subtasks=m.subtasks.map{if(it.id==sub.id)it.copy(done=!sub.done)else it})
+                        store.put("tasks",store.get("tasks").map{if(it.id==r.id)saveTask(it,nm)else it})
+                    })
+                    Text(sub.title)
+                }
+            }
+        }
+        if(m.attachments.isNotEmpty()){
+            Text("Attachments",fontWeight=FontWeight.Bold)
+            m.attachments.forEach { name ->
+                val file=File(context.filesDir,"task_files/$name")
+                OutlinedButton(onClick={viewerFile=file},modifier=Modifier.fillMaxWidth()){
+                    Icon(if(file.exists())Icons.Default.AttachFile else Icons.Default.ErrorOutline,null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(if(file.exists())"Open $name" else "$name (missing)",maxLines=2,overflow=TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }},confirmButton={Button({edit=true}){Text("Edit")}},dismissButton={Row{
+        TextButton({
+            val nm=m.copy(status="Completed")
+            store.put("tasks",store.get("tasks").map{if(it.id==r.id)saveTask(it,nm)else it})
+            done()
+        }){Text("Complete")}
+        TextButton({store.put("tasks",store.get("tasks").filterNot{it.id==r.id});done()}){Text("Delete")}
+    }})
 }
 
 @Composable private fun TaskExport(tasks:List<Record>,done:()->Unit){
