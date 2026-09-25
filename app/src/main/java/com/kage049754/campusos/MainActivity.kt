@@ -598,7 +598,23 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                 StatCard("Tasks", tasks.count { !it.done }.toString(), Modifier.weight(1f))
             }
         }
-        item { SectionTitle("Today's classes") }
+        item {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                SectionTitle("Today's classes")
+                Spacer(Modifier.width(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Text(
+                        todaySchedule.size.toString(),
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
         if (todaySchedule.isEmpty()) item { EmptyCard("No classes scheduled for today.") }
         else items(todaySchedule.take(5), key = { it.id }) { r -> HomeTodayClassCard(r) }
         item { SectionTitle("Tasks to do") }
@@ -630,9 +646,24 @@ fun HomeTodayClassCard(r: Record) {
         colors = CardDefaults.cardColors(containerColor = bg, contentColor = readableContentColor(bg))
     ) {
         Column(Modifier.padding(14.dp)) {
-            Text(r.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    r.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                if (r.startTime.isNotBlank() && r.endTime.isNotBlank()) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "${r.startTime}-${r.endTime}",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
             if (r.subtitle.isNotBlank()) Text(r.subtitle)
-            if (r.day.isNotBlank()) Text("${r.day} • ${r.startTime}-${r.endTime}", style = MaterialTheme.typography.labelMedium)
+            if (r.day.isNotBlank()) Text(r.day, style = MaterialTheme.typography.labelMedium)
             if (r.room.isNotBlank()) Text("Room: ${r.room}")
             if (r.professor.isNotBlank()) Text("Professor: ${r.professor}")
             if (r.classType.isNotBlank()) Text("Option: ${r.classType}")
@@ -1032,12 +1063,23 @@ fun ScheduleHighlightColorDialog(store: LocalStore, done: () -> Unit) {
 fun String.toHourOrNull(): Int? = substringBefore(":").toIntOrNull()
 private fun formatHourRange(start: Int, end: Int) = "%02d:00-%02d:00".format(start, end)
 private fun mergeTodayClasses(records: List<Record>): List<Record> {
-    val sorted=records.sortedBy { it.startTime.toHourOrNull() ?: 99 }; val out=mutableListOf<Record>()
+    // Same subject + consecutive time on the same day = one class.
+    // Any vacant/gap period starts a separate class, even for the same subject.
+    val sorted = records.sortedBy { it.startTime.toHourOrNull() ?: 99 }
+    val out = mutableListOf<Record>()
     for (r in sorted) {
-        val p=out.lastOrNull(); val pe=p?.endTime?.toHourOrNull(); val s=r.startTime.toHourOrNull()
-        if (p!=null && p.title.equals(r.title,true) && p.room.trim().equals(r.room.trim(),true) && p.professor.trim().equals(r.professor.trim(),true) && p.classType.equals(r.classType,true) && pe!=null && s!=null && pe==s) out[out.lastIndex]=p.copy(endTime=r.endTime)
-        else out+=r
-    }; return out
+        val previous = out.lastOrNull()
+        val previousEnd = previous?.endTime?.toHourOrNull()
+        val start = r.startTime.toHourOrNull()
+        val sameSubject = previous?.title?.trim()?.equals(r.title.trim(), ignoreCase = true) == true
+        val consecutive = previousEnd != null && start != null && previousEnd == start
+        if (previous != null && sameSubject && consecutive) {
+            out[out.lastIndex] = previous.copy(endTime = r.endTime)
+        } else {
+            out += r
+        }
+    }
+    return out
 }
 
 private fun deleteScheduleAndSync(store: LocalStore, classRecord: Record) {
