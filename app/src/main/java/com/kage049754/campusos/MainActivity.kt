@@ -621,7 +621,7 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
                                 )
                                 .padding(2.dp)
                             ) {
-                                classes.firstOrNull()?.let { r ->
+                                classes.take(2).forEach { r ->
                                     val isCurrentClass = day.equals(today, true) && isCurrentHour
                                     val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
                                     Card(
@@ -745,6 +745,7 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
 
     if (showAdd) ScheduleDialog(store) { showAdd = false; clear(); refresh++ }
     if (showColors) ScheduleHighlightColorDialog(store) { showColors = false }
+    if (showDaySetup) ScheduleDaySetupDialog(store) { showDaySetup = false }
 }
 
 @Composable
@@ -810,9 +811,6 @@ private fun syncSubjectFromClass(store: LocalStore, classRecord: Record) {
     }
     store.put("subjects", if (existing == null) subjects + synced
         else subjects.map { if (it.id == existing.id) synced else it })
-}
-
-    if(showDaySetup) ScheduleDaySetupDialog(store){showDaySetup=false}
 }
 
 @Composable
@@ -1380,3 +1378,4 @@ fun LockScreen(store: LocalStore, unlock: () -> Unit) {
 @Composable fun EmptyCard(text: String) { Card(Modifier.fillMaxWidth()) { Text(text, Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) } }
 @Composable fun SmallAction(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, click: () -> Unit) {
     OutlinedButton(onClick = click, modifier = Modifier.fillMaxWidth()) { Icon(icon, null); Spacer(Modifier.width(4.dp)); Text(text) }
+
