@@ -1363,6 +1363,7 @@ fun AcademicsScreen(
     if (query == "__ADD__") AddRecordDialog(labels[tab], keys[tab], store) { clear(); refresh++ }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubjectNotepadPage(subject: Record, store: LocalStore, done: () -> Unit) {
     val revision = store.revision
@@ -1507,6 +1508,7 @@ fun SubjectNotepadPage(subject: Record, store: LocalStore, done: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubjectLectureFilesPage(subject: Record, openFile: (String) -> Unit, done: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -1582,6 +1584,7 @@ fun SubjectLectureFilesPage(subject: Record, openFile: (String) -> Unit, done: (
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InAppFileViewerPage(file: File, done: () -> Unit) {
     var page by rememberSaveable(file.absolutePath) { mutableIntStateOf(0) }
