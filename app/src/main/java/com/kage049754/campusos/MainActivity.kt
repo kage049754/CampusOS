@@ -882,6 +882,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
     var showDetails by remember { mutableStateOf(false) }
     var filterType by rememberSaveable { mutableStateOf("All") }
     var todayOnly by rememberSaveable { mutableStateOf(false) }
+    var weekOffset by rememberSaveable { mutableIntStateOf(0) }
     var showScheduleSettings by remember { mutableStateOf(false) }
     var nowTick by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
@@ -943,11 +944,17 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
     }
 
     Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=2.dp),verticalAlignment=Alignment.CenterVertically) {
+            IconButton(onClick={weekOffset--}) { Icon(Icons.Default.ChevronLeft,"Previous week") }
+            Text(if (weekOffset == 0) "This week" else if (weekOffset > 0) "Week +$weekOffset" else "Week $weekOffset", Modifier.weight(1f), fontWeight=FontWeight.Bold)
+            IconButton(onClick={weekOffset++}) { Icon(Icons.Default.ChevronRight,"Next week") }
+            TextButton(enabled=weekOffset!=0,onClick={weekOffset=0}) { Text("Today") }
+        }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal=8.dp,vertical=5.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
             listOf("All","Lecture","Lab").forEach { option ->
                 FilterChip(filterType==option,{filterType=option},label={Text(option)})
             }
-            FilterChip(todayOnly,{todayOnly=!todayOnly},label={Text(if(todayOnly) "Today" else "Week")})
+            FilterChip(todayOnly,{todayOnly=!todayOnly; if (todayOnly) weekOffset=0},label={Text(if(todayOnly) "Today" else "Week")})
             TextButton({zoom=(zoom-0.25f).coerceAtLeast(0.75f)}){Text("−")}
             Text("${"%.2f".format(zoom)}x",modifier=Modifier.padding(top=10.dp),style=MaterialTheme.typography.labelSmall)
             TextButton({zoom=(zoom+0.25f).coerceAtMost(3f)}){Text("+")}
@@ -1011,7 +1018,10 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                                 if (isToday) Box(Modifier.size(6.dp).background(dayHighlight, RoundedCornerShape(50)))
-                                Text(d.take(3), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
+                                Column(horizontalAlignment=Alignment.CenterHorizontally) {
+                                    Text(d.take(3), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
+                                    Text(scheduleDateLabel(d, weekOffset), style = MaterialTheme.typography.labelSmall.copy(fontSize = (tableFontSize - 1f).coerceAtLeast(8f).sp))
+                                }
                             }
                         }
                     }
@@ -1282,6 +1292,16 @@ fun ScheduleHighlightColorDialog(store: LocalStore, done: () -> Unit) {
 fun String.toHourOrNull(): Int? = substringBefore(":").toIntOrNull()
 private fun formatHourRange(start: Int, end: Int) = "%02d:00-%02d:00".format(start, end)
 private fun formatMinutes(total: Int): String = "%02d:%02d".format((total / 60) % 24, total % 60)
+private fun scheduleDateLabel(day: String, weekOffset: Int): String {
+    val targetDay = when (day.lowercase(Locale.getDefault())) {
+        "monday" -> Calendar.MONDAY; "tuesday" -> Calendar.TUESDAY; "wednesday" -> Calendar.WEDNESDAY
+        "thursday" -> Calendar.THURSDAY; "friday" -> Calendar.FRIDAY; "saturday" -> Calendar.SATURDAY
+        "sunday" -> Calendar.SUNDAY; else -> return ""
+    }
+    val c = Calendar.getInstance().apply { set(Calendar.DAY_OF_WEEK, Calendar.MONDAY); add(Calendar.WEEK_OF_YEAR, weekOffset) }
+    c.add(Calendar.DAY_OF_YEAR, (targetDay - Calendar.MONDAY + 7) % 7)
+    return SimpleDateFormat("MMM d", Locale.getDefault()).format(c.time)
+}
 private fun mergeTodayClasses(records: List<Record>): List<Record> {
     // Same subject + consecutive time on the same day = one class.
     // Any vacant/gap period starts a separate class, even for the same subject.
