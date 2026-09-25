@@ -455,7 +455,7 @@ fun CampusOSApp(activity: Activity) {
                 }
             },
             floatingActionButton = {
-                if (screen == Screen.TASKS || screen == Screen.ACADEMICS) {
+                if (screen == Screen.ACADEMICS) {
                     FloatingActionButton(onClick = { search = "__ADD__" }) {
                         Icon(Icons.Default.Add, "Add")
                     }
@@ -466,7 +466,7 @@ fun CampusOSApp(activity: Activity) {
                 when (screen) {
                     Screen.HOME -> HomeScreen(store) { screenName = it.name }
                     Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }, { showScheduleDetails = true }) { search = "" }
-                    Screen.TASKS -> CrudScreen("Assignments & To-do", "tasks", store, search) { search = "" }
+                    Screen.TASKS -> TasksScreen(store, search, { search = "" }, { id -> subjectPageId = id; subjectPageMode = 0 })
                     Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 })
                     Screen.FILES -> FilesScreen()
                     Screen.SETTINGS -> SettingsScreen(
@@ -477,7 +477,7 @@ fun CampusOSApp(activity: Activity) {
                         { showScheduleManager = true }
                     )
                 }
-                if (!scheduleFullscreen && screen != Screen.HOME && screen != Screen.SETTINGS && screen != Screen.FILES) {
+                if (!scheduleFullscreen && screen != Screen.HOME && screen != Screen.SETTINGS && screen != Screen.FILES && screen != Screen.TASKS) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                         OutlinedTextField(
                             value = search.takeUnless { it == "__ADD__" } ?: "",
@@ -645,6 +645,9 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                 StatCard("Subjects", subjects.size.toString(), Modifier.weight(1f))
                 StatCard("Tasks", tasks.count { !it.done }.toString(), Modifier.weight(1f))
             }
+        }
+        item {
+            TaskHomeWidget(store) { go(Screen.TASKS) }
         }
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -2058,4 +2061,31 @@ fun LockScreen(store: LocalStore, unlock: () -> Unit) {
 @Composable fun EmptyCard(text: String) { Card(Modifier.fillMaxWidth()) { Text(text, Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) } }
 @Composable fun SmallAction(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, click: () -> Unit) {
     OutlinedButton(onClick = click, modifier = Modifier.fillMaxWidth()) { Icon(icon, null); Spacer(Modifier.width(4.dp)); Text(text) }
+}
+
+@Composable
+fun TaskHomeWidget(store: LocalStore, open: () -> Unit) {
+    val tasks = store.get("tasks").filter { !it.done }
+    val overdue = tasks.count { taskOverdue(it) }
+    val today = tasks.count { taskToday(it) }
+    val upcoming = tasks.count { !taskToday(it) && !taskTomorrow(it) && taskDue(it) < System.currentTimeMillis() + 7 * 86400000L }
+    val next = tasks.minByOrNull { taskDue(it) }
+    Card(Modifier.fillMaxWidth().clickable(onClick = open), shape = RoundedCornerShape(18.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("📝 Tasks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("View Tasks", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("🔴 " + overdue + " overdue", style = MaterialTheme.typography.labelMedium)
+                Text("🟡 " + today + " due today", style = MaterialTheme.typography.labelMedium)
+                Text("📅 " + upcoming + " upcoming", style = MaterialTheme.typography.labelMedium)
+            }
+            if (next != null) {
+                Text("Next deadline", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(next.title, fontWeight = FontWeight.Bold)
+                Text(if (taskToday(next)) "Today • " + next.dueTime else taskLabel(next), style = MaterialTheme.typography.bodySmall, color = if (taskOverdue(next)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+            } else Text("You're all caught up.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }
