@@ -1982,3 +1982,23 @@ fun LockScreen(store: LocalStore, unlock: () -> Unit) {
     var entered by remember { mutableStateOf("") }
     var error by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+    Icon(Icons.Default.Lock, null, Modifier.size(64.dp))
+    Spacer(Modifier.height(18.dp))
+    Text("CampusOS is locked", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+    Text("Enter your PIN to continue.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(Modifier.height(18.dp))
+    OutlinedTextField(entered, { entered = it.filter(Char::isDigit).take(8) }, label = { Text("PIN") })
+    if (error) Text("Incorrect PIN", color = MaterialTheme.colorScheme.error)
+    Spacer(Modifier.height(12.dp))
+    Button({ if (entered == store.pin()) unlock() else error = true }) { Text("Unlock") }
+    }
+}
+
+@Composable fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
+    Card(modifier) { Column(Modifier.padding(14.dp)) { Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+}
+@Composable fun SectionTitle(text: String) { Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+@Composable fun EmptyCard(text: String) { Card(Modifier.fillMaxWidth()) { Text(text, Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+@Composable fun SmallAction(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, click: () -> Unit) {
+    OutlinedButton(onClick = click, modifier = Modifier.fillMaxWidth()) { Icon(icon, null); Spacer(Modifier.width(4.dp)); Text(text) }
+}
