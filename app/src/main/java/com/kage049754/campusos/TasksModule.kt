@@ -25,17 +25,6 @@ import java.util.Locale
 
 private const val TASK_PREFS = "campusos_tasks"
 
-data class TaskSub(val id: Long, val title: String, val done: Boolean)
-data class TaskMeta(
-    val type: String = "Task", val priority: String = "Medium", val status: String = "Not started",
-    val reminders: List<Long> = emptyList(), val attachments: List<String> = emptyList(),
-    val link: String = "", val location: String = "", val notes: String = "",
-    val pinned: Boolean = false, val semester: String = "2026–2027 1st Semester",
-    val subtasks: List<TaskSub> = emptyList()
-)
-
-fun taskMeta(r: Record): TaskMeta = TaskMeta(status = if (r.done) "Completed" else "Not started")
-
 fun taskDue(r: Record): Long {
     if (r.dueDate.isBlank()) return Long.MAX_VALUE
     val d = runCatching { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(r.dueDate) }.getOrNull() ?: return Long.MAX_VALUE
@@ -236,7 +225,7 @@ private fun SimpleTaskEditor(store: LocalStore, existing: Record?, selectedDate:
                 if (title.isNotBlank()) {
                     val list = store.get("tasks")
                     val record = existing?.copy(title = title.trim(), subtitle = description.trim(), dueDate = date, dueTime = dueTime)
-                        ?: Record(id = nextRecordId(store, "tasks"), title = title.trim(), subtitle = description.trim(), dueDate = date, dueTime = time)
+                        ?: Record(id = nextRecordId(store, "tasks"), title = title.trim(), subtitle = description.trim(), dueDate = date, dueTime = dueTime)
                     store.put("tasks", if (existing == null) list + record else list.map { if (it.id == existing.id) record else it })
                     done()
                 }
