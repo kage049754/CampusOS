@@ -118,9 +118,7 @@ private fun readOfficeText(file: File): String? = runCatching {
             "pptx" -> zip.entries().asSequence()
                 .filter { it.name.startsWith("ppt/slides/slide") && it.name.endsWith(".xml") }
                 .sortedBy { it.name }
-                .joinToString("
-
-") { entry ->
+                .joinToString("\n\n") { entry ->
                     zip.getInputStream(entry).use { stream ->
                         DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(stream).documentElement.textContent
                     }
@@ -128,8 +126,7 @@ private fun readOfficeText(file: File): String? = runCatching {
             "xlsx" -> zip.entries().asSequence()
                 .filter { it.name.startsWith("xl/worksheets/sheet") && it.name.endsWith(".xml") }
                 .sortedBy { it.name }
-                .joinToString("
-") { entry ->
+                .joinToString("\n") { entry ->
                     zip.getInputStream(entry).bufferedReader().use { it.readText() }
                         .replace(Regex("<[^>]+>"), " ")
                         .replace(Regex("\\s+"), " ")
