@@ -501,7 +501,6 @@ fun CampusOSApp(activity: Activity) {
             if (showScheduleManager) ScheduleManagerDialog(store) { showScheduleManager = false }
             settingsModule?.let { module -> ModuleSettingsDialog(module, { settingsModule = null; settingsParent = null; showHomeSettings = true }, { settingsParent = module; settingsModule = null; showProfile = true }, { settingsParent = module; settingsModule = null; showScheduleManager = true }, { settingsParent = module; settingsModule = null; showScheduleSettings = true }, { settingsParent = module; settingsModule = null; showScheduleTableSettings = true }, { settingsParent = module; settingsModule = null; showHomeAdd = true }, { settingsModule = null; settingsParent = null; screenName = Screen.TASKS.name }, { settingsModule = null; settingsParent = null; screenName = Screen.ACADEMICS.name }) }
             if (showScheduleDetails) SubjectDetailsDialog(store.get("schedule"), { showScheduleDetails = false })
-            if (showTaskSettings) TaskSettingsDialog(store) { showTaskSettings = false }
         }
         }
     }
@@ -648,9 +647,6 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                 StatCard("Subjects", subjects.size.toString(), Modifier.weight(1f))
                 StatCard("Tasks", tasks.count { !it.done }.toString(), Modifier.weight(1f))
             }
-        }
-        item {
-            TaskHomeWidget(store) { go(Screen.TASKS) }
         }
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -2064,31 +2060,4 @@ fun LockScreen(store: LocalStore, unlock: () -> Unit) {
 @Composable fun EmptyCard(text: String) { Card(Modifier.fillMaxWidth()) { Text(text, Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) } }
 @Composable fun SmallAction(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, click: () -> Unit) {
     OutlinedButton(onClick = click, modifier = Modifier.fillMaxWidth()) { Icon(icon, null); Spacer(Modifier.width(4.dp)); Text(text) }
-}
-
-@Composable
-fun TaskHomeWidget(store: LocalStore, open: () -> Unit) {
-    val tasks = store.get("tasks").filter { !it.done }
-    val overdue = tasks.count { taskOverdue(it) }
-    val today = tasks.count { taskToday(it) }
-    val upcoming = tasks.count { !taskToday(it) && !taskTomorrow(it) && taskDue(it) < System.currentTimeMillis() + 7 * 86400000L }
-    val next = tasks.minByOrNull { taskDue(it) }
-    Card(Modifier.fillMaxWidth().clickable(onClick = open), shape = RoundedCornerShape(18.dp)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("📝 Tasks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text("View Tasks", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                Text("🔴 " + overdue + " overdue", style = MaterialTheme.typography.labelMedium)
-                Text("🟡 " + today + " due today", style = MaterialTheme.typography.labelMedium)
-                Text("📅 " + upcoming + " upcoming", style = MaterialTheme.typography.labelMedium)
-            }
-            if (next != null) {
-                Text("Next deadline", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(next.title, fontWeight = FontWeight.Bold)
-                Text(if (taskToday(next)) "Today • " + next.dueTime else taskLabel(next), style = MaterialTheme.typography.bodySmall, color = if (taskOverdue(next)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-            } else Text("You're all caught up.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
 }
