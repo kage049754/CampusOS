@@ -215,10 +215,10 @@ class LocalStore(context: Context) {
     fun setScheduleTableBorder(v: Long) { prefs.edit().putLong("schedule_table_border", v) .apply(); revision++ }
     fun scheduleDays() = (prefs.getString("schedule_days", "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday") ?: "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday").split(",").filter { it.isNotBlank() }
     fun scheduleDaysConfigured() = prefs.getBoolean("schedule_days_configured", false)
-    fun setScheduleDays(v: List<String>) { prefs.edit().putString("schedule_days", v.joinToString(",")).putBoolean("schedule_days_configured", true).apply(); revision++ }
+    fun setScheduleDays(v: List<String>) { prefs.edit().putString("schedule_days", v.joinToString(",")).putBoolean("schedule_days_configured", true).apply(); revision++; CampusReminders.reschedule(appContext); CampusWidgets.updateAll(appContext) }
     fun scheduleStartHour() = prefs.getInt("schedule_start_hour", 7)
     fun scheduleEndHour() = prefs.getInt("schedule_end_hour", 19)
-    fun setScheduleHours(start: Int, end: Int) { prefs.edit().putInt("schedule_start_hour", start).putInt("schedule_end_hour", end).apply(); revision++ }
+    fun setScheduleHours(start: Int, end: Int) { prefs.edit().putInt("schedule_start_hour", start).putInt("schedule_end_hour", end).apply(); revision++; CampusReminders.reschedule(appContext); CampusWidgets.updateAll(appContext) }
     fun backupJson(): String {
         val root = JSONObject()
         listOf("subjects","schedule","tasks","reviewers","grades","attendance","expenses").forEach {
@@ -244,6 +244,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { CampusOSApp(this) }
+        CampusReminders.reschedule(this)
+        CampusWidgets.updateAll(this)
     }
 }
 
@@ -1297,6 +1299,31 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
     }
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+        item { Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Notifications", fontWeight = FontWeight.Bold)
+                Text("Get reminders before your next class and upcoming task deadlines.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (notificationsOn && CampusReminders.notificationsEnabled(context)) "Enabled" else "Off")
+                    Switch(
+                        checked = notificationsOn,
+                        onCheckedChange = { enabled ->
+                            if (!enabled) {
+                                notificationsOn = false
+                                context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", false).apply()
+                                CampusReminders.reschedule(context)
+                            } else if (android.os.Build.VERSION.SDK_INT >= 33) {
+                                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                notificationsOn = true
+                                context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", true).apply()
+                                CampusReminders.reschedule(context)
+                            }
+                        }
+                    )
+                }
+            }
+        }}
         item { Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Schedule", fontWeight = FontWeight.Bold)
