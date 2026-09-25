@@ -2,7 +2,7 @@ name: Build CampusOS APK
 
 on:
   push:
-    branches: ["main", "feature/**"]
+    branches: ["main", "feature/**", "tasks-redesign-2026-09-26"]
   pull_request:
     branches: ["main"]
 
