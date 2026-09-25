@@ -331,18 +331,6 @@ fun CampusOSApp(activity: Activity) {
     var locked by remember { mutableStateOf(store.lockEnabled() && store.pin().isNotBlank()) }
     var screenName by rememberSaveable { mutableStateOf(Screen.HOME.name) }
     val screen = Screen.valueOf(screenName)
-    BackHandler(enabled = true) {
-        when {
-            subjectPageId != 0L && subjectOpenedFile.isNotBlank() -> subjectOpenedFile = ""
-            subjectPageId != 0L -> { subjectPageId = 0L; subjectOpenedFile = "" }
-            showScheduleDetails -> showScheduleDetails = false
-            showScheduleTableSettings -> showScheduleTableSettings = false
-            showScheduleManager -> showScheduleManager = false
-            showScheduleSettings -> {
-                showScheduleSettings = false
-                settingsModule = settingsParent
-                settingsParent = null
-            }
             showProfile -> {
                 showProfile = false
                 settingsModule = settingsParent
@@ -384,6 +372,19 @@ fun CampusOSApp(activity: Activity) {
     var subjectPageId by rememberSaveable { mutableLongStateOf(0L) }
     var subjectPageMode by rememberSaveable { mutableIntStateOf(0) }
     var subjectOpenedFile by rememberSaveable { mutableStateOf("") }
+
+    BackHandler(enabled = true) {
+        when {
+            subjectPageId != 0L && subjectOpenedFile.isNotBlank() -> subjectOpenedFile = ""
+            subjectPageId != 0L -> { subjectPageId = 0L; subjectOpenedFile = "" }
+            showScheduleDetails -> showScheduleDetails = false
+            showScheduleTableSettings -> showScheduleTableSettings = false
+            showScheduleManager -> showScheduleManager = false
+            showScheduleSettings -> {
+                showScheduleSettings = false
+                settingsModule = settingsParent
+                settingsParent = null
+            }
 
     if (locked) { LockScreen(store) { locked = false }; return }
 
