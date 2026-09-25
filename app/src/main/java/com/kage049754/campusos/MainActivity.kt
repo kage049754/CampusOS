@@ -1235,8 +1235,7 @@ private fun formatSize(size: Long) = when {
     else -> "%.1f MB".format(size/1024.0/1024.0)
 }
 
-
-@Composable@Composable
+@Composable
 fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit, lock: () -> Unit, openScheduleSettings: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var pin by remember { mutableStateOf(store.pin()) }
