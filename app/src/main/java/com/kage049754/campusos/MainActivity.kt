@@ -230,6 +230,8 @@ class LocalStore(context: Context) {
                 put("title", n.title)
                 put("body", n.body)
                 put("updatedAt", n.updatedAt)
+                put("favorite", n.favorite)
+                put("order", n.order)
             })
         }
         prefs.edit().putString("subject_notes_$subjectId", a.toString()).apply()
@@ -309,6 +311,7 @@ fun CampusOSApp(activity: Activity) {
     var showProfile by remember { mutableStateOf(false) }
     var showScheduleSettings by remember { mutableStateOf(false) }
     var showScheduleTableSettings by remember { mutableStateOf(false) }
+    var showScheduleManager by remember { mutableStateOf(false) }
     var showScheduleDetails by remember { mutableStateOf(false) }
     var scheduleFullscreen by remember { mutableStateOf(false) }
 
@@ -373,7 +376,13 @@ fun CampusOSApp(activity: Activity) {
                     Screen.TASKS -> CrudScreen("Assignments & To-do", "tasks", store, search) { search = "" }
                     Screen.ACADEMICS -> AcademicsScreen(store, search) { search = "" }
                     Screen.FILES -> FilesScreen()
-                    Screen.SETTINGS -> SettingsScreen(store, theme, { theme = it; store.setTheme(it) }, { locked = true }) { showScheduleSettings = true }
+                    Screen.SETTINGS -> SettingsScreen(
+                        store, theme,
+                        { theme = it; store.setTheme(it) },
+                        { locked = true },
+                        { showScheduleSettings = true },
+                        { showScheduleManager = true }
+                    )
                 }
                 if (!scheduleFullscreen && screen != Screen.HOME && screen != Screen.SETTINGS && screen != Screen.FILES) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
@@ -396,6 +405,7 @@ fun CampusOSApp(activity: Activity) {
                     onAddClass = { showHomeAdd = true; showHomeSettings = false },
                     onScheduleSettings = { showScheduleSettings = true; showHomeSettings = false },
                     onScheduleTableSettings = { showScheduleTableSettings = true; showHomeSettings = false },
+                    onScheduleManager = { showScheduleManager = true; showHomeSettings = false },
                     onAppearance = { showHomeColors = true; showHomeSettings = false },
                     onProfile = { showProfile = true; showHomeSettings = false },
                     done = { showHomeSettings = false }
@@ -406,6 +416,7 @@ fun CampusOSApp(activity: Activity) {
             if (showProfile) ProfileDialog(store) { showProfile = false }
             if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
             if (showScheduleTableSettings) ScheduleTableSettingsDialog(store) { showScheduleTableSettings = false }
+            if (showScheduleManager) ScheduleManagerDialog(store) { showScheduleManager = false }
             if (showScheduleDetails) SubjectDetailsDialog(store.get("schedule"), { showScheduleDetails = false })
         }
     }
@@ -421,13 +432,14 @@ private fun iconFor(s: Screen) = when(s) {
 }
 
 @Composable
-fun HomeSettingsDialog(store: LocalStore, theme: String, setTheme: (String) -> Unit, onAddClass: () -> Unit, onScheduleSettings: () -> Unit, onScheduleTableSettings: () -> Unit, onAppearance: () -> Unit, onProfile: () -> Unit, done: () -> Unit) {
+fun HomeSettingsDialog(store: LocalStore, theme: String, setTheme: (String) -> Unit, onAddClass: () -> Unit, onScheduleSettings: () -> Unit, onScheduleTableSettings: () -> Unit, onScheduleManager: () -> Unit, onAppearance: () -> Unit, onProfile: () -> Unit, done: () -> Unit) {
     AlertDialog(onDismissRequest = done, title = { Text("CampusOS Settings") }, text = {
         Column(Modifier.heightIn(max = 620.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Personal", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             OutlinedButton(onClick = onProfile, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Person, null); Spacer(Modifier.width(8.dp)); Text("Profile") }
             Text("Campus", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             Button(onClick = onAddClass, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("Add Class") }
+            OutlinedButton(onClick = onScheduleManager, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.EditCalendar, null); Spacer(Modifier.width(8.dp)); Text("Edit / Delete Classes") }
             OutlinedButton(onClick = onScheduleSettings, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.CalendarMonth, null); Spacer(Modifier.width(8.dp)); Text("Class Schedule Settings") }
             OutlinedButton(onClick = onScheduleTableSettings, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.TableView, null); Spacer(Modifier.width(8.dp)); Text("Schedule Table Settings") }
             Text("Appearance", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
@@ -845,6 +857,109 @@ fun SubjectDetailsDialog(all: List<Record>, done: () -> Unit) {
 }
 
 @Composable
+fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
+    var refresh by remember { mutableIntStateOf(0) }
+    var editing by remember { mutableStateOf<Record?>(null) }
+    val records = remember(refresh, store.revision) {
+        store.get("schedule").sortedWith(compareBy<Record>({ it.day }, { it.startTime }, { it.title.lowercase() }, { it.classType }))
+    }
+    AlertDialog(
+        onDismissRequest = done,
+        title = { Text("Edit / Delete Classes") },
+        text = {
+            Column(Modifier.fillMaxWidth().heightIn(max = 620.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Fix a wrong type, room, time, day, professor, or subject without rebuilding the whole schedule.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (records.isEmpty()) EmptyCard("No schedule entries yet.")
+                else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 500.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(records, key = { it.id }) { r ->
+                        Card(Modifier.fillMaxWidth()) {
+                            ListItem(
+                                headlineContent = { Text(r.title + " • " + r.classType, fontWeight = FontWeight.SemiBold) },
+                                supportingContent = {
+                                    Text(buildString {
+                                        append(r.day); append(" • "); append(r.startTime)
+                                        if (r.endTime.isNotBlank()) append("–").append(r.endTime)
+                                        if (r.room.isNotBlank()) append(" • ").append(r.room)
+                                        if (r.professor.isNotBlank()) append(" • ").append(r.professor)
+                                    }, maxLines = 2)
+                                },
+                                leadingContent = { Icon(Icons.Default.EventNote, null) },
+                                trailingContent = {
+                                    Row {
+                                        IconButton({ editing = r }) { Icon(Icons.Default.Edit, "Edit class") }
+                                        IconButton({
+                                            deleteScheduleAndSync(store, r)
+                                            refresh++
+                                        }) { Icon(Icons.Default.Delete, "Delete class") }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { Button(done) { Text("Close") } }
+    )
+    editing?.let { record ->
+        EditScheduleRecordDialog(record, store, { editing = null; refresh++ }, { editing = null })
+    }
+}
+
+@Composable
+fun EditScheduleRecordDialog(record: Record, store: LocalStore, done: () -> Unit, cancel: () -> Unit) {
+    var subject by remember(record.id) { mutableStateOf(record.title) }
+    var fullName by remember(record.id) { mutableStateOf(record.subtitle) }
+    var day by remember(record.id) { mutableStateOf(record.day) }
+    var startTime by remember(record.id) { mutableStateOf(record.startTime) }
+    var endTime by remember(record.id) { mutableStateOf(record.endTime) }
+    var room by remember(record.id) { mutableStateOf(record.room) }
+    var professor by remember(record.id) { mutableStateOf(record.professor) }
+    var notes by remember(record.id) { mutableStateOf(record.extra) }
+    var type by remember(record.id) { mutableStateOf(record.classType.ifBlank { "Lecture" }) }
+    val days = store.scheduleDays().ifEmpty { listOf("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday") }
+    AlertDialog(
+        onDismissRequest = cancel,
+        title = { Text("Edit class") },
+        text = {
+            Column(Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(subject, { subject = it }, Modifier.fillMaxWidth(), label = { Text("Subject code") }, singleLine = true)
+                OutlinedTextField(fullName, { fullName = it }, Modifier.fillMaxWidth(), label = { Text("Whole subject name") })
+                Text("Class type", fontWeight = FontWeight.SemiBold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Lecture","Lab").forEach { option -> FilterChip(type == option, { type = option }, label = { Text(option) }) }
+                }
+                Text("Day", fontWeight = FontWeight.SemiBold)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    days.forEach { option -> FilterChip(day.equals(option,true), { day = option }, label = { Text(option.take(3)) }) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(startTime, { startTime = it }, Modifier.weight(1f), label = { Text("Start (HH:mm)") }, singleLine = true)
+                    OutlinedTextField(endTime, { endTime = it }, Modifier.weight(1f), label = { Text("End (HH:mm)") }, singleLine = true)
+                }
+                OutlinedTextField(room, { room = it }, Modifier.fillMaxWidth(), label = { Text("Room") }, singleLine = true)
+                OutlinedTextField(professor, { professor = it }, Modifier.fillMaxWidth(), label = { Text("Professor") }, singleLine = true)
+                OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth(), label = { Text("Notes") })
+            }
+        },
+        confirmButton = {
+            Button({
+                if (subject.isNotBlank() && day.isNotBlank() && startTime.isNotBlank() && endTime.isNotBlank()) {
+                    val updated = record.copy(title = subject.trim(), subtitle = fullName.trim(), extra = notes.trim(),
+                        day = day, startTime = startTime.trim(), endTime = endTime.trim(),
+                        room = room.trim(), professor = professor.trim(), classType = type)
+                    store.put("schedule", store.get("schedule").map { if (it.id == record.id) updated else it })
+                    syncSubjectFromClass(store, updated)
+                    done()
+                }
+            }) { Text("Save changes") }
+        },
+        dismissButton = { TextButton(cancel) { Text("Cancel") } }
+    )
+}
+
+@Composable
 fun ScheduleHighlightColorDialog(store: LocalStore, done: () -> Unit) {
     var dayColor by remember { mutableLongStateOf(store.scheduleDayHighlight()) }
     var timeColor by remember { mutableLongStateOf(store.scheduleTimeHighlight()) }
@@ -973,6 +1088,9 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
     var subject by remember { mutableStateOf("") }
     var fullName by remember { mutableStateOf("") }
     var room by remember { mutableStateOf("") }
+    var lectureRoom by remember { mutableStateOf("") }
+    var labRoom by remember { mutableStateOf("") }
+    var sameRoomForLectureLab by remember { mutableStateOf(true) }
     var professor by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var classType by remember { mutableStateOf("Lecture") }
@@ -1030,7 +1148,18 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                 }}
             }}
             Text(if(selectedSlots.isEmpty())"No time selected" else selectedSlots.size.toString()+" slot(s) selected",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
-            OutlinedTextField(room,{room=it},Modifier.fillMaxWidth(),label={Text("Room number")})
+            Text("Rooms", fontWeight=FontWeight.SemiBold)
+            Text("Lecture and Lab can share one room. If they use different rooms, turn this off and enter each room separately.", color=MaterialTheme.colorScheme.onSurfaceVariant, style=MaterialTheme.typography.bodySmall)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Same room for Lecture + Lab")
+                Switch(checked=sameRoomForLectureLab, onCheckedChange={ sameRoomForLectureLab=it })
+            }
+            if (sameRoomForLectureLab) {
+                OutlinedTextField(room,{room=it;lectureRoom=it;labRoom=it},Modifier.fillMaxWidth(),label={Text("Room number")},singleLine=true)
+            } else {
+                OutlinedTextField(lectureRoom,{lectureRoom=it},Modifier.fillMaxWidth(),label={Text("Lecture room")},singleLine=true)
+                OutlinedTextField(labRoom,{labRoom=it},Modifier.fillMaxWidth(),label={Text("Lab room")},singleLine=true)
+            }
             OutlinedTextField(professor,{professor=it},Modifier.fillMaxWidth(),label={Text("Professor")})
             OutlinedTextField(notes,{notes=it},Modifier.fillMaxWidth(),label={Text("Notes")})
             Text("Class color",fontWeight=FontWeight.SemiBold)
@@ -1038,6 +1167,11 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
         }
     },confirmButton={Button({
         if(subject.isNotBlank()&&selectedSlots.isNotEmpty()){
+            if (sameRoomForLectureLab) {
+                room = lectureRoom.ifBlank { labRoom }
+                lectureRoom = room
+                labRoom = room
+            }
             val normalizedSubject=subject.trim()
             val existing=store.get("schedule")
             val newKeys=selectedSlots.map { key ->
@@ -1050,7 +1184,7 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                 val idBase=maxOf(System.currentTimeMillis(),(existing.maxOfOrNull{it.id}?:0L)+1L)
                 val selected=newKeys.mapIndexed{index,slot->
                     val (day,h,type)=slot
-                    Record(id=idBase+index,title=normalizedSubject,subtitle=fullName.trim(),extra=notes.trim(),day=day,startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=room.trim(),professor=professor.trim(),color=color,classType=type)
+                    Record(id=idBase+index,title=normalizedSubject,subtitle=fullName.trim(),extra=notes.trim(),day=day,startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=(if (type.equals("Lecture", true)) lectureRoom else labRoom).trim().ifBlank { room.trim() },professor=professor.trim(),color=color,classType=type)
                 }
                 store.put("schedule",existing+selected)
                 selected.forEach{syncSubjectFromClass(store,it)}
@@ -1148,11 +1282,22 @@ fun AcademicsScreen(store: LocalStore, query: String, clear: () -> Unit) {
         if (list.isEmpty()) EmptyCard("No "+labels[tab].lowercase()+" yet. Add classes from Home Settings or use your existing data.")
         else LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(list, key = { it.id }) { r ->
-                Card(onClick = { if (tab == 0) { selectedSubject = r; subjectWorkspaceMode = 0 } }, modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp)) {
-                        Text(r.title, fontWeight = FontWeight.SemiBold)
-                        if (r.subtitle.isNotBlank()) Text(r.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (r.extra.isNotBlank()) Text(r.extra, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(r.title, fontWeight = FontWeight.SemiBold)
+                            if (r.subtitle.isNotBlank()) Text(r.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        }
+                        TextButton(onClick = { selectedSubject = r; subjectWorkspaceMode = 0 }) {
+                            Icon(Icons.Default.StickyNote2, null)
+                            Spacer(Modifier.width(4.dp))
+                            Text("Notepad")
+                        }
+                        TextButton(onClick = { selectedSubject = r; subjectWorkspaceMode = 1 }) {
+                            Icon(Icons.Default.Folder, null)
+                            Spacer(Modifier.width(4.dp))
+                            Text("Lecture Files")
+                        }
                     }
                 }
             }
@@ -1239,8 +1384,8 @@ fun SubjectNotepadDialog(subject: Record, store: LocalStore, startMode: Int = 0,
         noteQuery.isBlank() || (it.title + " " + it.body).contains(noteQuery, true)
     }
 
-    val noteList = filteredNotes.sortedWith(compareByDescending<SubjectNote> { it.favorite }.thenBy { when (noteSort) { "Created" -> -it.id; "Alphabetical" -> 0L; else -> -it.updatedAt } })
-    val fileList = files.sortedWith(compareByDescending<File> { File(context.filesDir, "subject_favorite_" + subject.id + "_" + it.name).exists() }.thenBy { when (fileSort) { "Alphabetical" -> it.name.lowercase(); "Oldest" -> it.lastModified(); else -> -it.lastModified() } } )
+    val noteList = filteredNotes.sortedWith(compareByDescending<SubjectNote> { it.favorite }.thenBy { when (noteSort) { "Created" -> -it.id; "Alphabetical" -> it.title.lowercase(); "Manual" -> it.order; else -> -it.updatedAt } })
+    val fileList = files.sortedWith(compareByDescending<File> { File(context.filesDir, "subject_favorite_" + subject.id + "_" + it.name).exists() }.thenBy { when (fileSort) { "Alphabetical" -> it.name.lowercase(); "Oldest" -> it.lastModified(); "Manual" -> it.name.lowercase(); else -> -it.lastModified() } } )
 
     val upload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
@@ -1298,12 +1443,12 @@ fun SubjectNotepadDialog(subject: Record, store: LocalStore, startMode: Int = 0,
 
                 if (mode == 0) Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Sort:", style = MaterialTheme.typography.labelLarge)
-                    listOf("Modified", "Created", "Alphabetical").forEach { option ->
+                    listOf("Modified", "Created", "Alphabetical", "Manual").forEach { option ->
                         TextButton(onClick = { noteSort = option }) { Text(if (noteSort == option) "✓ $option" else option) }
                     }
                 } else Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Sort:", style = MaterialTheme.typography.labelLarge)
-                    listOf("Newest", "Oldest", "Alphabetical").forEach { option ->
+                    listOf("Newest", "Oldest", "Alphabetical", "Manual").forEach { option ->
                         TextButton(onClick = { fileSort = option }) { Text(if (fileSort == option) "✓ $option" else option) }
                     }
                 }
@@ -1618,11 +1763,12 @@ private fun formatSize(size: Long) = when {
 }
 
 @Composable
-fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit, lock: () -> Unit, openScheduleSettings: () -> Unit) {
+fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit, lock: () -> Unit, openScheduleSettings: () -> Unit, openScheduleManager: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var pin by remember { mutableStateOf(store.pin()) }
     var lockOn by remember { mutableStateOf(store.lockEnabled()) }
     var showPin by remember { mutableStateOf(false) }
+    var showTableSettings by remember { mutableStateOf(false) }
     var notificationsOn by remember { mutableStateOf(context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).getBoolean("enabled", false) && CampusReminders.notificationsEnabled(context)) }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -1672,20 +1818,59 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
             }
         }
 
+        item { Text("Schedule", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Schedule", fontWeight = FontWeight.Bold)
-                    Text("Choose which class days and timetable hours are shown.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Class schedule", fontWeight = FontWeight.Bold)
+                    Text("Edit entries, correct Lecture/Lab type, delete classes, and configure the timetable.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedButton(onClick = openScheduleManager, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.EditCalendar, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Edit / Delete Classes")
+                    }
                     OutlinedButton(onClick = openScheduleSettings, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Default.CalendarMonth, null)
                         Spacer(Modifier.width(8.dp))
                         Text("Class Schedule Settings")
                     }
+                    OutlinedButton(onClick = { showTableSettings = true }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.TableView, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Schedule Table Settings")
+                    }
                 }
             }
         }
 
+        item { Text("Home", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Homepage", fontWeight = FontWeight.Bold)
+                    Text("Profile, theme, lock, and other homepage/app behavior.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Use the CampusOS settings button from the top bar for profile and appearance options.", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        item { Text("Academics", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Subjects & lecture files", fontWeight = FontWeight.Bold)
+                    Text("Manage Notepad and Lecture Files from the Academics screen.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        item { Text("Tasks", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Assignments & To-do", fontWeight = FontWeight.Bold)
+                    Text("Manage tasks and deadlines from the Tasks screen.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1735,6 +1920,10 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
         }
 
         item { Text("CampusOS 1.0.0 • Offline-first", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
+
+    if (showTableSettings) {
+        ScheduleTableSettingsDialog(store) { showTableSettings = false }
     }
 
     if (showPin) {
