@@ -214,6 +214,26 @@ class CampusNextClassWidgetProvider : android.appwidget.AppWidgetProvider() {
     }
 }
 
+class CampusScheduleWidgetProvider : android.appwidget.AppWidgetProvider() {
+    override fun onUpdate(context: Context, manager: android.appwidget.AppWidgetManager, ids: IntArray) { ids.forEach { update(context, manager, it) } }
+    companion object {
+        fun update(context: Context, manager: android.appwidget.AppWidgetManager, id: Int) {
+            val v = android.widget.RemoteViews(context.packageName, R.layout.widget_schedule)
+            val day = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date())
+            val rows = LocalStore(context).get("schedule")
+                .filter { it.day.equals(day, true) }
+                .sortedBy { it.startTime }
+                .take(5)
+                .joinToString("\n") { it.startTime + "  " + it.title + " (" + it.classType + ")" }
+            v.setTextViewText(R.id.widget_title, "Today's Class Schedule")
+            v.setTextViewText(R.id.widget_main, if (rows.isBlank()) "No classes today" else rows)
+            v.setTextViewText(R.id.widget_secondary, day)
+            v.setOnClickPendingIntent(R.id.widget_root, appOpenPendingIntent(context))
+            manager.updateAppWidget(id, v)
+        }
+    }
+}
+
 class CampusTaskWidgetProvider : android.appwidget.AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: android.appwidget.AppWidgetManager, ids: IntArray) { ids.forEach { update(context, manager, it) } }
     companion object {
