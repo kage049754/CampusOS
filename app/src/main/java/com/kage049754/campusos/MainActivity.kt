@@ -40,6 +40,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.Base64
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import java.io.File
@@ -262,24 +263,53 @@ class LocalStore(context: Context) {
     fun scheduleStartHour() = prefs.getInt("schedule_start_hour", 7)
     fun scheduleEndHour() = prefs.getInt("schedule_end_hour", 19)
     fun setScheduleHours(start: Int, end: Int) { prefs.edit().putInt("schedule_start_hour", start).putInt("schedule_end_hour", end).apply(); revision++; CampusReminders.reschedule(appContext); CampusWidgets.updateAll(appContext) }
-    fun backupJson(): String {
+    fun backupJson(selected: Set<String> = setOf("homepage","schedule","tasks","academics")): String {
+        val root = JSONObject()
+        if ("schedule" in selected) root.put("schedule", prefs.getString("schedule", "[]"))
+        if ("tasks" in selected) root.put("tasks", prefs.getString("tasks", "[]"))
+        if ("academics" in selected) {
+            root.put("subjects", prefs.getString("subjects", "[]"))
+            val notes = JSONObject()
+            prefs.all.filterKeys { it.startsWith("subject_notes_") }.forEach { (k,v) -> if (v is String) notes.put(k.removePrefix("subject_notes_"), v) }
+            root.put("subjectNotes", notes)
+            val files = JSONArray(); val dir = File(appContext.filesDir, "subject_files")
+            dir.walkTopDown().filter { it.isFile }.forEach { f ->
+                files.put(JSONObject().apply { put("path", f.relativeTo(dir).path); put("data", Base64.encodeToString(f.readBytes(), Base64.NO_WRAP)) })
+            }
+            root.put("subjectFiles", files)
+        }
+        if ("homepage" in selected) {
+            root.put("theme", theme()); root.put("lock", lockEnabled())
+            root.put("profileName", profileName()); root.put("profileStudentId", profileStudentId()); root.put("profileSection", profileSection())
+        }
+        return root.toString(2)
+    }
         val root = JSONObject()
         listOf("subjects","schedule","tasks","reviewers","grades","attendance","expenses").forEach {
             root.put(it, prefs.getString(it, "[]"))
         }
         root.put("theme", theme()); root.put("lock", lockEnabled()); return root.toString(2)
     }
-    fun restoreJson(json: String) {
+    fun restoreJson(json: String, selected: Set<String> = setOf("homepage","schedule","tasks","academics")) {
         val root = JSONObject(json); val e = prefs.edit()
-        listOf("subjects","schedule","tasks","reviewers","grades","attendance","expenses").forEach {
-            if (root.has(it)) e.putString(it, root.getString(it))
+        if ("schedule" in selected && root.has("schedule")) e.putString("schedule", root.getString("schedule"))
+        if ("tasks" in selected && root.has("tasks")) e.putString("tasks", root.getString("tasks"))
+        if ("academics" in selected) {
+            if (root.has("subjects")) e.putString("subjects", root.getString("subjects"))
+            root.optJSONObject("subjectNotes")?.let { notes -> notes.keys().forEach { id -> e.putString("subject_notes_$id", notes.getString(id)) } }
         }
-        if (root.has("theme")) e.putString("theme", root.getString("theme"))
-        if (root.has("lock")) e.putBoolean("lock", root.getBoolean("lock"))
-        e.apply()
-        revision++
-        CampusReminders.reschedule(appContext)
-        CampusWidgets.updateAll(appContext)
+        if ("homepage" in selected) {
+            if (root.has("theme")) e.putString("theme", root.getString("theme"))
+            if (root.has("lock")) e.putBoolean("lock", root.getBoolean("lock"))
+            if (root.has("profileName")) e.putString("profile_name", root.getString("profileName"))
+            if (root.has("profileStudentId")) e.putString("profile_student_id", root.getString("profileStudentId"))
+            if (root.has("profileSection")) e.putString("profile_section", root.getString("profileSection"))
+        }
+        if ("academics" in selected && root.has("subjectFiles")) {
+            val dir = File(appContext.filesDir, "subject_files"); dir.mkdirs(); val files = root.optJSONArray("subjectFiles") ?: JSONArray()
+            for (i in 0 until files.length()) runCatching { val o=files.getJSONObject(i); val target=File(dir,o.getString("path")); target.parentFile?.mkdirs(); target.writeBytes(Base64.decode(o.getString("data"),Base64.DEFAULT)) }
+        }
+        e.apply(); revision++; CampusReminders.reschedule(appContext); CampusWidgets.updateAll(appContext)
     }
 }
 
@@ -530,7 +560,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     val photoPath = store.profilePhotoPath()
     val date = SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date())
     val todayName = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date())
-    val todaySchedule = remember(schedule, todayName) { schedule.filter { it.day.equals(todayName, true) }.sortedBy { it.startTime } }
+    val todaySchedule = remember(schedule, todayName) { mergeTodayClasses(schedule.filter { it.day.equals(todayName, true) }) }
     val pendingTasks = remember(tasks) { tasks.filter { !it.done }.sortedWith(compareBy({ it.dueDate }, { it.dueTime })).take(5) }
     val photo = remember(photoPath, revision) { if (photoPath.isNotBlank()) runCatching { BitmapFactory.decodeFile(photoPath) }.getOrNull() else null }
 
@@ -692,7 +722,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
     val scheduleDays = store.scheduleDays()
     val startHour = store.scheduleStartHour().coerceIn(0, 23)
     val endHour = store.scheduleEndHour().coerceIn(startHour, 23)
-    val hours = (startHour..endHour).toList()
+    val hours = if (endHour > startHour) (startHour until endHour).toList() else listOf(startHour)
     val calendar = remember(nowTick) { Calendar.getInstance() }
     val today = SimpleDateFormat("EEEE", Locale.getDefault()).format(calendar.time)
     val currentHour = calendar.get(Calendar.HOUR_OF_DAY)
@@ -761,7 +791,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 if (isCurrentHour) Box(Modifier.size(6.dp).background(timeHighlight, RoundedCornerShape(50)))
-                                Text("%02d:00".format(h), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
+                                Text(formatHourRange(h, h + 1), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
                             }
                         }
 
@@ -800,7 +830,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
 
                 Row(Modifier.height(footerHeight)) {
                     Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) {
-                        Text("%02d:00".format((endHour + 1).coerceAtMost(24)), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        Text(formatHourRange(endHour, (endHour + 1).coerceAtMost(24)), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                     }
                     scheduleDays.forEach { Box(Modifier.width(dayWidth).fillMaxHeight().background(tableBg).border(1.dp, tableBorder)) }
                 }
@@ -992,6 +1022,15 @@ fun ScheduleHighlightColorDialog(store: LocalStore, done: () -> Unit) {
 }
 
 fun String.toHourOrNull(): Int? = substringBefore(":").toIntOrNull()
+private fun formatHourRange(start: Int, end: Int) = "%02d:00-%02d:00".format(start, end)
+private fun mergeTodayClasses(records: List<Record>): List<Record> {
+    val sorted=records.sortedBy { it.startTime.toHourOrNull() ?: 99 }; val out=mutableListOf<Record>()
+    for (r in sorted) {
+        val p=out.lastOrNull(); val pe=p?.endTime?.toHourOrNull(); val s=r.startTime.toHourOrNull()
+        if (p!=null && p.title.equals(r.title,true) && p.room.trim().equals(r.room.trim(),true) && p.professor.trim().equals(r.professor.trim(),true) && p.classType.equals(r.classType,true) && pe!=null && s!=null && pe==s) out[out.lastIndex]=p.copy(endTime=r.endTime)
+        else out+=r
+    }; return out
+}
 
 private fun deleteScheduleAndSync(store: LocalStore, classRecord: Record) {
     store.delete("schedule", classRecord.id)
@@ -1763,6 +1802,15 @@ private fun formatSize(size: Long) = when {
 }
 
 @Composable
+fun ModuleBackupDialog(title:String, selected:Set<String>, onSelected:(Set<String>)->Unit, done:()->Unit) {
+    val modules=listOf("homepage" to "Homepage","schedule" to "Schedule","tasks" to "Tasks","academics" to "Academics / Lessons")
+    AlertDialog(onDismissRequest=done,title={Text(title)},text={Column(verticalArrangement=Arrangement.spacedBy(4.dp)){
+        Text("Check each module you want to transfer.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+        modules.forEach{(id,label)->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Checkbox(id in selected,{onSelected(if(id in selected)selected-id else selected+id)});Text(label)}}
+    }},confirmButton={Button(enabled=selected.isNotEmpty(),onClick=done){Text("Continue")}},dismissButton={TextButton(done){Text("Cancel")}})
+}
+
+@Composable
 fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit, lock: () -> Unit, openScheduleSettings: () -> Unit, openScheduleManager: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var pin by remember { mutableStateOf(store.pin()) }
@@ -1782,10 +1830,10 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
         uri ?: return@rememberLauncherForActivityResult
         context.contentResolver.openOutputStream(uri)?.use { it.write(store.backupJson().toByteArray()) }
     }
-    val restore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri ?: return@rememberLauncherForActivityResult
-        runCatching { context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { store.restoreJson(it.readText()) } }
-    }
+    var backupMode by remember { mutableStateOf(false) }; var restoreMode by remember { mutableStateOf(false) }
+    var selectedModules by remember { mutableStateOf(setOf("schedule","academics")) }
+    val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri -> uri ?: return@rememberLauncherForActivityResult; context.contentResolver.openOutputStream(uri)?.use { it.write(store.backupJson(selectedModules).toByteArray()) } }
+    val restore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri ?: return@rememberLauncherForActivityResult; runCatching { context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { store.restoreJson(it.readText(), selectedModules) } } }
 
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
@@ -1912,16 +1960,19 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
                     Text("Backup & restore", fontWeight = FontWeight.Bold)
                     Text("Export local data to JSON or restore it later.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 10.dp)) {
-                        Button({ backup.launch("CampusOS-backup.json") }) { Text("Backup") }
-                        OutlinedButton({ restore.launch(arrayOf("application/json", "text/plain")) }) { Text("Restore") }
+                        Button({ backupMode=true }) { Text("Backup") }
+                        OutlinedButton({ restoreMode=true }) { Text("Restore") }
                     }
                 }
             }
         }
 
         item { Text("CampusOS 1.0.0 • Offline-first", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        item { Text("Transfer tip: select Schedule to share your timetable, or Academics / Lessons to share subjects, notes, and lecture files.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 
+    if (backupMode) ModuleBackupDialog("Choose modules to backup", selectedModules, { selectedModules=it }) { backupMode=false; if(selectedModules.isNotEmpty()) backup.launch("CampusOS-selected-backup.json") }
+    if (restoreMode) ModuleBackupDialog("Choose modules to restore", selectedModules, { selectedModules=it }) { restoreMode=false; if(selectedModules.isNotEmpty()) restore.launch(arrayOf("application/json","text/plain")) }
     if (showTableSettings) {
         ScheduleTableSettingsDialog(store) { showTableSettings = false }
     }
