@@ -1298,6 +1298,32 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
         runCatching { context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { store.restoreJson(it.readText()) } }
     }
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Notifications", fontWeight = FontWeight.Bold)
+                Text("Get reminders before your next class and upcoming task deadlines.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (notificationsOn && CampusReminders.notificationsEnabled(context)) "Enabled" else "Off")
+                    Switch(
+                        checked = notificationsOn,
+                        onCheckedChange = { enabled ->
+                            if (!enabled) {
+                                notificationsOn = false
+                                context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", false).apply()
+                                CampusReminders.reschedule(context)
+                            } else if (android.os.Build.VERSION.SDK_INT >= 33) {
+                                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                notificationsOn = true
+                                context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", true).apply()
+                                CampusReminders.reschedule(context)
+                            }
+                        }
+                    )
+                }
+            }
+        }}
+
         item { Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
         item { Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
