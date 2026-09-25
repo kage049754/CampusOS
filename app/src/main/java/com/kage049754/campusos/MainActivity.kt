@@ -166,11 +166,12 @@ private fun renderPdfPage(file: File, pageIndex: Int): Bitmap? = runCatching {
 
 class LocalStore(context: Context) {
     private val prefs = context.getSharedPreferences("campusos", Context.MODE_PRIVATE)
-    private fun read(key: String): MutableList<Record> {
+    private fun read(key: String): MutableList<Record> = runCatching {
         val out = mutableListOf<Record>()
-        val a = JSONArray(prefs.getString(key, "[]"))
+        val raw = prefs.getString(key, "[]") ?: "[]"
+        val a = JSONArray(raw)
         for (i in 0 until a.length()) {
-            val o = a.getJSONObject(i)
+            val o = a.optJSONObject(i) ?: continue
             val storedId = o.optLong("id", 0L)
             val safeId = if (storedId > 0L && out.none { it.id == storedId }) storedId
                 else maxOf(System.currentTimeMillis(), (out.maxOfOrNull { it.id } ?: 0L) + 1L)
@@ -178,8 +179,8 @@ class LocalStore(context: Context) {
                 o.optString("extra"), o.optDouble("value", 0.0), o.optBoolean("done", false),
                 o.optString("day"), o.optString("startTime"), o.optString("endTime"), o.optString("room"), o.optString("professor"), o.optLong("color", 0L), o.optString("classType", "Lecture"), o.optLong("subjectId", 0L), o.optString("dueDate"), o.optString("dueTime"))
         }
-        return out
-    }
+        out
+    }.getOrElse { mutableListOf() }
     private fun save(key: String, list: List<Record>) {
         val a = JSONArray()
         list.forEach { r -> a.put(JSONObject().apply {
@@ -206,7 +207,7 @@ class LocalStore(context: Context) {
     fun setScheduleTableBackground(v: Long) = prefs.edit().putLong("schedule_table_background", v).apply()
     fun scheduleTableBorder() = prefs.getLong("schedule_table_border", 0xFF808080L)
     fun setScheduleTableBorder(v: Long) = prefs.edit().putLong("schedule_table_border", v).apply()
-    fun scheduleDays() = prefs.getString("schedule_days", "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday")!!.split(",").filter { it.isNotBlank() }
+    fun scheduleDays() = (prefs.getString("schedule_days", "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday") ?: "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday").split(",").filter { it.isNotBlank() }
     fun setScheduleDays(v: List<String>) = prefs.edit().putString("schedule_days", v.joinToString(",")).apply()
     fun scheduleStartHour() = prefs.getInt("schedule_start_hour", 7)
     fun scheduleEndHour() = prefs.getInt("schedule_end_hour", 19)
