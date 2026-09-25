@@ -16,6 +16,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.Color
@@ -656,7 +657,9 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     val photoPath = store.profilePhotoPath()
     val date = SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date())
     val todayName = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date())
+    val tomorrowName = SimpleDateFormat("EEEE", Locale.getDefault()).format(Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 1) }.time, Locale.getDefault())
     val todaySchedule = remember(schedule, todayName) { mergeTodayClasses(schedule.filter { it.day.equals(todayName, true) }) }
+    val tomorrowSchedule = remember(schedule, tomorrowName) { mergeTodayClasses(schedule.filter { it.day.equals(tomorrowName, true) }) }
     val pendingTasks = remember(tasks) { tasks.filter { !it.done }.sortedWith(compareBy({ it.dueDate }, { it.dueTime })).take(5) }
     val photo = remember(photoPath, revision) { if (photoPath.isNotBlank()) runCatching { BitmapFactory.decodeFile(photoPath) }.getOrNull() else null }
     var nowTick by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -665,7 +668,8 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     val calendar = remember(nowTick) { Calendar.getInstance() }
     val nowMinutes = calendar.get(Calendar.HOUR_OF_DAY) * 60 + calendar.get(Calendar.MINUTE)
     val ongoingClass = todaySchedule.firstOrNull { isClassOngoing(it, nowMinutes) }
-    val nextClass = todaySchedule.firstOrNull { (parseClockMinutes(it.startTime) ?: Int.MAX_VALUE) > nowMinutes }
+    val nextTodayClass = todaySchedule.firstOrNull { (parseClockMinutes(it.startTime) ?: Int.MAX_VALUE) > nowMinutes }
+    val nextClass = nextTodayClass ?: tomorrowSchedule.firstOrNull()
     val widgetOrder = remember(revision) { store.homeWidgetOrder() }
     val hidden = remember(revision) { store.homeWidgetHidden() }
 
@@ -690,14 +694,27 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                     val title=if(ongoingClass!=null)"Current class" else "Next class"
                     Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(18.dp)){ListItem(
                         headlineContent={Row(verticalAlignment=Alignment.CenterVertically){Text(title,fontWeight=FontWeight.Bold);if(ongoingClass!=null){Spacer(Modifier.width(8.dp));Surface(shape=RoundedCornerShape(50),color=MaterialTheme.colorScheme.errorContainer){Text("ONGOING",Modifier.padding(horizontal=8.dp,vertical=3.dp),style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)}}}},
-                        supportingContent={if(ongoingClass!=null)Text("${ongoingClass.title} • ${ongoingClass.startTime}-${ongoingClass.endTime}") else if(nextClass!=null){val start=parseClockMinutes(nextClass.startTime)?:nowMinutes;Text("${nextClass.title} • ${nextClass.startTime}-${nextClass.endTime} • starts in ${formatCountdown(start-nowMinutes)}")}else Text("No more classes scheduled today.")},
+                        supportingContent={
+                            if(ongoingClass!=null) Text(buildString {
+                                append(ongoingClass.title).append(" • ").append(ongoingClass.startTime).append("-").append(ongoingClass.endTime)
+                                if (ongoingClass.room.isNotBlank()) append(" • ").append(ongoingClass.room)
+                            }) else if(nextClass!=null) {
+                                val isTomorrow = nextTodayClass == null
+                                val start=parseClockMinutes(nextClass.startTime)?:nowMinutes
+                                Text(buildString {
+                                    append(nextClass.title).append(" • ").append(nextClass.startTime).append("-").append(nextClass.endTime)
+                                    if (nextClass.room.isNotBlank()) append(" • ").append(nextClass.room)
+                                    if (isTomorrow) append(" • Tomorrow") else append(" • starts in ").append(formatCountdown(start-nowMinutes))
+                                })
+                            } else Text("No classes scheduled today or tomorrow.")
+                        },
                         leadingContent={Icon(if(ongoingClass!=null)Icons.Default.PlayCircle else Icons.Default.Schedule,null)},
                         modifier=Modifier.clickable(enabled=ongoingClass!=null||nextClass!=null){selectedClass=ongoingClass?:nextClass}
                     )}
                 }
                 "today" -> item(key="home_today") {
                     Column(verticalArrangement=Arrangement.spacedBy(8.dp)){Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){SectionTitle("Today's classes");Spacer(Modifier.width(8.dp));Surface(shape=RoundedCornerShape(50),color=MaterialTheme.colorScheme.primaryContainer){Text(todaySchedule.size.toString(),Modifier.padding(horizontal=9.dp,vertical=3.dp),style=MaterialTheme.typography.labelMedium,fontWeight=FontWeight.Bold)}}
-                        if(todaySchedule.isEmpty())EmptyCard("No classes scheduled for today.") else todaySchedule.take(5).forEach{r->HomeTodayClassCard(r,nowMinutes){selectedClass=r}}
+                        if(todaySchedule.isEmpty()) EmptyCard(if (tomorrowSchedule.isNotEmpty()) "No classes scheduled for today. Next class is tomorrow." else "No classes scheduled for today.") else todaySchedule.take(5).forEach{r->HomeTodayClassCard(r,nowMinutes){selectedClass=r}}
                     }
                 }
                 "tasks" -> item(key="home_tasks") {
@@ -799,6 +816,8 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
     var showAdd by remember { mutableStateOf(false) }
     var showDaySetup by remember { mutableStateOf(!store.scheduleDaysConfigured()) }
     var showDetails by remember { mutableStateOf(false) }
+    var filterType by rememberSaveable { mutableStateOf("All") }
+    var todayOnly by rememberSaveable { mutableStateOf(false) }
     var showScheduleSettings by remember { mutableStateOf(false) }
     var nowTick by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
@@ -810,10 +829,11 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
     }
     LaunchedEffect(query) { if (query == "__ADD__") showAdd = true }
 
-    val all = remember(refresh, revision, query) {
+    val all = remember(refresh, revision, query, filterType) {
         store.get("schedule").filter {
-            query.isBlank() || query == "__ADD__" ||
-                (it.title + " " + it.subtitle + " " + it.extra + " " + it.day + " " + it.room + " " + it.professor).contains(query, true)
+            (query.isBlank() || query == "__ADD__" ||
+                (it.title + " " + it.subtitle + " " + it.extra + " " + it.day + " " + it.room + " " + it.professor).contains(query, true)) &&
+            (filterType == "All" || it.classType.equals(filterType, true))
         }
     }
 
@@ -835,12 +855,62 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
     val customDayWidth = remember(revision) { store.scheduleTableDayWidth() }
     val customRowHeight = remember(revision) { store.scheduleTableRowHeight() }
     var zoom by remember(revision) { mutableFloatStateOf(1f) }
+    val conflicts = remember(all) {
+        all.groupBy { it.day.lowercase(Locale.getDefault()) }.values.flatMap { dayClasses ->
+            dayClasses.sortedBy { parseClockMinutes(it.startTime) ?: Int.MAX_VALUE }.zipWithNext().filter { (a,b) ->
+                (parseClockMinutes(b.startTime) ?: Int.MAX_VALUE) < (parseClockMinutes(a.endTime) ?: -1)
+            }.map { it }
+        }
+    }
+    val freePeriods = remember(all, scheduleDays, startHour, endHour) {
+        scheduleDays.flatMap { day ->
+            val classes = all.filter { it.day.equals(day,true) }.sortedBy { parseClockMinutes(it.startTime) ?: Int.MAX_VALUE }
+            val gaps = mutableListOf<String>()
+            var cursor = startHour * 60
+            classes.forEach { r ->
+                val s=parseClockMinutes(r.startTime) ?: return@forEach
+                val e=parseClockMinutes(r.endTime) ?: return@forEach
+                if(s > cursor) gaps += day + ": " + formatMinutes(cursor) + "–" + formatMinutes(minOf(s,endHour*60))
+                cursor=maxOf(cursor,e)
+            }
+            if(cursor < endHour*60) gaps += day + ": " + formatMinutes(cursor) + "–" + formatMinutes(endHour*60)
+            gaps
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal=8.dp,vertical=5.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+            listOf("All","Lecture","Lab").forEach { option ->
+                FilterChip(filterType==option,{filterType=option},label={Text(option)})
+            }
+            FilterChip(todayOnly,{todayOnly=!todayOnly},label={Text(if(todayOnly) "Today" else "Week")})
+            TextButton({zoom=(zoom-0.25f).coerceAtLeast(0.75f)}){Text("−")}
+            Text("${"%.2f".format(zoom)}x",modifier=Modifier.padding(top=10.dp),style=MaterialTheme.typography.labelSmall)
+            TextButton({zoom=(zoom+0.25f).coerceAtMost(3f)}){Text("+")}
+            TextButton({zoom=1f}){Text("Reset")}
+        }
+        if(conflicts.isNotEmpty()) {
+            Card(Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=3.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.errorContainer)) {
+                Column(Modifier.padding(10.dp)) {
+                    Text("⚠ Schedule Conflict",fontWeight=FontWeight.Bold)
+                    conflicts.take(3).forEach { pair -> Text(pair.first.title + " " + pair.first.startTime + "–" + pair.first.endTime + " overlaps " + pair.second.title + " " + pair.second.startTime + "–" + pair.second.endTime,style=MaterialTheme.typography.bodySmall) }
+                }
+            }
+        }
+        if(freePeriods.isNotEmpty()) {
+            Card(Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=3.dp)) {
+                Column(Modifier.padding(10.dp)) {
+                    Text("🟡 Free periods",fontWeight=FontWeight.Bold)
+                    Text(freePeriods.take(4).joinToString(" • "),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        BoxWithConstraints(
         BoxWithConstraints(
             Modifier.fillMaxWidth().weight(1f).padding(horizontal = 4.dp)
         ) {
-            val baseDayWidth = if (customDayWidth > 0f) customDayWidth.dp else (maxWidth - 56.dp).coerceAtLeast(0.dp) / scheduleDays.size.coerceAtLeast(1)
+            val visibleDays = if (todayOnly) scheduleDays.filter { it.equals(today,true) } else scheduleDays
+            val baseDayWidth = if (customDayWidth > 0f) customDayWidth.dp else (maxWidth - 56.dp).coerceAtLeast(0.dp) / visibleDays.size.coerceAtLeast(1)
             val dayWidth = baseDayWidth * zoom
             val headerHeight = 34.dp
             val footerHeight = 0.dp
@@ -849,7 +919,8 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
 
             Column(Modifier.fillMaxSize()
                 .then(if (horizontalScrollEnabled) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
-                .then(if (verticalScrollEnabled) Modifier.verticalScroll(rememberScrollState()) else Modifier)) {
+                .then(if (verticalScrollEnabled || !fullscreen) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                .pointerInput(Unit) { detectTransformGestures { _,_,gestureZoom,_ -> zoom=(zoom*gestureZoom).coerceIn(0.75f,3f) } }) {
                 if (horizontalScrollEnabled || verticalScrollEnabled) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Zoom ${zoom.toInt()}x", style = MaterialTheme.typography.labelSmall)
@@ -863,7 +934,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                     Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) {
                         Text("Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
                     }
-                    scheduleDays.forEach { d ->
+                    visibleDays.forEach { d ->
                         val isToday = d.equals(today, true)
                         Box(
                             Modifier.width(dayWidth).fillMaxHeight()
@@ -893,7 +964,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                             }
                         }
 
-                        scheduleDays.forEach { day ->
+                        visibleDays.forEach { day ->
                             val classes = all.filter { it.day.equals(day, true) && it.startTime.toHourOrNull() == h }
                             Box(
                                 Modifier.width(dayWidth).fillMaxHeight()
@@ -902,6 +973,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                                     .padding(1.dp)
                             ) {
                                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                    if (classes.isEmpty()) Text("FREE",modifier=Modifier.align(Alignment.CenterHorizontally),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                     classes.groupBy { it.title.trim().uppercase(Locale.getDefault()) }
                                         .values.take(2).forEach { subjectClasses ->
                                         val r = subjectClasses.first()
@@ -921,6 +993,9 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                                         }
                                     }
                                 }
+                                if (day.equals(today,true) && isCurrentHour) {
+                                    Box(Modifier.fillMaxWidth().height(2.dp).offset(y=rowHeight * (calendar.get(Calendar.MINUTE) / 60f)).background(timeHighlight))
+                                }
                             }
                         }
                     }
@@ -930,7 +1005,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                     Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) {
                         Text(formatHourRange(endHour, (endHour + 1).coerceAtMost(24)), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                     }
-                    scheduleDays.forEach { Box(Modifier.width(dayWidth).fillMaxHeight().background(tableBg).border(1.dp, tableBorder)) }
+                    visibleDays.forEach { Box(Modifier.width(dayWidth).fillMaxHeight().background(tableBg).border(1.dp, tableBorder)) }
                 }
             }
         }
@@ -1121,6 +1196,7 @@ fun ScheduleHighlightColorDialog(store: LocalStore, done: () -> Unit) {
 
 fun String.toHourOrNull(): Int? = substringBefore(":").toIntOrNull()
 private fun formatHourRange(start: Int, end: Int) = "%02d:00-%02d:00".format(start, end)
+private fun formatMinutes(total: Int): String = "%02d:%02d".format((total / 60) % 24, total % 60)
 private fun mergeTodayClasses(records: List<Record>): List<Record> {
     // Same subject + consecutive time on the same day = one class.
     // Any vacant/gap period starts a separate class, even for the same subject.
