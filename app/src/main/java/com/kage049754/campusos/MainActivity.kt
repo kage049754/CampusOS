@@ -33,6 +33,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import org.json.JSONArray
@@ -218,6 +219,16 @@ class LocalStore(context: Context) {
     fun setScheduleTableBackground(v: Long) { prefs.edit().putLong("schedule_table_background", v) .apply(); revision++ }
     fun scheduleTableBorder() = prefs.getLong("schedule_table_border", 0xFF808080L)
     fun setScheduleTableBorder(v: Long) { prefs.edit().putLong("schedule_table_border", v) .apply(); revision++ }
+    fun scheduleTableHorizontalScroll() = prefs.getBoolean("schedule_table_horizontal_scroll", false)
+    fun setScheduleTableHorizontalScroll(v: Boolean) { prefs.edit().putBoolean("schedule_table_horizontal_scroll", v).apply(); revision++ }
+    fun scheduleTableVerticalScroll() = prefs.getBoolean("schedule_table_vertical_scroll", false)
+    fun setScheduleTableVerticalScroll(v: Boolean) { prefs.edit().putBoolean("schedule_table_vertical_scroll", v).apply(); revision++ }
+    fun scheduleTableFontSize() = prefs.getFloat("schedule_table_font_size", 11f)
+    fun setScheduleTableFontSize(v: Float) { prefs.edit().putFloat("schedule_table_font_size", v.coerceIn(8f, 18f)).apply(); revision++ }
+    fun scheduleTableDayWidth() = prefs.getFloat("schedule_table_day_width", 0f)
+    fun setScheduleTableDayWidth(v: Float) { prefs.edit().putFloat("schedule_table_day_width", v.coerceIn(0f, 180f)).apply(); revision++ }
+    fun scheduleTableRowHeight() = prefs.getFloat("schedule_table_row_height", 0f)
+    fun setScheduleTableRowHeight(v: Float) { prefs.edit().putFloat("schedule_table_row_height", v.coerceIn(0f, 120f)).apply(); revision++ }
     fun scheduleDays() = (prefs.getString("schedule_days", "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday") ?: "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday").split(",").filter { it.isNotBlank() }
     fun scheduleDaysConfigured() = prefs.getBoolean("schedule_days_configured", false)
     fun setScheduleDays(v: List<String>) { prefs.edit().putString("schedule_days", v.joinToString(",")).putBoolean("schedule_days_configured", true).apply(); revision++; CampusReminders.reschedule(appContext); CampusWidgets.updateAll(appContext) }
@@ -272,6 +283,7 @@ fun CampusOSApp(activity: Activity) {
     var showHomeSettings by remember { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }
     var showScheduleSettings by remember { mutableStateOf(false) }
+    var showScheduleTableSettings by remember { mutableStateOf(false) }
     var showScheduleDetails by remember { mutableStateOf(false) }
     var scheduleFullscreen by remember { mutableStateOf(false) }
 
@@ -358,6 +370,7 @@ fun CampusOSApp(activity: Activity) {
                     setTheme = { theme = it; store.setTheme(it) },
                     onAddClass = { showHomeAdd = true; showHomeSettings = false },
                     onScheduleSettings = { showScheduleSettings = true; showHomeSettings = false },
+                    onScheduleTableSettings = { showScheduleTableSettings = true; showHomeSettings = false },
                     onAppearance = { showHomeColors = true; showHomeSettings = false },
                     onProfile = { showProfile = true; showHomeSettings = false },
                     done = { showHomeSettings = false }
@@ -367,6 +380,7 @@ fun CampusOSApp(activity: Activity) {
             if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }) { showHomeColors = false }
             if (showProfile) ProfileDialog(store) { showProfile = false }
             if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
+            if (showScheduleTableSettings) ScheduleTableSettingsDialog(store) { showScheduleTableSettings = false }
             if (showScheduleDetails) SubjectDetailsDialog(store.get("schedule"), { showScheduleDetails = false })
         }
     }
@@ -382,7 +396,7 @@ private fun iconFor(s: Screen) = when(s) {
 }
 
 @Composable
-fun HomeSettingsDialog(store: LocalStore, theme: String, setTheme: (String) -> Unit, onAddClass: () -> Unit, onScheduleSettings: () -> Unit, onAppearance: () -> Unit, onProfile: () -> Unit, done: () -> Unit) {
+fun HomeSettingsDialog(store: LocalStore, theme: String, setTheme: (String) -> Unit, onAddClass: () -> Unit, onScheduleSettings: () -> Unit, onScheduleTableSettings: () -> Unit, onAppearance: () -> Unit, onProfile: () -> Unit, done: () -> Unit) {
     AlertDialog(onDismissRequest = done, title = { Text("CampusOS Settings") }, text = {
         Column(Modifier.heightIn(max = 620.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Personal", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
@@ -390,12 +404,58 @@ fun HomeSettingsDialog(store: LocalStore, theme: String, setTheme: (String) -> U
             Text("Campus", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             Button(onClick = onAddClass, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("Add Class") }
             OutlinedButton(onClick = onScheduleSettings, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.CalendarMonth, null); Spacer(Modifier.width(8.dp)); Text("Class Schedule Settings") }
+            OutlinedButton(onClick = onScheduleTableSettings, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.TableView, null); Spacer(Modifier.width(8.dp)); Text("Schedule Table Settings") }
             Text("Appearance", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             OutlinedButton(onClick = onAppearance, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Palette, null); Spacer(Modifier.width(8.dp)); Text("Colors & Appearance") }
             OutlinedButton(onClick = { setTheme(if (theme == "dark") "light" else "dark") }, modifier = Modifier.fillMaxWidth()) { Icon(if (theme == "dark") Icons.Default.LightMode else Icons.Default.DarkMode, null); Spacer(Modifier.width(8.dp)); Text(if (theme == "dark") "Switch to Light Mode" else "Switch to Dark Mode") }
         }
     }, confirmButton = { TextButton(done) { Text("Close") } })
 }
+@Composable
+fun ScheduleTableSettingsDialog(store: LocalStore, done: () -> Unit) {
+    var horizontal by remember { mutableStateOf(store.scheduleTableHorizontalScroll()) }
+    var vertical by remember { mutableStateOf(store.scheduleTableVerticalScroll()) }
+    var fontSize by remember { mutableFloatStateOf(store.scheduleTableFontSize()) }
+    var dayWidth by remember { mutableFloatStateOf(store.scheduleTableDayWidth()) }
+    var rowHeight by remember { mutableFloatStateOf(store.scheduleTableRowHeight()) }
+    AlertDialog(
+        onDismissRequest = done,
+        title = { Text("Schedule Table Settings") },
+        text = {
+            Column(Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Default layout stays unchanged until you customize it.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) { Text("Horizontal scrolling"); Text("Swipe left/right when the table is wider.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Switch(checked = horizontal, onCheckedChange = { horizontal = it })
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) { Text("Vertical scrolling"); Text("Scroll the timetable up/down.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Switch(checked = vertical, onCheckedChange = { vertical = it })
+                }
+                Text("Text size: ${fontSize.toInt()} sp")
+                Slider(value = fontSize, onValueChange = { fontSize = it }, valueRange = 8f..18f, steps = 9)
+                Text("Day column width: ${if (dayWidth == 0f) "Automatic" else "%.0f dp".format(dayWidth)}")
+                Slider(value = if (dayWidth == 0f) 86f else dayWidth, onValueChange = { dayWidth = it }, valueRange = 60f..180f, steps = 11)
+                TextButton(onClick = { dayWidth = 0f }) { Text("Use automatic width") }
+                Text("Row height: ${if (rowHeight == 0f) "Automatic" else "%.0f dp".format(rowHeight)}")
+                if (rowHeight > 0f) {
+                    Slider(value = rowHeight, onValueChange = { rowHeight = it }, valueRange = 30f..120f, steps = 8)
+                }
+                TextButton(onClick = { rowHeight = 0f }) { Text("Use automatic height") }
+            }
+        },
+        confirmButton = { Button(onClick = {
+            store.setScheduleTableHorizontalScroll(horizontal)
+            store.setScheduleTableVerticalScroll(vertical)
+            store.setScheduleTableFontSize(fontSize)
+            store.setScheduleTableDayWidth(dayWidth)
+            store.setScheduleTableRowHeight(rowHeight)
+            done()
+        }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = done) { Text("Cancel") } }
+    )
+}
+
 @Composable
 fun ProfileDialog(store: LocalStore, done: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -604,20 +664,27 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
     val tableBgValue = store.scheduleTableBackground()
     val tableBg = if (tableBgValue == 0L) Color.Transparent else Color(tableBgValue)
     val tableBorder = Color(store.scheduleTableBorder())
+    val horizontalScrollEnabled = remember(revision) { store.scheduleTableHorizontalScroll() }
+    val verticalScrollEnabled = remember(revision) { store.scheduleTableVerticalScroll() }
+    val tableFontSize = remember(revision) { store.scheduleTableFontSize() }
+    val customDayWidth = remember(revision) { store.scheduleTableDayWidth() }
+    val customRowHeight = remember(revision) { store.scheduleTableRowHeight() }
 
     Column(Modifier.fillMaxSize()) {
         BoxWithConstraints(
             Modifier.fillMaxWidth().weight(1f).padding(horizontal = 4.dp)
         ) {
-            val dayWidth = (maxWidth - 56.dp).coerceAtLeast(0.dp) / scheduleDays.size.coerceAtLeast(1)
+            val dayWidth = if (customDayWidth > 0f) customDayWidth.dp else (maxWidth - 56.dp).coerceAtLeast(0.dp) / scheduleDays.size.coerceAtLeast(1)
             val headerHeight = 34.dp
             val footerHeight = 0.dp
-            val rowHeight = ((maxHeight - headerHeight - footerHeight) / hours.size.coerceAtLeast(1)).coerceAtLeast(30.dp)
+            val rowHeight = if (customRowHeight > 0f) customRowHeight.dp else ((maxHeight - headerHeight - footerHeight) / hours.size.coerceAtLeast(1)).coerceAtLeast(30.dp)
 
-            Column(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize()
+                .then(if (horizontalScrollEnabled) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
+                .then(if (verticalScrollEnabled) Modifier.verticalScroll(rememberScrollState()) else Modifier)) {
                 Row(Modifier.height(headerHeight)) {
                     Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) {
-                        Text("Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                        Text("Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
                     }
                     scheduleDays.forEach { d ->
                         val isToday = d.equals(today, true)
@@ -629,7 +696,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                                 if (isToday) Box(Modifier.size(6.dp).background(dayHighlight, RoundedCornerShape(50)))
-                                Text(d.take(3), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                                Text(d.take(3), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
                             }
                         }
                     }
@@ -645,7 +712,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 if (isCurrentHour) Box(Modifier.size(6.dp).background(timeHighlight, RoundedCornerShape(50)))
-                                Text("%02d:00".format(h), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                                Text("%02d:00".format(h), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
                             }
                         }
 
@@ -670,9 +737,9 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                                             shape = RoundedCornerShape(6.dp)
                                         ) {
                                             Column(Modifier.fillMaxSize().padding(horizontal = 4.dp, vertical = 2.dp), verticalArrangement = Arrangement.Center) {
-                                                Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                                                Text(types.ifBlank { "Class" }, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                                                if (rooms.isNotBlank()) Text(rooms, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                Text(types.ifBlank { "Class" }, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                if (rooms.isNotBlank()) Text("Room: $rooms", style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                             }
                                         }
                                     }
@@ -899,6 +966,9 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                     weekDays.forEach{d->
                         val currentKey="$d|$h|$classType"
                         val selected=currentKey in selectedSlots
+                        val lectureSelected = "$d|$h|Lecture" in selectedSlots
+                        val labSelected = "$d|$h|Lab" in selectedSlots
+                        val anySelected = lectureSelected || labSelected
                         val cellRecords=existingSchedule.filter{it.day.equals(d,true)&&it.startTime.toHourOrNull()==h}
                         val sameSubjectAlreadyThere=cellRecords.any{subject.isNotBlank()&&it.title.trim().equals(subject.trim(),true)&&it.classType.equals(classType,true)}
                         val occupantText=cellRecords.groupBy{it.title.trim().uppercase(Locale.getDefault())}.values.take(2).joinToString(" • "){group->
@@ -916,6 +986,7 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                                 if(cellRecords.isNotEmpty()) Text(occupantText,style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                 else Text("Empty",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                 if(selected) Text(if(sameSubjectAlreadyThere)"Already added" else "Selected $classType",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary,maxLines=1)
+                                else if(anySelected) Text(listOfNotNull(if(lectureSelected) "Lecture" else null, if(labSelected) "Lab" else null).joinToString(" + ") + " selected",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.tertiary,maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                             }
                         }
                     }
