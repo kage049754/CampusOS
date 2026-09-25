@@ -549,8 +549,8 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
 
     val scheduleDays = store.scheduleDays()
     val startHour = store.scheduleStartHour().coerceIn(0, 23)
-    val endHour = store.scheduleEndHour().coerceIn(startHour + 1, 24)
-    val hours = (startHour until endHour).toList()
+    val endHour = store.scheduleEndHour().coerceIn(startHour, 23)
+    val hours = (startHour..endHour).toList()
     val calendar = remember(nowTick) { Calendar.getInstance() }
     val today = SimpleDateFormat("EEEE", Locale.getDefault()).format(calendar.time)
     val currentHour = calendar.get(Calendar.HOUR_OF_DAY)
@@ -585,9 +585,9 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
             Modifier.fillMaxWidth().weight(1f).padding(horizontal = 4.dp)
         ) {
             val dayWidth = (maxWidth - 56.dp).coerceAtLeast(0.dp) / scheduleDays.size.coerceAtLeast(1)
-            val headerHeight = 38.dp
-            val footerHeight = 24.dp
-            val rowHeight = ((maxHeight - headerHeight - footerHeight) / hours.size.coerceAtLeast(1)).coerceAtLeast(28.dp)
+            val headerHeight = 34.dp
+            val footerHeight = 20.dp
+            val rowHeight = ((maxHeight - headerHeight - footerHeight) / hours.size.coerceAtLeast(1)).coerceAtLeast(30.dp)
 
             Column(Modifier.fillMaxSize()) {
                 Row(Modifier.height(headerHeight)) {
@@ -641,8 +641,8 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                                             shape = RoundedCornerShape(6.dp)
                                         ) {
                                             Column(Modifier.fillMaxSize().padding(horizontal = 3.dp, vertical = 2.dp), verticalArrangement = Arrangement.Center) {
-                                                Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                                                Text(r.classType, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                                                Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                Text(r.classType, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                             }
                                         }
                                     }
@@ -654,7 +654,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
 
                 Row(Modifier.height(footerHeight)) {
                     Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) {
-                        Text("%02d:00".format(endHour), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        Text("%02d:00".format((endHour + 1).coerceAtMost(24)), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                     }
                     scheduleDays.forEach { Box(Modifier.width(dayWidth).fillMaxHeight().background(tableBg).border(1.dp, tableBorder)) }
                 }
@@ -782,7 +782,7 @@ fun TimeWheelDialog(
     done: (String) -> Unit,
     cancel: () -> Unit
 ) {
-    val initialHour = initial.substringBefore(":").toIntOrNull()?.coerceIn(7, 18) ?: 7
+    val initialHour = initial.substringBefore(":").toIntOrNull()?.coerceIn(7, 19) ?: 7
     var hour by remember { mutableIntStateOf(initialHour) }
 
     AlertDialog(
@@ -807,10 +807,10 @@ fun TimeWheelDialog(
                     factory = { context ->
                         android.widget.NumberPicker(context).apply {
                             minValue = 7
-                            maxValue = 18
+                            maxValue = 19
                             value = hour
                             wrapSelectorWheel = false
-                            displayedValues = (7..18).map { "%02d:00".format(it) }.toTypedArray()
+                            displayedValues = (7..19).map { "%02d:00".format(it) }.toTypedArray()
                             setOnValueChangedListener { _, _, newValue -> hour = newValue }
                         }
                     },
@@ -841,7 +841,8 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
     var classType by remember { mutableStateOf("Lecture") }; var color by remember { mutableLongStateOf(0xFFE3F2FD) }
     var selectedSlots by remember { mutableStateOf(setOf<String>()) }
     val colors=listOf(0xFFE3F2FDL,0xFFE8F5E9L,0xFFFFF3E0L,0xFFF3E5F5L,0xFFFFEBEEL,0xFFE0F7FAL)
-    val hours=(7..18).toList(); val weekDays=listOf("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday")
+    val startHour=store.scheduleStartHour().coerceIn(0,23); val endHour=store.scheduleEndHour().coerceIn(startHour,23)
+    val hours=(startHour..endHour).toList(); val weekDays=store.scheduleDays()
     AlertDialog(onDismissRequest=done,title={Text("Add class")},text={
         Column(Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){
             OutlinedTextField(subject,{subject=it},Modifier.fillMaxWidth(),label={Text("Subject code")},placeholder={Text("e.g. DCIT 25")})
@@ -852,13 +853,13 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
             Text("Pick class time(s) and day(s)",fontWeight=FontWeight.SemiBold)
             Text("Tap a cell to add/remove the selected type. Lecture and Lab can share one day and hour.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal=2.dp)){Column{
-                Row{Box(Modifier.width(52.dp).height(34.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text("Time",style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)}
-                    weekDays.forEach{d->Box(Modifier.width(76.dp).height(34.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text(d.take(3),style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)}}}
+                Row{Box(Modifier.width(48.dp).height(32.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text("Time",style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)}
+                    weekDays.forEach{d->Box(Modifier.width(72.dp).height(32.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text(d.take(3),style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)}}}
                 hours.forEach{h->Row{
-                    Box(Modifier.width(52.dp).height(48.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text("%02d:00".format(h),style=MaterialTheme.typography.labelSmall)}
+                    Box(Modifier.width(48.dp).height(46.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text("%02d:00".format(h),style=MaterialTheme.typography.labelSmall)}
                     weekDays.forEach{d->
                         val selectedTypes=listOf("Lecture","Lab").filter{type->"$d|$h|$type" in selectedSlots}; val currentKey="$d|$h|$classType"; val selected=currentKey in selectedSlots
-                        Box(Modifier.width(76.dp).height(48.dp).border(2.dp,if(selectedTypes.isNotEmpty())MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline).background(if(selectedTypes.isNotEmpty())MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface).clickable{selectedSlots=if(selected)selectedSlots-currentKey else selectedSlots+currentKey},contentAlignment=Alignment.Center){
+                        Box(Modifier.width(72.dp).height(46.dp).border(2.dp,if(selectedTypes.isNotEmpty())MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline).background(if(selectedTypes.isNotEmpty())MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface).clickable{selectedSlots=if(selected)selectedSlots-currentKey else selectedSlots+currentKey},contentAlignment=Alignment.Center){
                             if(selectedTypes.isNotEmpty())Column(horizontalAlignment=Alignment.CenterHorizontally){Text(selectedTypes.joinToString(" + "),style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold,maxLines=1);Text("%02d–%02d".format(h,h+1),style=MaterialTheme.typography.labelSmall)}
                         }
                     }
