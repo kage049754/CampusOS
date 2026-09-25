@@ -371,7 +371,6 @@ fun HomeSettingsDialog(store: LocalStore, theme: String, setTheme: (String) -> U
     AlertDialog(onDismissRequest = done, title = { Text("CampusOS Settings") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(onClick = onAddClass, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("Add Class") }
-            OutlinedButton(onClick = onScheduleSettings, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.CalendarMonth, null); Spacer(Modifier.width(8.dp)); Text("Class Schedule Settings") }
             OutlinedButton(onClick = onAppearance, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Palette, null); Spacer(Modifier.width(8.dp)); Text("Colors & Appearance") }
             OutlinedButton(onClick = { setTheme(if (theme == "dark") "light" else "dark") }, modifier = Modifier.fillMaxWidth()) {
                 Icon(if (theme == "dark") Icons.Default.LightMode else Icons.Default.DarkMode, null); Spacer(Modifier.width(8.dp)); Text(if (theme == "dark") "Switch to Light Mode" else "Switch to Dark Mode")
@@ -568,13 +567,14 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
             Column(Modifier.weight(1f)) {
                 Text("Class Schedule", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
-                    scheduleDays.joinToString(" • ") + " • " + "%02d:00–%02d:00".format(startHour, endHour),
+                    "Class days: " + scheduleDays.joinToString(" • "),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
-            IconButton({ showDetails = true }) { Icon(Icons.Default.Info, "Subject details") }
+            IconButton({ showDetails = true }) { Icon(Icons.Default.Info, "Subject details and class information") }
             IconButton({ showScheduleSettings = true }) { Icon(Icons.Default.Settings, "Schedule settings") }
             IconButton({ setFullscreen(!fullscreen) }) {
                 Icon(if (fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, "Full screen schedule")
@@ -586,7 +586,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
         ) {
             val dayWidth = (maxWidth - 56.dp).coerceAtLeast(0.dp) / scheduleDays.size.coerceAtLeast(1)
             val headerHeight = 34.dp
-            val footerHeight = 20.dp
+            val footerHeight = 0.dp
             val rowHeight = ((maxHeight - headerHeight - footerHeight) / hours.size.coerceAtLeast(1)).coerceAtLeast(30.dp)
 
             Column(Modifier.fillMaxSize()) {
@@ -864,7 +864,6 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                         }
                     }
                 }}
-                Row{Box(Modifier.width(52.dp).height(26.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text("19:00",style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)};weekDays.forEach{Box(Modifier.width(76.dp).height(26.dp).border(1.dp,MaterialTheme.colorScheme.outline))}}
             }}
             Text(if(selectedSlots.isEmpty())"No time selected" else selectedSlots.size.toString()+" slot(s) selected",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
             OutlinedTextField(room,{room=it},Modifier.fillMaxWidth(),label={Text("Room number")});OutlinedTextField(professor,{professor=it},Modifier.fillMaxWidth(),label={Text("Professor")});OutlinedTextField(notes,{notes=it},Modifier.fillMaxWidth(),label={Text("Notes")})
