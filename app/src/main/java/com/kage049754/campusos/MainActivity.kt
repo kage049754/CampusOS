@@ -284,12 +284,6 @@ class LocalStore(context: Context) {
         }
         return root.toString(2)
     }
-        val root = JSONObject()
-        listOf("subjects","schedule","tasks","reviewers","grades","attendance","expenses").forEach {
-            root.put(it, prefs.getString(it, "[]"))
-        }
-        root.put("theme", theme()); root.put("lock", lockEnabled()); return root.toString(2)
-    }
     fun restoreJson(json: String, selected: Set<String> = setOf("homepage","schedule","tasks","academics")) {
         val root = JSONObject(json); val e = prefs.edit()
         if ("schedule" in selected && root.has("schedule")) e.putString("schedule", root.getString("schedule"))
@@ -1820,10 +1814,6 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
             context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", true).apply()
             CampusReminders.reschedule(context)
         }
-    }
-    val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        uri ?: return@rememberLauncherForActivityResult
-        context.contentResolver.openOutputStream(uri)?.use { it.write(store.backupJson().toByteArray()) }
     }
     var backupMode by remember { mutableStateOf(false) }; var restoreMode by remember { mutableStateOf(false) }
     var selectedModules by remember { mutableStateOf(setOf("schedule","academics")) }
