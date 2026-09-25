@@ -932,12 +932,18 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
         if(subject.isNotBlank()&&selectedSlots.isNotEmpty()){
             val normalizedSubject=subject.trim()
             val existing=store.get("schedule")
-            val newKeys=selectedSlots.map{key->{val p=key.split("|");Triple(p.getOrNull(0)?:"",p.getOrNull(1)?.toIntOrNull()?:7,p.getOrNull(2)?:classType)}}.filterNot{(day,h,type)->
+            val newKeys=selectedSlots.map { key ->
+                val p=key.split("|")
+                Triple(p.getOrNull(0)?:"",p.getOrNull(1)?.toIntOrNull()?:7,p.getOrNull(2)?:classType)
+            }.filterNot{(day,h,type)->
                 existing.any{it.day.equals(day,true)&&it.startTime.toHourOrNull()==h&&it.classType.equals(type,true)&&it.title.trim().equals(normalizedSubject,true)}
             }
             if(newKeys.isNotEmpty()){
                 val idBase=maxOf(System.currentTimeMillis(),(existing.maxOfOrNull{it.id}?:0L)+1L)
-                val selected=newKeys.mapIndexed{index,(day,h,type)->Record(id=idBase+index,title=normalizedSubject,subtitle=fullName.trim(),extra=notes.trim(),day=day,startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=room.trim(),professor=professor.trim(),color=color,classType=type)}
+                val selected=newKeys.mapIndexed{index,slot->
+                    val (day,h,type)=slot
+                    Record(id=idBase+index,title=normalizedSubject,subtitle=fullName.trim(),extra=notes.trim(),day=day,startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=room.trim(),professor=professor.trim(),color=color,classType=type)
+                }
                 store.put("schedule",existing+selected)
                 selected.forEach{syncSubjectFromClass(store,it)}
             }
