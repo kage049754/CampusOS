@@ -397,7 +397,7 @@ fun CampusOSApp(activity: Activity) {
                 settingsModule = settingsParent
                 settingsParent = null
             }
-            showHomeWidgetSettings -> showHomeWidgetSettings = false\n            showHomeSettings -> showHomeSettings = false
+            showHomeWidgetSettings -> {\n                showHomeWidgetSettings = false\n                settingsModule = settingsParent\n                settingsParent = null\n            }\n            showHomeSettings -> showHomeSettings = false
             settingsModule != null -> {
                 settingsModule = null
                 settingsParent = null
@@ -617,6 +617,24 @@ fun ProfileDialog(store: LocalStore, done: () -> Unit) {
             OutlinedTextField(section, { section = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Section") })
         }
     }, confirmButton = { Button(onClick = { store.setProfile(name.trim(), studentId.trim(), section.trim(), photoPath); done() }) { Text("Save") } }, dismissButton = { TextButton(done) { Text("Cancel") } })
+}
+
+private fun parseClockMinutes(value: String): Int? {
+    val parts = value.trim().split(":")
+    val hour = parts.firstOrNull()?.toIntOrNull() ?: return null
+    val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
+    return (hour * 60 + minute).takeIf { hour in 0..23 && minute in 0..59 }
+}
+private fun formatCountdown(totalMinutes: Int): String {
+    val minutes = totalMinutes.coerceAtLeast(0)
+    val hours = minutes / 60
+    val mins = minutes % 60
+    return if (hours > 0) "${hours}h ${mins}m" else "${mins}m"
+}
+private fun isClassOngoing(r: Record, nowMinutes: Int): Boolean {
+    val start = parseClockMinutes(r.startTime) ?: return false
+    val end = parseClockMinutes(r.endTime) ?: return false
+    return nowMinutes >= start && nowMinutes < end
 }
 
 @Composable
