@@ -62,7 +62,7 @@ data class Record(
 )
 data class FileRecord(val name: String, val size: Long, val file: File? = null)
 
-data class SubjectNote(val id: Long, val title: String, val body: String, val updatedAt: Long)
+data class SubjectNote(val id: Long, val title: String, val body: String, val updatedAt: Long, val favorite: Boolean = false, val order: Long = 0L)
 
 private fun readableContentColor(background: Color): Color {
     val luminance = 0.299f * background.red + 0.587f * background.green + 0.114f * background.blue
@@ -217,7 +217,7 @@ class LocalStore(context: Context) {
         val a = JSONArray(raw)
         (0 until a.length()).mapNotNull { i ->
             a.optJSONObject(i)?.let { o ->
-                SubjectNote(o.optLong("id"), o.optString("title"), o.optString("body"), o.optLong("updatedAt"))
+                SubjectNote(o.optLong("id"), o.optString("title"), o.optString("body"), o.optLong("updatedAt"), o.optBoolean("favorite", false), o.optLong("order", 0L))
             }
         }.sortedByDescending { it.updatedAt }
     }.getOrElse { emptyList() }
@@ -443,6 +443,8 @@ fun ScheduleTableSettingsDialog(store: LocalStore, done: () -> Unit) {
     var fontSize by remember { mutableFloatStateOf(store.scheduleTableFontSize()) }
     var dayWidth by remember { mutableFloatStateOf(store.scheduleTableDayWidth()) }
     var rowHeight by remember { mutableFloatStateOf(store.scheduleTableRowHeight()) }
+    val noteList = filteredNotes.sortedWith(compareByDescending<SubjectNote> { it.favorite }.thenBy { when (noteSort) { "Created" -> -it.id; "Alphabetical" -> 0L; else -> -it.updatedAt } })
+    val fileList = files.sortedWith(compareByDescending<File> { File(context.filesDir, "subject_favorite_" + subject.id + "_" + it.name).exists() }.thenBy { when (fileSort) { "Alphabetical" -> it.name.lowercase(); "Oldest" -> it.lastModified(); else -> -it.lastModified() } })
     AlertDialog(
         onDismissRequest = done,
         title = { Text("Schedule Table Settings") },
@@ -1134,6 +1136,7 @@ fun AcademicsScreen(store: LocalStore, query: String, clear: () -> Unit) {
     var tab by remember { mutableIntStateOf(0) }
     var refresh by remember { mutableIntStateOf(0) }
     var selectedSubject by remember { mutableStateOf<Record?>(null) }
+    var subjectWorkspaceMode by remember { mutableIntStateOf(0) }
     val labels = listOf("Subjects","Reviewers")
     val keys = listOf("subjects","reviewers")
     val list = remember(refresh, revision, query, tab) { store.get(keys[tab]).filter {
@@ -1147,7 +1150,7 @@ fun AcademicsScreen(store: LocalStore, query: String, clear: () -> Unit) {
         if (list.isEmpty()) EmptyCard("No "+labels[tab].lowercase()+" yet. Add classes from Home Settings or use your existing data.")
         else LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(list, key = { it.id }) { r ->
-                Card(onClick = { if (tab == 0) selectedSubject = r }, modifier = Modifier.fillMaxWidth()) {
+                Card(onClick = { if (tab == 0) { selectedSubject = r; subjectWorkspaceMode = 0 } }, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp)) {
                         Text(r.title, fontWeight = FontWeight.SemiBold)
                         if (r.subtitle.isNotBlank()) Text(r.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1159,12 +1162,12 @@ fun AcademicsScreen(store: LocalStore, query: String, clear: () -> Unit) {
     }
     if (query == "__ADD__") AddRecordDialog(labels[tab], keys[tab], store) { clear(); refresh++ }
     selectedSubject?.let { subject ->
-        SubjectNotepadDialog(subject, store) { selectedSubject = null; refresh++ }
+        SubjectNotepadDialog(subject, store, subjectWorkspaceMode) { selectedSubject = null; refresh++ }
     }
 }
 
 @Composable
-fun SubjectNotepadDialog(subject: Record, store: LocalStore, done: () -> Unit) {
+fun SubjectNotepadDialog(subject: Record, store: LocalStore, startMode: Int = 0, done: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var notes by remember(subject.id, store.revision) { mutableStateOf(store.subjectNotes(subject.id)) }
     var files by remember(subject.id) { mutableStateOf(subjectFiles(context, subject.id)) }
@@ -1174,6 +1177,9 @@ fun SubjectNotepadDialog(subject: Record, store: LocalStore, done: () -> Unit) {
     var noteTitle by remember { mutableStateOf("") }
     var noteBody by remember { mutableStateOf("") }
     var noteQuery by remember { mutableStateOf("") }
+    var mode by remember { mutableIntStateOf(startMode) }
+    var noteSort by remember { mutableStateOf("Modified") }
+    var fileSort by remember { mutableStateOf("Newest") }
 
     fun openNewNote() {
         editingNote = null
@@ -1263,6 +1269,10 @@ fun SubjectNotepadDialog(subject: Record, store: LocalStore, done: () -> Unit) {
                 if (subject.professor.isNotBlank()) Text("Professor: " + subject.professor, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(mode == 0, { mode = 0 }, label = { Text("Notepad") }, leadingIcon = { Icon(Icons.Default.StickyNote2, null) })
+                    FilterChip(mode == 1, { mode = 1 }, label = { Text("Lecture Files") }, leadingIcon = { Icon(Icons.Default.Folder, null) })
+                }
+                if (mode == 0) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = ::openNewNote, modifier = Modifier.weight(1f)) {
                         Icon(Icons.Default.NoteAdd, null)
                         Spacer(Modifier.width(6.dp))
@@ -1275,7 +1285,7 @@ fun SubjectNotepadDialog(subject: Record, store: LocalStore, done: () -> Unit) {
                     }
                 }
 
-                OutlinedTextField(
+                if (mode == 0) OutlinedTextField(
                     value = noteQuery,
                     onValueChange = { noteQuery = it },
                     modifier = Modifier.fillMaxWidth(),
@@ -1293,7 +1303,7 @@ fun SubjectNotepadDialog(subject: Record, store: LocalStore, done: () -> Unit) {
                     if (filteredNotes.isEmpty()) {
                         EmptyCard("No notes yet. Tap New note to create a note for " + subject.title + ".")
                     } else {
-                        filteredNotes.forEach { note ->
+                        noteList.forEach { note ->
                             Card(onClick = { openNote(note) }, modifier = Modifier.fillMaxWidth()) {
                                 Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.StickyNote2, null)
@@ -1314,9 +1324,8 @@ fun SubjectNotepadDialog(subject: Record, store: LocalStore, done: () -> Unit) {
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
-                                    IconButton(onClick = { deleteNote(note) }) {
-                                        Icon(Icons.Default.Delete, "Delete note")
-                                    }
+                                    IconButton(onClick = { store.saveSubjectNotes(subject.id, notes.map { if (it.id == note.id) it.copy(favorite = !it.favorite) else it }); notes = store.subjectNotes(subject.id) }) { Icon(if (note.favorite) Icons.Default.Star else Icons.Default.StarBorder, "Favorite") }
+                                    IconButton(onClick = { deleteNote(note) }) { Icon(Icons.Default.Delete, "Delete note") }
                                 }
                             }
                         }
@@ -1340,11 +1349,11 @@ fun SubjectNotepadDialog(subject: Record, store: LocalStore, done: () -> Unit) {
                     if (files.isEmpty()) {
                         EmptyCard("No lecture files yet. Add the professor's PDF, PPT/PPTX, DOC/DOCX, or another file here.")
                     } else {
-                        files.forEach { file ->
+                        fileList.forEachIndexed { index, file ->
                             Card(onClick = { viewingFile = file }, modifier = Modifier.fillMaxWidth()) {
                                 ListItem(
                                     headlineContent = { Text(file.name, maxLines = 2) },
-                                    supportingContent = { Text("Lecture file • " + formatSize(file.length())) },
+                                    supportingContent = { Text("Lecture " + (index + 1) + " • " + formatSize(file.length())) },
                                     leadingContent = {
                                         Icon(
                                             when (fileExtension(file)) {
