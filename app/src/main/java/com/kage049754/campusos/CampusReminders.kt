@@ -176,6 +176,7 @@ object CampusWidgets {
         updateProvider(context, manager, CampusTodayWidgetProvider::class.java)
         updateProvider(context, manager, CampusNextClassWidgetProvider::class.java)
         updateProvider(context, manager, CampusTaskWidgetProvider::class.java)
+        updateProvider(context, manager, CampusScheduleWidgetProvider::class.java)
     }
     private fun updateProvider(context: Context, manager: android.appwidget.AppWidgetManager, provider: Class<*>) {
         val ids = manager.getAppWidgetIds(ComponentName(context, provider))
@@ -183,6 +184,7 @@ object CampusWidgets {
             CampusTodayWidgetProvider::class.java -> ids.forEach { CampusTodayWidgetProvider.update(context, manager, it) }
             CampusNextClassWidgetProvider::class.java -> ids.forEach { CampusNextClassWidgetProvider.update(context, manager, it) }
             CampusTaskWidgetProvider::class.java -> ids.forEach { CampusTaskWidgetProvider.update(context, manager, it) }
+            CampusScheduleWidgetProvider::class.java -> ids.forEach { CampusScheduleWidgetProvider.update(context, manager, it) }
         }
     }
 }
