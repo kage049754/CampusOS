@@ -47,6 +47,7 @@ object CampusReminders {
         val now = System.currentTimeMillis()
 
         store.get("schedule").forEach { record ->
+            if (!store.classRemindersEnabled(record.id)) return@forEach
             classOccurrences(record, now, 14).forEach { startMillis ->
                 listOf(30L to "Class starts in 30 minutes", 10L to "Class starts in 10 minutes").forEach { pair ->
                     val trigger = startMillis - pair.first * 60_000L
