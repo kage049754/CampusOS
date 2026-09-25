@@ -503,7 +503,7 @@ fun CampusOSApp(activity: Activity) {
                 when (screen) {
                     Screen.HOME -> HomeScreen(store) { screenName = it.name }
                     Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }, { showScheduleDetails = true }) { search = "" }
-                    Screen.TASKS -> CrudScreen("Assignments & To-do", "tasks", store, search) { search = "" }
+                    Screen.TASKS -> TasksRedesignedScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 })
                     Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 })
                     Screen.FILES -> FilesScreen()
                     Screen.SETTINGS -> SettingsScreen(
