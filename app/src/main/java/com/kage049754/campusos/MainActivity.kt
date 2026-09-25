@@ -340,6 +340,7 @@ fun CampusOSApp(activity: Activity) {
     var showScheduleTableSettings by remember { mutableStateOf(false) }
     var showScheduleManager by remember { mutableStateOf(false) }
     var showScheduleDetails by remember { mutableStateOf(false) }
+    var showTaskSettings by remember { mutableStateOf(false) }
     var settingsModule by remember { mutableStateOf<String?>(null) }
     var settingsParent by rememberSaveable { mutableStateOf<String?>(null) }
     var scheduleFullscreen by rememberSaveable { mutableStateOf(false) }
@@ -501,6 +502,7 @@ fun CampusOSApp(activity: Activity) {
             if (showScheduleManager) ScheduleManagerDialog(store) { showScheduleManager = false }
             settingsModule?.let { module -> ModuleSettingsDialog(module, { settingsModule = null; settingsParent = null; showHomeSettings = true }, { settingsParent = module; settingsModule = null; showProfile = true }, { settingsParent = module; settingsModule = null; showScheduleManager = true }, { settingsParent = module; settingsModule = null; showScheduleSettings = true }, { settingsParent = module; settingsModule = null; showScheduleTableSettings = true }, { settingsParent = module; settingsModule = null; showHomeAdd = true }, { settingsModule = null; settingsParent = null; screenName = Screen.TASKS.name }, { settingsModule = null; settingsParent = null; screenName = Screen.ACADEMICS.name }) }
             if (showScheduleDetails) SubjectDetailsDialog(store.get("schedule"), { showScheduleDetails = false })
+            if (showTaskSettings) TaskSettingsDialog(store) { showTaskSettings = false }
         }
         }
     }
@@ -529,7 +531,7 @@ fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleM
         when(module){
             "Homepage"->{Text("Homepage controls",fontWeight=FontWeight.Bold);OutlinedButton(profile,Modifier.fillMaxWidth()){Icon(Icons.Default.Person,null);Spacer(Modifier.width(8.dp));Text("Profile & homepage information")}}
             "Schedule"->{Text("Schedule controls",fontWeight=FontWeight.Bold);OutlinedButton(addClass,Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Spacer(Modifier.width(8.dp));Text("Add Class")};OutlinedButton(scheduleManager,Modifier.fillMaxWidth()){Icon(Icons.Default.EditCalendar,null);Spacer(Modifier.width(8.dp));Text("Edit / Delete Classes")};OutlinedButton(scheduleSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.CalendarMonth,null);Spacer(Modifier.width(8.dp));Text("Class Schedule Settings")};OutlinedButton(tableSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.TableView,null);Spacer(Modifier.width(8.dp));Text("Schedule Table Settings")}}
-            "Tasks"->{Text("Task controls",fontWeight=FontWeight.Bold);Text("Task records are stored offline. Use the Tasks screen to add, complete, and delete tasks.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openTasks,Modifier.fillMaxWidth()){Icon(Icons.Default.CheckCircle,null);Spacer(Modifier.width(8.dp));Text("Open Tasks")}}
+            "Tasks"->{Text("Task controls",fontWeight=FontWeight.Bold);Text("Simple calendar and to-do tasks stored offline.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openTasks,Modifier.fillMaxWidth()){Icon(Icons.Default.CheckCircle,null);Spacer(Modifier.width(8.dp));Text("Open Tasks")};OutlinedButton({showTaskSettings=true},Modifier.fillMaxWidth()){Icon(Icons.Default.Settings,null);Spacer(Modifier.width(8.dp));Text("Task Settings")}}
             "Academics"->{Text("Academics controls",fontWeight=FontWeight.Bold);Text("Subjects, Notepad, and Lecture Files are stored offline. Use the Academics screen to manage them.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openAcademics,Modifier.fillMaxWidth()){Icon(Icons.Default.School,null);Spacer(Modifier.width(8.dp));Text("Open Academics")}}
         }
     }},confirmButton={TextButton(close){Text("Close")}})
