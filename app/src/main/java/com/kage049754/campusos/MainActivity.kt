@@ -1285,7 +1285,7 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
     var pin by remember { mutableStateOf(store.pin()) }
     var lockOn by remember { mutableStateOf(store.lockEnabled()) }
     var showPin by remember { mutableStateOf(false) }
-    var notificationsOn by remember { mutableStateOf(context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).getBoolean("enabled", false)) }
+    var notificationsOn by remember { mutableStateOf(context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).getBoolean("enabled", false) && CampusReminders.notificationsEnabled(context)) }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) { notificationsOn = true; context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", true).apply(); CampusReminders.reschedule(context) }
     }
