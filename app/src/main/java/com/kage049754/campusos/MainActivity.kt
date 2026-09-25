@@ -165,6 +165,8 @@ private fun renderPdfPage(file: File, pageIndex: Int): Bitmap? = runCatching {
 }.getOrNull()
 
 class LocalStore(context: Context) {
+    var revision by mutableIntStateOf(0)
+        private set
     private val prefs = context.getSharedPreferences("campusos", Context.MODE_PRIVATE)
     private fun read(key: String): MutableList<Record> = runCatching {
         val out = mutableListOf<Record>()
@@ -189,6 +191,7 @@ class LocalStore(context: Context) {
             put("day", r.day); put("startTime", r.startTime); put("endTime", r.endTime); put("room", r.room); put("professor", r.professor); put("color", r.color); put("classType", r.classType); put("subjectId", r.subjectId); put("dueDate", r.dueDate); put("dueTime", r.dueTime)
         }) }
         prefs.edit().putString(key, a.toString()).apply()
+        revision++
     }
     fun get(key: String) = read(key)
     fun put(key: String, list: List<Record>) = save(key, list)
@@ -227,6 +230,7 @@ class LocalStore(context: Context) {
         if (root.has("theme")) e.putString("theme", root.getString("theme"))
         if (root.has("lock")) e.putBoolean("lock", root.getBoolean("lock"))
         e.apply()
+        revision++
     }
 }
 
@@ -365,9 +369,10 @@ fun HomeSettingsDialog(store: LocalStore, theme: String, setTheme: (String) -> U
 
 @Composable
 fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
+    val revision = store.revision
     var tick by remember { mutableIntStateOf(0) }
-    val tasks = remember(tick) { store.get("tasks") }
-    val schedule = remember(tick) { store.get("schedule") }
+    val tasks = remember(tick, revision) { store.get("tasks") }
+    val schedule = remember(tick, revision) { store.get("schedule") }
     val date = SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date())
     val todayName = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date())
     val todaySchedule = remember(schedule, todayName) {
@@ -499,6 +504,7 @@ fun ColorChoiceCircle(value: Long, selected: Boolean, click: () -> Unit) {
 
 @Composable
 fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
+    val revision = store.revision
     var refresh by remember { mutableIntStateOf(0) }
     var showAdd by remember { mutableStateOf(false) }
     var showColors by remember { mutableStateOf(false) }
@@ -511,7 +517,7 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
     }
     LaunchedEffect(query) { if (query == "__ADD__") showAdd = true }
 
-    val all = remember(refresh, query) {
+    val all = remember(refresh, revision, query) {
         store.get("schedule").filter {
             query.isBlank() || query == "__ADD__" ||
                 (it.title + " " + it.subtitle + " " + it.extra + " " + it.day + " " + it.room + " " + it.professor)
@@ -997,9 +1003,10 @@ fun TaskCalendar(selectedDate:String,onSelect:(String)->Unit){
 }
 @Composable
 fun CrudScreen(title:String,key:String,store:LocalStore,query:String,clear:()->Unit){
+    val revision = store.revision
     var refresh by remember{mutableIntStateOf(0)};var showAdd by remember{mutableStateOf(false)};var selectedDate by remember{mutableStateOf(SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date()))}
     LaunchedEffect(query){if(query=="__ADD__")showAdd=true}
-    val list=remember(refresh,query){store.get(key).filter{query.isBlank()||query=="__ADD__"||(it.title+" "+it.subtitle+" "+it.extra).contains(query,true)}.sortedWith(compareBy<Record>({it.done},{it.dueDate},{it.dueTime}))}
+    val list=remember(refresh,revision,query){store.get(key).filter{query.isBlank()||query=="__ADD__"||(it.title+" "+it.subtitle+" "+it.extra).contains(query,true)}.sortedWith(compareBy<Record>({it.done},{it.dueDate},{it.dueTime}))}
     Column(Modifier.fillMaxSize()){
         if(key=="tasks")Card(Modifier.fillMaxWidth().padding(12.dp)){Column(Modifier.padding(12.dp)){TaskCalendar(selectedDate){selectedDate=it};Text("Selected: $selectedDate",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
         Text(title,Modifier.padding(horizontal=16.dp,vertical=6.dp),style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
@@ -1009,12 +1016,13 @@ fun CrudScreen(title:String,key:String,store:LocalStore,query:String,clear:()->U
 }
 @Composable
 fun AcademicsScreen(store: LocalStore, query: String, clear: () -> Unit) {
+    val revision = store.revision
     var tab by remember { mutableIntStateOf(0) }
     var refresh by remember { mutableIntStateOf(0) }
     var selectedSubject by remember { mutableStateOf<Record?>(null) }
     val labels = listOf("Subjects","Reviewers")
     val keys = listOf("subjects","reviewers")
-    val list = remember(refresh, query, tab) { store.get(keys[tab]).filter {
+    val list = remember(refresh, revision, query, tab) { store.get(keys[tab]).filter {
         query.isBlank() || query == "__ADD__" || (it.title+" "+it.subtitle+" "+it.extra).contains(query, true)
     }}
     Column(Modifier.fillMaxSize()) {
