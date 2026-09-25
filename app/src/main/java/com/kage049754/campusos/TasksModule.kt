@@ -48,6 +48,17 @@ fun taskDue(r: Record): Long {
 }
 
 fun taskOverdue(r: Record): Boolean = !r.done && taskDue(r) < System.currentTimeMillis()
+fun taskToday(r: Record): Boolean = r.dueDate == taskDateFormat().format(Date())
+fun taskTomorrow(r: Record): Boolean {
+    val c = Calendar.getInstance()
+    c.add(Calendar.DAY_OF_YEAR, 1)
+    return r.dueDate == taskDateFormat().format(c.time)
+}
+fun taskLabel(r: Record): String {
+    if (r.dueDate.isBlank()) return "No due date"
+    val label = if (taskToday(r)) "Today" else if (taskTomorrow(r)) "Tomorrow" else r.dueDate
+    return label + if (r.dueTime.isNotBlank()) " • " + r.dueTime else ""
+}
 
 private fun taskDateFormat() = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 private fun dateKey(c: Calendar) = taskDateFormat().format(c.time)
@@ -196,7 +207,7 @@ private fun SimpleTaskEditor(store: LocalStore, existing: Record?, selectedDate:
     var title by remember { mutableStateOf(existing?.title ?: "") }
     var description by remember { mutableStateOf(existing?.subtitle ?: "") }
     var date by remember { mutableStateOf(existing?.dueDate?.takeIf { it.isNotBlank() } ?: selectedDate) }
-    var time by remember { mutableStateOf(existing?.dueTime?.takeIf { it.isNotBlank() } ?: "23:59") }
+    var dueTime by remember { mutableStateOf(existing?.dueTime?.takeIf { it.isNotBlank() } ?: "23:59") }
 
     AlertDialog(
         onDismissRequest = done,
@@ -212,10 +223,10 @@ private fun SimpleTaskEditor(store: LocalStore, existing: Record?, selectedDate:
                     }, Modifier.weight(1f)) { Text("Date") }
                     Button(onClick = {
                         val c = Calendar.getInstance()
-                        c.set(Calendar.HOUR_OF_DAY, time.substringBefore(":").toIntOrNull() ?: 23)
-                        c.set(Calendar.MINUTE, time.substringAfter(":").toIntOrNull() ?: 59)
-                        TimePickerDialog(context, { _, h, m -> time = "%02d:%02d".format(h, m) }, c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE), true).show()
-                    }, Modifier.weight(1f)) { Text(time) }
+                        c.set(Calendar.HOUR_OF_DAY, dueTime.substringBefore(":").toIntOrNull() ?: 23)
+                        c.set(Calendar.MINUTE, dueTime.substringAfter(":").toIntOrNull() ?: 59)
+                        TimePickerDialog(context, { _, h, m -> dueTime = "%02d:%02d".format(h, m) }, c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE), true).show()
+                    }, Modifier.weight(1f)) { Text(dueTime) }
                 }
                 Text("Due: " + dateLabel(date), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -224,7 +235,7 @@ private fun SimpleTaskEditor(store: LocalStore, existing: Record?, selectedDate:
             Button(onClick = {
                 if (title.isNotBlank()) {
                     val list = store.get("tasks")
-                    val record = existing?.copy(title = title.trim(), subtitle = description.trim(), dueDate = date, dueTime = time)
+                    val record = existing?.copy(title = title.trim(), subtitle = description.trim(), dueDate = date, dueTime = dueTime)
                         ?: Record(id = nextRecordId(store, "tasks"), title = title.trim(), subtitle = description.trim(), dueDate = date, dueTime = time)
                     store.put("tasks", if (existing == null) list + record else list.map { if (it.id == existing.id) record else it })
                     done()
