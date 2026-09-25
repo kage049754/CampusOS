@@ -1344,7 +1344,6 @@ fun SubjectNotepadDialog(subject: Record, store: LocalStore, startMode: Int = 0,
                         }
                     }
 
-                    }
                     if (mode == 1) {
                     HorizontalDivider(Modifier.padding(vertical = 4.dp))
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
