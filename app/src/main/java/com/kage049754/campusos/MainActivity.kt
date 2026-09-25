@@ -62,6 +62,8 @@ data class Record(
 )
 data class FileRecord(val name: String, val size: Long, val file: File? = null)
 
+data class SubjectNote(val id: Long, val title: String, val body: String, val updatedAt: Long)
+
 private fun readableContentColor(background: Color): Color {
     val luminance = 0.299f * background.red + 0.587f * background.green + 0.114f * background.blue
     return if (luminance > 0.62f) Color.Black else Color.White
@@ -210,6 +212,29 @@ class LocalStore(context: Context) {
     fun profileStudentId() = prefs.getString("profile_student_id", "") ?: ""
     fun profileSection() = prefs.getString("profile_section", "") ?: ""
     fun profilePhotoPath() = prefs.getString("profile_photo_path", "") ?: ""
+    fun subjectNotes(subjectId: Long): List<SubjectNote> = runCatching {
+        val raw = prefs.getString("subject_notes_$subjectId", "[]") ?: "[]"
+        val a = JSONArray(raw)
+        (0 until a.length()).mapNotNull { i ->
+            a.optJSONObject(i)?.let { o ->
+                SubjectNote(o.optLong("id"), o.optString("title"), o.optString("body"), o.optLong("updatedAt"))
+            }
+        }.sortedByDescending { it.updatedAt }
+    }.getOrElse { emptyList() }
+
+    fun saveSubjectNotes(subjectId: Long, notes: List<SubjectNote>) {
+        val a = JSONArray()
+        notes.forEach { n ->
+            a.put(JSONObject().apply {
+                put("id", n.id)
+                put("title", n.title)
+                put("body", n.body)
+                put("updatedAt", n.updatedAt)
+            })
+        }
+        prefs.edit().putString("subject_notes_$subjectId", a.toString()).apply()
+        revision++
+    }
     fun setProfile(name: String, studentId: String, section: String, photoPath: String) { prefs.edit().putString("profile_name", name).putString("profile_student_id", studentId).putString("profile_section", section).putString("profile_photo_path", photoPath).apply(); revision++; CampusWidgets.updateAll(appContext) }
     fun scheduleDayHighlight() = prefs.getLong("schedule_day_highlight", 0xFF1976D2L)
     fun setScheduleDayHighlight(v: Long) { prefs.edit().putLong("schedule_day_highlight", v) .apply(); revision++ }
@@ -1141,72 +1166,206 @@ fun AcademicsScreen(store: LocalStore, query: String, clear: () -> Unit) {
 @Composable
 fun SubjectNotepadDialog(subject: Record, store: LocalStore, done: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val savedNote = remember(subject) {
-        runCatching {
-            val o = JSONObject(subject.extra)
-            Pair(o.optString("title"), o.optString("body"))
-        }.getOrElse { Pair("", subject.extra) }
-    }
-    var noteTitle by remember { mutableStateOf(savedNote.first) }
-    var noteBody by remember { mutableStateOf(savedNote.second) }
-    var files by remember { mutableStateOf(subjectFiles(context, subject.id)) }
+    var notes by remember(subject.id, store.revision) { mutableStateOf(store.subjectNotes(subject.id)) }
+    var files by remember(subject.id) { mutableStateOf(subjectFiles(context, subject.id)) }
     var viewingFile by remember { mutableStateOf<File?>(null) }
+    var editingNote by remember { mutableStateOf<SubjectNote?>(null) }
     var showNoteEditor by remember { mutableStateOf(false) }
+    var noteTitle by remember { mutableStateOf("") }
+    var noteBody by remember { mutableStateOf("") }
+    var noteQuery by remember { mutableStateOf("") }
+
+    fun openNewNote() {
+        editingNote = null
+        noteTitle = ""
+        noteBody = ""
+        showNoteEditor = true
+    }
+
+    fun openNote(note: SubjectNote) {
+        editingNote = note
+        noteTitle = note.title
+        noteBody = note.body
+        showNoteEditor = true
+    }
+
+    fun saveCurrentNote() {
+        if (noteTitle.isBlank() && noteBody.isBlank()) return
+        val now = System.currentTimeMillis()
+        val note = SubjectNote(
+            id = editingNote?.id ?: maxOf(now, (notes.maxOfOrNull { it.id } ?: 0L) + 1L),
+            title = noteTitle.trim().ifBlank { "Untitled note" },
+            body = noteBody,
+            updatedAt = now
+        )
+        val updated = if (editingNote == null) notes + note
+        else notes.map { if (it.id == editingNote!!.id) note else it }
+        store.saveSubjectNotes(subject.id, updated)
+        notes = store.subjectNotes(subject.id)
+        showNoteEditor = false
+    }
+
+    fun deleteNote(note: SubjectNote) {
+        store.saveSubjectNotes(subject.id, notes.filterNot { it.id == note.id })
+        notes = store.subjectNotes(subject.id)
+    }
+
+    LaunchedEffect(subject.id) {
+        if (notes.isEmpty()) {
+            val legacy = runCatching {
+                val o = JSONObject(subject.extra)
+                val title = o.optString("title")
+                val body = o.optString("body")
+                if (title.isBlank() && body.isBlank()) null
+                else SubjectNote(
+                    id = maxOf(System.currentTimeMillis(), 1L),
+                    title = title.ifBlank { "Untitled note" },
+                    body = body,
+                    updatedAt = System.currentTimeMillis()
+                )
+            }.getOrNull()
+            if (legacy != null) {
+                store.saveSubjectNotes(subject.id, listOf(legacy))
+                notes = store.subjectNotes(subject.id)
+            }
+        }
+    }
+
+    val filteredNotes = notes.filter {
+        noteQuery.isBlank() || (it.title + " " + it.body).contains(noteQuery, true)
+    }
+
     val upload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
-        copyUriToSubject(context, uri, subject.id)?.let { files = subjectFiles(context, subject.id) }
+        copyUriToSubject(context, uri, subject.id)?.let {
+            files = subjectFiles(context, subject.id)
+        }
     }
-    fun saveNote() {
-        val noteJson = JSONObject().apply {
-            put("title", noteTitle.trim())
-            put("body", noteBody)
-        }.toString()
-        store.put("subjects", store.get("subjects").map {
-            if (it.id == subject.id) it.copy(extra = noteJson) else it
-        })
-    }
+
     AlertDialog(
         onDismissRequest = done,
-        title = { Text(subject.title) },
+        title = {
+            Column {
+                Text(subject.title, fontWeight = FontWeight.Bold)
+                Text(
+                    "Notes & Lecture Files",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
         text = {
-            Column(Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 680.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 if (subject.subtitle.isNotBlank()) Text(subject.subtitle, fontWeight = FontWeight.SemiBold)
                 if (subject.professor.isNotBlank()) Text("Professor: " + subject.professor, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Lessons", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Card(onClick = { showNoteEditor = true }, modifier = Modifier.weight(1f)) {
-                        Column(Modifier.padding(16.dp)) {
-                            Icon(Icons.Default.Note, null)
-                            Spacer(Modifier.height(8.dp))
-                            Text("Note", fontWeight = FontWeight.Bold)
-                            Text(if (noteTitle.isBlank()) "Create new note" else noteTitle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
-                        }
+
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = ::openNewNote, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.NoteAdd, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("New note")
                     }
-                    Card(onClick = { upload.launch(arrayOf("*/*")) }, modifier = Modifier.weight(1f)) {
-                        Column(Modifier.padding(16.dp)) {
-                            Icon(Icons.Default.InsertDriveFile, null)
-                            Spacer(Modifier.height(8.dp))
-                            Text("File", fontWeight = FontWeight.Bold)
-                            Text("${files.size} stored", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                    OutlinedButton(onClick = { upload.launch(arrayOf("*/*")) }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.UploadFile, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Lecture file")
                     }
                 }
-                if (files.isEmpty()) {
-                    EmptyCard("No lesson files yet. Tap File to upload a PDF, PowerPoint, Word document, or other file.")
-                } else {
-                    files.forEach { file ->
-                        Card(onClick = { viewingFile = file }, modifier = Modifier.fillMaxWidth()) {
-                            ListItem(
-                                headlineContent = { Text(file.name, maxLines = 2) },
-                                supportingContent = { Text(formatSize(file.length())) },
-                                leadingContent = { Icon(Icons.Default.InsertDriveFile, null) },
-                                trailingContent = {
-                                    IconButton({
-                                        file.delete()
-                                        files = subjectFiles(context, subject.id)
-                                    }) { Icon(Icons.Default.Delete, "Delete") }
+
+                OutlinedTextField(
+                    value = noteQuery,
+                    onValueChange = { noteQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, null) },
+                    label = { Text("Search notes") },
+                    placeholder = { Text("Search this subject's notes") }
+                )
+
+                Column(
+                    Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("Keep Notes / Notepad", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    if (filteredNotes.isEmpty()) {
+                        EmptyCard("No notes yet. Tap New note to create a note for " + subject.title + ".")
+                    } else {
+                        filteredNotes.forEach { note ->
+                            Card(onClick = { openNote(note) }, modifier = Modifier.fillMaxWidth()) {
+                                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.StickyNote2, null)
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(note.title, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                        if (note.body.isNotBlank()) {
+                                            Text(
+                                                note.body,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 3,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Text(
+                                            SimpleDateFormat("MMM d, yyyy h:mm a", Locale.getDefault()).format(Date(note.updatedAt)),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    IconButton(onClick = { deleteNote(note) }) {
+                                        Icon(Icons.Default.Delete, "Delete note")
+                                    }
                                 }
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Lecture / Lesson Files", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(
+                                "Keep PDFs, PowerPoint, Word, images, and other lecture files with this subject.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+                        IconButton(onClick = { upload.launch(arrayOf("*/*")) }) {
+                            Icon(Icons.Default.Add, "Add lecture file")
+                        }
+                    }
+
+                    if (files.isEmpty()) {
+                        EmptyCard("No lecture files yet. Add the professor's PDF, PPT/PPTX, DOC/DOCX, or another file here.")
+                    } else {
+                        files.forEach { file ->
+                            Card(onClick = { viewingFile = file }, modifier = Modifier.fillMaxWidth()) {
+                                ListItem(
+                                    headlineContent = { Text(file.name, maxLines = 2) },
+                                    supportingContent = { Text("Lecture file • " + formatSize(file.length())) },
+                                    leadingContent = {
+                                        Icon(
+                                            when (fileExtension(file)) {
+                                                "pdf" -> Icons.Default.PictureAsPdf
+                                                "ppt", "pptx" -> Icons.Default.Slideshow
+                                                "doc", "docx" -> Icons.Default.Description
+                                                else -> Icons.Default.InsertDriveFile
+                                            },
+                                            null
+                                        )
+                                    },
+                                    trailingContent = {
+                                        IconButton(onClick = {
+                                            file.delete()
+                                            files = subjectFiles(context, subject.id)
+                                        }) {
+                                            Icon(Icons.Default.Delete, "Delete lecture file")
+                                        }
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -1214,20 +1373,38 @@ fun SubjectNotepadDialog(subject: Record, store: LocalStore, done: () -> Unit) {
         },
         confirmButton = { TextButton(done) { Text("Close") } }
     )
+
     if (showNoteEditor) {
         AlertDialog(
             onDismissRequest = { showNoteEditor = false },
-            title = { Text("Create / edit note") },
+            title = { Text(if (editingNote == null) "New note" else "Edit note") },
             text = {
-                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(noteTitle, { noteTitle = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Note title") }, placeholder = { Text("e.g. Introduction to DCIT 25") })
-                    OutlinedTextField(noteBody, { noteBody = it }, Modifier.fillMaxWidth().heightIn(min = 220.dp), label = { Text("Description / note") }, placeholder = { Text("Type your lesson note or description...") })
+                Column(
+                    Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = noteTitle,
+                        onValueChange = { noteTitle = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("Title") },
+                        placeholder = { Text("e.g. DCIT 25 Lecture 1") }
+                    )
+                    OutlinedTextField(
+                        value = noteBody,
+                        onValueChange = { noteBody = it },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 260.dp),
+                        label = { Text("Note / lecture notes") },
+                        placeholder = { Text("Write your notes, explanations, reminders, or reviewer here...") }
+                    )
                 }
             },
-            confirmButton = { Button({ saveNote(); showNoteEditor = false }) { Text("Save note") } },
-            dismissButton = { TextButton({ showNoteEditor = false }) { Text("Cancel") } }
+            confirmButton = { Button(onClick = ::saveCurrentNote) { Text("Save note") } },
+            dismissButton = { TextButton(onClick = { showNoteEditor = false }) { Text("Cancel") } }
         )
     }
+
     viewingFile?.let { file -> InAppFileViewerDialog(file) { viewingFile = null } }
 }
 
