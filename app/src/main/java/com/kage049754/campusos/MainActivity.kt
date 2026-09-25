@@ -1197,6 +1197,7 @@ fun EditScheduleRecordDialog(record: Record, store: LocalStore, done: () -> Unit
     var professor by remember(record.id) { mutableStateOf(record.professor) }
     var notes by remember(record.id) { mutableStateOf(record.extra) }
     var type by remember(record.id) { mutableStateOf(record.classType.ifBlank { "Lecture" }) }
+    var remindersEnabled by remember(record.id) { mutableStateOf(store.classRemindersEnabled(record.id)) }
     val days = store.scheduleDays().ifEmpty { listOf("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday") }
     AlertDialog(
         onDismissRequest = cancel,
@@ -1220,6 +1221,13 @@ fun EditScheduleRecordDialog(record: Record, store: LocalStore, done: () -> Unit
                 OutlinedTextField(room, { room = it }, Modifier.fillMaxWidth(), label = { Text("Room") }, singleLine = true)
                 OutlinedTextField(professor, { professor = it }, Modifier.fillMaxWidth(), label = { Text("Professor") }, singleLine = true)
                 OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth(), label = { Text("Notes") })
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Class reminders", fontWeight = FontWeight.SemiBold)
+                        Text("30 minutes and 10 minutes before class", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = remindersEnabled, onCheckedChange = { remindersEnabled = it })
+                }
             }
         },
         confirmButton = {
@@ -1230,6 +1238,7 @@ fun EditScheduleRecordDialog(record: Record, store: LocalStore, done: () -> Unit
                         room = room.trim(), professor = professor.trim(), classType = type)
                     store.put("schedule", store.get("schedule").map { if (it.id == record.id) updated else it })
                     syncSubjectFromClass(store, updated)
+                    store.setClassRemindersEnabled(record.id, remindersEnabled)
                     done()
                 }
             }) { Text("Save changes") }
