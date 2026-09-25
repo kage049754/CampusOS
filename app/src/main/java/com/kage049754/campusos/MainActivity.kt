@@ -657,7 +657,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     val photoPath = store.profilePhotoPath()
     val date = SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date())
     val todayName = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date())
-    val tomorrowName = SimpleDateFormat("EEEE", Locale.getDefault()).format(Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 1) }.time, Locale.getDefault())
+    val tomorrowName = SimpleDateFormat("EEEE", Locale.getDefault()).format(Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 1) }.time)
     val todaySchedule = remember(schedule, todayName) { mergeTodayClasses(schedule.filter { it.day.equals(todayName, true) }) }
     val tomorrowSchedule = remember(schedule, tomorrowName) { mergeTodayClasses(schedule.filter { it.day.equals(tomorrowName, true) }) }
     val pendingTasks = remember(tasks) { tasks.filter { !it.done }.sortedWith(compareBy({ it.dueDate }, { it.dueTime })).take(5) }
@@ -906,7 +906,6 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
             }
         }
         BoxWithConstraints(
-        BoxWithConstraints(
             Modifier.fillMaxWidth().weight(1f).padding(horizontal = 4.dp)
         ) {
             val visibleDays = if (todayOnly) scheduleDays.filter { it.equals(today,true) } else scheduleDays
@@ -920,7 +919,11 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
             Column(Modifier.fillMaxSize()
                 .then(if (horizontalScrollEnabled) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
                 .then(if (verticalScrollEnabled || !fullscreen) Modifier.verticalScroll(rememberScrollState()) else Modifier)
-                .pointerInput(Unit) { detectTransformGestures { _,_,gestureZoom,_ -> zoom=(zoom*gestureZoom).coerceIn(0.75f,3f) } }) {
+                .pointerInput(Unit) {
+                    detectTransformGestures { _, _, gestureZoom, _ ->
+                        zoom = (zoom * gestureZoom).coerceIn(0.75f, 3f)
+                    }
+                }) {
                 if (horizontalScrollEnabled || verticalScrollEnabled) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Zoom ${zoom.toInt()}x", style = MaterialTheme.typography.labelSmall)
@@ -2098,51 +2101,3 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
 
         item { Text("CampusOS 1.0.0 • Offline-first", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item { Text("Transfer tip: select Schedule to share your timetable, or Academics / Lessons to share subjects, notes, and lecture files.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-    }
-
-    if (backupMode) ModuleBackupDialog("Choose modules to backup", selectedModules, { selectedModules=it }) { backupMode=false; if(selectedModules.isNotEmpty()) backup.launch("CampusOS-selected-backup.json") }
-    if (restoreMode) ModuleBackupDialog("Choose modules to restore", selectedModules, { selectedModules=it }) { restoreMode=false; if(selectedModules.isNotEmpty()) restore.launch(arrayOf("application/json","text/plain")) }
-    if (showTableSettings) {
-        ScheduleTableSettingsDialog(store) { showTableSettings = false }
-    }
-
-    if (showPin) {
-        var newPin by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { showPin = false },
-            title = { Text("Set 4–8 digit PIN") },
-            text = { OutlinedTextField(newPin, { newPin = it.filter(Char::isDigit).take(8) }, label = { Text("PIN") }) },
-            confirmButton = {
-                Button({ if (newPin.length in 4..8) { pin = newPin; store.setPin(newPin); showPin = false } }) { Text("Save") }
-            },
-            dismissButton = { TextButton({ showPin = false }) { Text("Cancel") } }
-        )
-    }
-}
-
-
-@Composable
-fun LockScreen(store: LocalStore, unlock: () -> Unit) {
-    var entered by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-    Icon(Icons.Default.Lock, null, Modifier.size(64.dp))
-    Spacer(Modifier.height(18.dp))
-    Text("CampusOS is locked", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-    Text("Enter your PIN to continue.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-    Spacer(Modifier.height(18.dp))
-    OutlinedTextField(entered, { entered = it.filter(Char::isDigit).take(8) }, label = { Text("PIN") })
-    if (error) Text("Incorrect PIN", color = MaterialTheme.colorScheme.error)
-    Spacer(Modifier.height(12.dp))
-    Button({ if (entered == store.pin()) unlock() else error = true }) { Text("Unlock") }
-    }
-}
-
-@Composable fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier) { Column(Modifier.padding(14.dp)) { Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-}
-@Composable fun SectionTitle(text: String) { Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-@Composable fun EmptyCard(text: String) { Card(Modifier.fillMaxWidth()) { Text(text, Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-@Composable fun SmallAction(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, click: () -> Unit) {
-    OutlinedButton(onClick = click, modifier = Modifier.fillMaxWidth()) { Icon(icon, null); Spacer(Modifier.width(4.dp)); Text(text) }
-}
