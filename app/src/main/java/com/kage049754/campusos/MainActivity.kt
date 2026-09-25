@@ -1244,6 +1244,7 @@ fun AddRecordDialog(label:String,key:String,store:LocalStore,done:()->Unit){
         if(key=="tasks"||key=="reviewers")OutlinedTextField(extra,{extra=it},Modifier.fillMaxWidth(),label={Text("Notes")})
         if(key=="grades"||key=="expenses")OutlinedTextField(value,{value=it},Modifier.fillMaxWidth(),label={Text(if(key=="grades")"Grade" else "Amount")})
     }},confirmButton={Button({if(title.isNotBlank()&&(!isTask||subjectId!=0L))store.put(key,store.get(key)+Record(title=title.trim(),subtitle=subtitle.trim(),extra=extra.trim(),value=value.toDoubleOrNull()?:0.0,subjectId=subjectId,dueDate=if(isTask)dueDate else "",dueTime=""));done()}){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})
+}
 
 @Composable
 fun FilesScreen() {
