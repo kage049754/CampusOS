@@ -397,6 +397,31 @@ fun HomeSettingsDialog(store: LocalStore, theme: String, setTheme: (String) -> U
     }, confirmButton = { TextButton(done) { Text("Close") } })
 }
 @Composable
+fun ProfileDialog(store: LocalStore, done: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var name by remember { mutableStateOf(store.profileName()) }
+    var studentId by remember { mutableStateOf(store.profileStudentId()) }
+    var section by remember { mutableStateOf(store.profileSection()) }
+    var photoPath by remember { mutableStateOf(store.profilePhotoPath()) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        val target = File(context.filesDir, "profile_photo")
+        runCatching { context.contentResolver.openInputStream(uri)?.use { input -> target.outputStream().use { output -> input.copyTo(output) } }; photoPath = target.absolutePath }
+    }
+    val bitmap = remember(photoPath) { if (photoPath.isNotBlank()) runCatching { BitmapFactory.decodeFile(photoPath) }.getOrNull() else null }
+    AlertDialog(onDismissRequest = done, title = { Text("Profile") }, text = {
+        Column(Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (bitmap != null) Image(bitmap.asImageBitmap(), "Profile photo", Modifier.size(96.dp), contentScale = ContentScale.Crop)
+            else Box(Modifier.size(96.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(50)), contentAlignment = Alignment.Center) { Icon(Icons.Default.Person, null, Modifier.size(48.dp)) }
+            OutlinedButton(onClick = { picker.launch(arrayOf("image/*")) }) { Icon(Icons.Default.PhotoCamera, null); Spacer(Modifier.width(6.dp)); Text("Upload profile photo") }
+            OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Name") })
+            OutlinedTextField(studentId, { studentId = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Student ID") })
+            OutlinedTextField(section, { section = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Section") })
+        }
+    }, confirmButton = { Button(onClick = { store.setProfile(name.trim(), studentId.trim(), section.trim(), photoPath); done() }) { Text("Save") } }, dismissButton = { TextButton(done) { Text("Cancel") } })
+}
+
+@Composable
 fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     val revision = store.revision
     var tick by remember { mutableIntStateOf(0) }
