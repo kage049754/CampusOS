@@ -267,7 +267,7 @@ class LocalStore(context: Context) {
     fun scheduleEndHour() = prefs.getInt("schedule_end_hour", 19)
     fun setScheduleHours(start: Int, end: Int) { prefs.edit().putInt("schedule_start_hour", start).putInt("schedule_end_hour", end).apply(); revision++; CampusReminders.reschedule(appContext); CampusWidgets.updateAll(appContext) }
     fun homeWidgetOrder(): List<String> {
-        val defaults = listOf("profile", "stats", "next", "today", "tasks", "quick")
+        val defaults = listOf("profile", "stats", "next", "today", "pinned", "tasks", "quick")
         val stored = (prefs.getString("home_widget_order", "") ?: "").split(",").filter { it in defaults }
         return (stored + defaults).distinct()
     }
@@ -277,6 +277,12 @@ class LocalStore(context: Context) {
     }
     fun homeWidgetHidden(): Set<String> =
         (prefs.getString("home_widget_hidden", "") ?: "").split(",").filter { it.isNotBlank() }.toSet()
+    fun pinnedClassIds(): Set<Long> =
+        (prefs.getString("pinned_class_ids", "") ?: "").split(",").mapNotNull { it.toLongOrNull() }.toSet()
+    fun setPinnedClassIds(ids: Set<Long>) {
+        prefs.edit().putString("pinned_class_ids", ids.filter { it > 0L }.joinToString(",")).apply()
+        revision++
+    }
     fun setHomeWidgetHidden(hidden: Set<String>) {
         prefs.edit().putString("home_widget_hidden", hidden.joinToString(",")).apply()
         revision++
@@ -672,6 +678,8 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     val nextClass = nextTodayClass ?: tomorrowSchedule.firstOrNull()
     val widgetOrder = remember(revision) { store.homeWidgetOrder() }
     val hidden = remember(revision) { store.homeWidgetHidden() }
+    val pinnedIds = remember(revision) { store.pinnedClassIds() }
+    val pinnedClasses = remember(schedule, pinnedIds) { schedule.filter { it.id in pinnedIds }.sortedWith(compareBy({ it.day }, { parseClockMinutes(it.startTime) ?: Int.MAX_VALUE }, { it.title })) }
 
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         widgetOrder.filterNot { it in hidden }.forEach { widget ->
@@ -717,6 +725,24 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                         if(todaySchedule.isEmpty()) EmptyCard(if (tomorrowSchedule.isNotEmpty()) "No classes scheduled for today. Next class is tomorrow." else "No classes scheduled for today.") else todaySchedule.take(5).forEach{r->HomeTodayClassCard(r,nowMinutes){selectedClass=r}}
                     }
                 }
+                "pinned" -> item(key="home_pinned") {
+                    Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                            SectionTitle("Pinned classes")
+                            Spacer(Modifier.width(8.dp))
+                            Surface(shape=RoundedCornerShape(50),color=MaterialTheme.colorScheme.primaryContainer) {
+                                Text(pinnedClasses.size.toString(),Modifier.padding(horizontal=9.dp,vertical=3.dp),style=MaterialTheme.typography.labelMedium,fontWeight=FontWeight.Bold)
+                            }
+                        }
+                        if (pinnedClasses.isEmpty()) {
+                            EmptyCard("No pinned classes. Pin a class from Schedule to keep it here.")
+                        } else {
+                            pinnedClasses.take(8).forEach { r ->
+                                PinnedClassCard(r, { store.setPinnedClassIds(store.pinnedClassIds() - r.id) })
+                            }
+                        }
+                    }
+                }
                 "tasks" -> item(key="home_tasks") {
                     Column(verticalArrangement=Arrangement.spacedBy(8.dp)){SectionTitle("Tasks to do");if(pendingTasks.isEmpty())EmptyCard("You're all caught up.") else pendingTasks.forEach{r->Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(16.dp)){ListItem(headlineContent={Text(r.title,fontWeight=FontWeight.SemiBold)},supportingContent={Column{if(r.subtitle.isNotBlank())Text(r.subtitle,maxLines=2);if(r.dueDate.isNotBlank())Text("Due ${r.dueDate} ${r.dueTime}")}},leadingContent={Icon(Icons.Default.CheckCircleOutline,null)})}}}
                 }
@@ -736,15 +762,30 @@ fun HomeTodayClassCard(r: Record, nowMinutes: Int, onClick: () -> Unit) {
     }}
 }
 @Composable
+fun PinnedClassCard(r: Record, unpin: () -> Unit) {
+    val bg=if(r.color!=0L)Color(r.color)else MaterialTheme.colorScheme.primaryContainer
+    Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=bg,contentColor=readableContentColor(bg))) {
+        Row(Modifier.fillMaxWidth().padding(12.dp),verticalAlignment=Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(r.title,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+                val meta=listOf(r.day, if(r.startTime.isNotBlank() && r.endTime.isNotBlank()) "${r.startTime}–${r.endTime}" else "", r.classType.takeIf { it.isNotBlank() } ?: "", r.room).filter { it.isNotBlank() }
+                if(meta.isNotEmpty()) Text(meta.joinToString(" • "),style=MaterialTheme.typography.bodySmall)
+                if(r.professor.isNotBlank()) Text(r.professor,style=MaterialTheme.typography.bodySmall)
+            }
+            IconButton(onClick=unpin) { Icon(Icons.Default.Star, "Unpin class") }
+        }
+    }
+}
+@Composable
 fun HomeClassDetailsDialog(r: Record, done: () -> Unit) {
     AlertDialog(onDismissRequest=done,title={Text("Class details")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){Text(r.title,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold);if(r.subtitle.isNotBlank())Text(r.subtitle);if(r.day.isNotBlank())Text("Day: ${r.day}");if(r.startTime.isNotBlank()&&r.endTime.isNotBlank())Text("Time: ${r.startTime} – ${r.endTime}");if(r.room.isNotBlank())Text("Room: ${r.room}");if(r.professor.isNotBlank())Text("Professor: ${r.professor}");if(r.classType.isNotBlank())Text("Type: ${r.classType}")}},confirmButton={TextButton(onClick=done){Text("Close")}})
 }
 @Composable
 fun HomeWidgetSettingsDialog(store: LocalStore, done: () -> Unit) {
-    val defaultOrder=listOf("profile","stats","next","today","tasks","quick")
+    val defaultOrder=listOf("profile","stats","next","today","pinned","tasks","quick")
     var order by remember{mutableStateOf(store.homeWidgetOrder().ifEmpty{defaultOrder})}
     var hidden by remember{mutableStateOf(store.homeWidgetHidden())}
-    val labels=mapOf("profile" to "Profile header","stats" to "Summary statistics","next" to "Next / current class","today" to "Today's classes","tasks" to "Tasks to do","quick" to "Quick access")
+    val labels=mapOf("profile" to "Profile header","stats" to "Summary statistics","next" to "Next / current class","today" to "Today's classes","pinned" to "Pinned classes","tasks" to "Tasks to do","quick" to "Quick access")
     AlertDialog(onDismissRequest=done,title={Text("Customize Homepage")},text={Column(Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){Text("Show, hide, and reorder homepage sections.",color=MaterialTheme.colorScheme.onSurfaceVariant);order.forEachIndexed{index,id->Card(Modifier.fillMaxWidth()){Row(Modifier.fillMaxWidth().padding(horizontal=10.dp,vertical=6.dp),verticalAlignment=Alignment.CenterVertically){Checkbox(id !in hidden,{checked->hidden=if(checked)hidden-id else hidden+id});Text(labels[id]?:id,Modifier.weight(1f),fontWeight=FontWeight.Medium);IconButton(enabled=index>0,onClick={order=order.toMutableList().apply{add(index-1,removeAt(index))}}){Icon(Icons.Default.KeyboardArrowUp,"Move up")};IconButton(enabled=index<order.lastIndex,onClick={order=order.toMutableList().apply{add(index+1,removeAt(index))}}){Icon(Icons.Default.KeyboardArrowDown,"Move down")}}}}}},confirmButton={Button(onClick={store.setHomeWidgetOrder(order);store.setHomeWidgetHidden(hidden);done()}){Text("Save")}},dismissButton={TextButton(onClick=done){Text("Cancel")}})
 }
 @Composable
@@ -988,10 +1029,19 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                                             colors = CardDefaults.cardColors(containerColor = bg, contentColor = readableContentColor(bg)),
                                             shape = RoundedCornerShape(6.dp)
                                         ) {
-                                            Column(Modifier.fillMaxSize().padding(horizontal = 4.dp, vertical = 2.dp), verticalArrangement = Arrangement.Center) {
-                                                Text("${r.title} - ${types.ifBlank { "Class" }}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                                                
-                                                if (rooms.isNotBlank()) Text(rooms, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 3, softWrap = true, overflow = androidx.compose.ui.text.style.TextOverflow.Clip)
+                                            Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 1.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
+                                                    Text("${r.title} - ${types.ifBlank { "Class" }}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                    if (rooms.isNotBlank()) Text(rooms, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 3, softWrap = true, overflow = androidx.compose.ui.text.style.TextOverflow.Clip)
+                                                }
+                                                val pinned = r.id in store.pinnedClassIds()
+                                                IconButton(onClick = {
+                                                    val ids = store.pinnedClassIds().toMutableSet()
+                                                    if (pinned) ids.remove(r.id) else ids.add(r.id)
+                                                    store.setPinnedClassIds(ids)
+                                                }, modifier = Modifier.size(32.dp)) {
+                                                    Icon(if (pinned) Icons.Default.Star else Icons.Default.StarBorder, if (pinned) "Unpin class" else "Pin class", modifier = Modifier.size(20.dp))
+                                                }
                                             }
                                         }
                                     }
