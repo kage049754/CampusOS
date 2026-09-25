@@ -658,16 +658,21 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                                     .padding(1.dp)
                             ) {
                                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                                    classes.take(2).forEach { r ->
+                                    classes.groupBy { it.title.trim().uppercase(Locale.getDefault()) }
+                                        .values.take(2).forEach { subjectClasses ->
+                                        val r = subjectClasses.first()
+                                        val types = subjectClasses.map { it.classType }.distinct().joinToString(" + ")
+                                        val rooms = subjectClasses.map { it.room.trim() }.filter { it.isNotBlank() }.distinct().joinToString(" / ")
                                         val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
                                         Card(
                                             Modifier.fillMaxWidth().weight(1f, fill = false),
                                             colors = CardDefaults.cardColors(containerColor = bg, contentColor = readableContentColor(bg)),
                                             shape = RoundedCornerShape(6.dp)
                                         ) {
-                                            Column(Modifier.fillMaxSize().padding(horizontal = 3.dp, vertical = 2.dp), verticalArrangement = Arrangement.Center) {
+                                            Column(Modifier.fillMaxSize().padding(horizontal = 4.dp, vertical = 2.dp), verticalArrangement = Arrangement.Center) {
                                                 Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                                                Text(r.classType, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                Text(types.ifBlank { "Class" }, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                if (rooms.isNotBlank()) Text(rooms, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                             }
                                         }
                                     }
@@ -861,50 +866,85 @@ fun TimeWheelDialog(
 
 @Composable
 fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
-    var subject by remember { mutableStateOf("") }; var fullName by remember { mutableStateOf("") }
-    var room by remember { mutableStateOf("") }; var professor by remember { mutableStateOf("") }; var notes by remember { mutableStateOf("") }
-    var classType by remember { mutableStateOf("Lecture") }; var color by remember { mutableLongStateOf(0xFFE3F2FD) }
+    var subject by remember { mutableStateOf("") }
+    var fullName by remember { mutableStateOf("") }
+    var room by remember { mutableStateOf("") }
+    var professor by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+    var classType by remember { mutableStateOf("Lecture") }
+    var color by remember { mutableLongStateOf(0xFFE3F2FD) }
     var selectedSlots by remember { mutableStateOf(setOf<String>()) }
-    val colors=listOf(0xFFE3F2FDL,0xFFE8F5E9L,0xFFFFF3E0L,0xFFF3E5F5L,0xFFFFEBEEL,0xFFE0F7FAL)
-    val startHour=store.scheduleStartHour().coerceIn(0,23); val endHour=store.scheduleEndHour().coerceIn(startHour,23)
-    val hours=(startHour..endHour).toList(); val weekDays=store.scheduleDays()
+    val colors = listOf(0xFFE3F2FDL,0xFFE8F5E9L,0xFFFFF3E0L,0xFFF3E5F5L,0xFFFFEBEEL,0xFFE0F7FAL)
+    val startHour = store.scheduleStartHour().coerceIn(0,23)
+    val endHour = store.scheduleEndHour().coerceIn(startHour,23)
+    val hours = (startHour..endHour).toList()
+    val weekDays = store.scheduleDays()
+    val existingSchedule = store.get("schedule")
     AlertDialog(onDismissRequest=done,title={Text("Add class")},text={
         Column(Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){
-            OutlinedTextField(subject,{subject=it},Modifier.fillMaxWidth(),label={Text("Subject code")},placeholder={Text("e.g. DCIT 25")})
+            OutlinedTextField(subject,{subject=it},Modifier.fillMaxWidth(),label={Text("Subject code")},placeholder={Text("e.g. DCIT 25")},singleLine=true)
             OutlinedTextField(fullName,{fullName=it},Modifier.fillMaxWidth(),label={Text("Whole subject name")})
             Text("Type for the next slots",fontWeight=FontWeight.SemiBold)
-            Text("Changing Lecture/Lab keeps previous selections. You can add Lecture and Lab in the same Save.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+            Text("Changing Lecture/Lab keeps previous selections. The same subject can have multiple days, times, and both Lecture and Lab.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Lecture","Lab").forEach{option->FilterChip(selected=classType==option,onClick={classType=option},label={Text(option)})}}
             Text("Pick class time(s) and day(s)",fontWeight=FontWeight.SemiBold)
-            Text("Tap a cell to add/remove the selected type. Lecture and Lab can share one day and hour.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+            Text("Existing schedules are shown in each cell so you can avoid duplicate or incorrect entries. Different subjects can still share the same time.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal=2.dp)){Column{
-                Row{Box(Modifier.width(48.dp).height(32.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text("Time",style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)}
-                    weekDays.forEach{d->Box(Modifier.width(72.dp).height(32.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text(d.take(3),style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)}}}
+                Row{
+                    Box(Modifier.width(48.dp).height(32.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text("Time",style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)}
+                    weekDays.forEach{d->Box(Modifier.width(86.dp).height(32.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text(d.take(3),style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)}}
+                }
                 hours.forEach{h->Row{
-                    Box(Modifier.width(48.dp).height(46.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text("%02d:00".format(h),style=MaterialTheme.typography.labelSmall)}
+                    Box(Modifier.width(48.dp).height(52.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text("%02d:00".format(h),style=MaterialTheme.typography.labelSmall)}
                     weekDays.forEach{d->
-                        val selectedTypes=listOf("Lecture","Lab").filter{type->"$d|$h|$type" in selectedSlots}; val currentKey="$d|$h|$classType"; val selected=currentKey in selectedSlots
-                        Box(Modifier.width(72.dp).height(46.dp).border(2.dp,if(selectedTypes.isNotEmpty())MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline).background(if(selectedTypes.isNotEmpty())MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface).clickable{selectedSlots=if(selected)selectedSlots-currentKey else selectedSlots+currentKey},contentAlignment=Alignment.Center){
-                            if(selectedTypes.isNotEmpty())Column(horizontalAlignment=Alignment.CenterHorizontally){Text(selectedTypes.joinToString(" + "),style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold,maxLines=1);Text("%02d–%02d".format(h,h+1),style=MaterialTheme.typography.labelSmall)}
+                        val currentKey="$d|$h|$classType"
+                        val selected=currentKey in selectedSlots
+                        val cellRecords=existingSchedule.filter{it.day.equals(d,true)&&it.startTime.toHourOrNull()==h}
+                        val sameSubjectAlreadyThere=cellRecords.any{subject.isNotBlank()&&it.title.trim().equals(subject.trim(),true)&&it.classType.equals(classType,true)}
+                        val occupantText=cellRecords.groupBy{it.title.trim().uppercase(Locale.getDefault())}.values.take(2).joinToString(" • "){group->
+                            val first=group.first()
+                            val types=group.map{it.classType}.distinct().joinToString("+")
+                            val rooms=group.map{it.room.trim()}.filter{it.isNotBlank()}.distinct().joinToString("/")
+                            buildString{append(first.title);append(" ");append(types);if(rooms.isNotBlank())append(" • ").append(rooms)}
+                        }
+                        Box(Modifier.width(86.dp).height(52.dp)
+                            .border(2.dp,if(selected)MaterialTheme.colorScheme.primary else if(cellRecords.isNotEmpty())MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant)
+                            .background(if(selected)MaterialTheme.colorScheme.primaryContainer else if(cellRecords.isNotEmpty())MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)
+                            .clickable{selectedSlots=if(selected)selectedSlots-currentKey else selectedSlots+currentKey},
+                            contentAlignment=Alignment.Center){
+                            Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
+                                if(cellRecords.isNotEmpty()) Text(occupantText,style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                else Text("Empty",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                if(selected) Text(if(sameSubjectAlreadyThere)"Already added" else "Selected $classType",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary,maxLines=1)
+                            }
                         }
                     }
                 }}
             }}
             Text(if(selectedSlots.isEmpty())"No time selected" else selectedSlots.size.toString()+" slot(s) selected",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
-            OutlinedTextField(room,{room=it},Modifier.fillMaxWidth(),label={Text("Room number")});OutlinedTextField(professor,{professor=it},Modifier.fillMaxWidth(),label={Text("Professor")});OutlinedTextField(notes,{notes=it},Modifier.fillMaxWidth(),label={Text("Notes")})
+            OutlinedTextField(room,{room=it},Modifier.fillMaxWidth(),label={Text("Room number")})
+            OutlinedTextField(professor,{professor=it},Modifier.fillMaxWidth(),label={Text("Professor")})
+            OutlinedTextField(notes,{notes=it},Modifier.fillMaxWidth(),label={Text("Notes")})
             Text("Class color",fontWeight=FontWeight.SemiBold)
             Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(10.dp)){colors.forEach{c->Box(Modifier.size(40.dp).border(3.dp,if(color==c)MaterialTheme.colorScheme.onSurface else Color.Transparent,RoundedCornerShape(50)).padding(4.dp).background(Color(c),RoundedCornerShape(50)).clickable{color=c},contentAlignment=Alignment.Center){if(color==c)Text("✓",color=readableContentColor(Color(c)),fontWeight=FontWeight.Bold)}}}
         }
     },confirmButton={Button({
         if(subject.isNotBlank()&&selectedSlots.isNotEmpty()){
-            val existingSchedule=store.get("schedule"); val idBase=maxOf(System.currentTimeMillis(),(existingSchedule.maxOfOrNull{it.id}?:0L)+1L)
-            val selected=selectedSlots.mapIndexed{index,key->val parts=key.split("|");val h=parts.getOrNull(1)?.toIntOrNull()?:7
-                Record(id=idBase+index,title=subject.trim(),subtitle=fullName.trim(),extra=notes.trim(),day=parts.getOrNull(0)?:"",startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=room.trim(),professor=professor.trim(),color=color,classType=parts.getOrNull(2)?:classType)}
-            store.put("schedule",existingSchedule+selected);selected.firstOrNull()?.let{syncSubjectFromClass(store,it)}
-        };done()
+            val normalizedSubject=subject.trim()
+            val existing=store.get("schedule")
+            val newKeys=selectedSlots.map{key->{val p=key.split("|");Triple(p.getOrNull(0)?:"",p.getOrNull(1)?.toIntOrNull()?:7,p.getOrNull(2)?:classType)}}.filterNot{(day,h,type)->
+                existing.any{it.day.equals(day,true)&&it.startTime.toHourOrNull()==h&&it.classType.equals(type,true)&&it.title.trim().equals(normalizedSubject,true)}
+            }
+            if(newKeys.isNotEmpty()){
+                val idBase=maxOf(System.currentTimeMillis(),(existing.maxOfOrNull{it.id}?:0L)+1L)
+                val selected=newKeys.mapIndexed{index,(day,h,type)->Record(id=idBase+index,title=normalizedSubject,subtitle=fullName.trim(),extra=notes.trim(),day=day,startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=room.trim(),professor=professor.trim(),color=color,classType=type)}
+                store.put("schedule",existing+selected)
+                selected.forEach{syncSubjectFromClass(store,it)}
+            }
+        }
+        done()
     }){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})
 }
-
 @Composable
 fun TaskCalendar(selectedDate:String,onSelect:(String)->Unit){
     val sdf=SimpleDateFormat("yyyy-MM-dd",Locale.getDefault())
