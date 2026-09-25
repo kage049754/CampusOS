@@ -62,11 +62,20 @@ object CampusReminders {
         store.get("tasks").filter { !it.done && it.dueDate.isNotBlank() }.forEach { task ->
             val due = taskDueMillis(task)
             if (due > now) {
-                listOf(24L to "Deadline tomorrow", 1L to "Deadline in 1 hour").forEach { pair ->
-                    val trigger = due - pair.first * 3_600_000L
+                val m = taskMeta(task)
+                val offsets = if (task.extra.contains("\"_task\"")) m.reminders else listOf(86_400_000L, 3_600_000L)
+                offsets.distinct().forEach { offset ->
+                    val trigger = due - offset
                     if (trigger > now + 5_000L) {
-                        val id = alarmId(task.id, due, pair.first)
-                        scheduleAlarm(app, alarmManager, id, trigger, "task", task.title, pair.second + " • due " + task.dueDate, task.subtitle)
+                        val label = when (offset) {
+                            86_400_000L -> "1 day before"
+                            43_200_000L -> "12 hours before"
+                            7_200_000L -> "2 hours before"
+                            1_800_000L -> "30 minutes before"
+                            else -> "Reminder"
+                        }
+                        val id = alarmId(task.id, due, offset)
+                        scheduleAlarm(app, alarmManager, id, trigger, "task", task.title, label + " • due " + task.dueDate + " " + task.dueTime, task.subtitle)
                         ids += id
                     }
                 }
