@@ -765,7 +765,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                                     classes.groupBy { it.title.trim().uppercase(Locale.getDefault()) }
                                         .values.take(2).forEach { subjectClasses ->
                                         val r = subjectClasses.first()
-                                        val types = subjectClasses.map { it.classType }.distinct().joinToString(" + ")
+                                        val types = subjectClasses.map { if (it.classType.equals("Lecture", true)) "Lec" else "Lab" }.distinct().joinToString(" + ")
                                         val rooms = subjectClasses.map { it.room.trim() }.filter { it.isNotBlank() }.distinct().joinToString(" / ")
                                         val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
                                         Card(
@@ -774,9 +774,9 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                                             shape = RoundedCornerShape(6.dp)
                                         ) {
                                             Column(Modifier.fillMaxSize().padding(horizontal = 4.dp, vertical = 2.dp), verticalArrangement = Arrangement.Center) {
-                                                Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                                                Text(types.ifBlank { "Class" }, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                                                if (rooms.isNotBlank()) Text("Room: $rooms", style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 3, softWrap = true, overflow = androidx.compose.ui.text.style.TextOverflow.Clip)
+                                                Text("${r.title} - ${types.ifBlank { "Class" }}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                
+                                                if (rooms.isNotBlank()) Text(rooms, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 3, softWrap = true, overflow = androidx.compose.ui.text.style.TextOverflow.Clip)
                                             }
                                         }
                                     }
