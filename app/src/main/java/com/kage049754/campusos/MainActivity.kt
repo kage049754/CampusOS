@@ -443,8 +443,6 @@ fun ScheduleTableSettingsDialog(store: LocalStore, done: () -> Unit) {
     var fontSize by remember { mutableFloatStateOf(store.scheduleTableFontSize()) }
     var dayWidth by remember { mutableFloatStateOf(store.scheduleTableDayWidth()) }
     var rowHeight by remember { mutableFloatStateOf(store.scheduleTableRowHeight()) }
-    val noteList = filteredNotes.sortedWith(compareByDescending<SubjectNote> { it.favorite }.thenBy { when (noteSort) { "Created" -> -it.id; "Alphabetical" -> 0L; else -> -it.updatedAt } })
-    val fileList = files.sortedWith(compareByDescending<File> { File(context.filesDir, "subject_favorite_" + subject.id + "_" + it.name).exists() }.thenBy { when (fileSort) { "Alphabetical" -> it.name.lowercase(); "Oldest" -> it.lastModified(); else -> -it.lastModified() } })
     AlertDialog(
         onDismissRequest = done,
         title = { Text("Schedule Table Settings") },
@@ -1240,6 +1238,9 @@ fun SubjectNotepadDialog(subject: Record, store: LocalStore, startMode: Int = 0,
     val filteredNotes = notes.filter {
         noteQuery.isBlank() || (it.title + " " + it.body).contains(noteQuery, true)
     }
+
+    val noteList = filteredNotes.sortedWith(compareByDescending<SubjectNote> { it.favorite }.thenBy { when (noteSort) { "Created" -> -it.id; "Alphabetical" -> 0L; else -> -it.updatedAt } })
+    val fileList = files.sortedWith(compareByDescending<File> { File(context.filesDir, "subject_favorite_" + subject.id + "_" + it.name).exists() }.thenBy { when (fileSort) { "Alphabetical" -> it.name.lowercase(); "Oldest" -> it.lastModified(); else -> -it.lastModified() } } )
 
     val upload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
