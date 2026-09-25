@@ -66,6 +66,11 @@ private fun readableContentColor(background: Color): Color {
     return if (luminance > 0.62f) Color.Black else Color.White
 }
 
+private fun nextRecordId(store: LocalStore, key: String, offset: Int = 0): Long {
+    val existingMax = store.get(key).maxOfOrNull { it.id } ?: 0L
+    return maxOf(System.currentTimeMillis(), existingMax + 1L) + offset
+}
+
 private fun subjectFolder(context: Context, subjectId: Long): File =
     File(context.filesDir, "subject_files/$subjectId").apply { mkdirs() }
 
@@ -166,7 +171,10 @@ class LocalStore(context: Context) {
         val a = JSONArray(prefs.getString(key, "[]"))
         for (i in 0 until a.length()) {
             val o = a.getJSONObject(i)
-            out += Record(o.getLong("id"), o.getString("title"), o.optString("subtitle"),
+            val storedId = o.optLong("id", 0L)
+            val safeId = if (storedId > 0L && out.none { it.id == storedId }) storedId
+                else maxOf(System.currentTimeMillis(), (out.maxOfOrNull { it.id } ?: 0L) + 1L)
+            out += Record(safeId, o.optString("title"), o.optString("subtitle"),
                 o.optString("extra"), o.optDouble("value", 0.0), o.optBoolean("done", false),
                 o.optString("day"), o.optString("startTime"), o.optString("endTime"), o.optString("room"), o.optString("professor"), o.optLong("color", 0L), o.optString("classType", "Lecture"), o.optLong("subjectId", 0L), o.optString("dueDate"), o.optString("dueTime"))
         }
@@ -911,14 +919,16 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
         },
         confirmButton={ Button({
             if(subject.isNotBlank() && selectedSlots.isNotEmpty()) {
-                val selected = selectedSlots.mapNotNull { key ->
+                val existingSchedule = store.get("schedule")
+                val idBase = maxOf(System.currentTimeMillis(), (existingSchedule.maxOfOrNull { it.id } ?: 0L) + 1L)
+                val selected = selectedSlots.mapIndexedNotNull { index, key ->
                     val parts=key.split("|")
                     if(parts.size!=2) null else {
-                        val h=parts[1].toIntOrNull() ?: return@mapNotNull null
-                        Record(title=subject.trim(),subtitle=fullName.trim(),extra=notes.trim(),day=parts[0],startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=room.trim(),professor=professor.trim(),color=color,classType=classType)
+                        val h=parts[1].toIntOrNull() ?: return@mapIndexedNotNull null
+                        Record(id=idBase + index, title=subject.trim(),subtitle=fullName.trim(),extra=notes.trim(),day=parts[0],startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=room.trim(),professor=professor.trim(),color=color,classType=classType)
                     }
                 }
-                store.put("schedule",store.get("schedule")+selected)
+                store.put("schedule",existingSchedule+selected)
                 selected.firstOrNull()?.let { syncSubjectFromClass(store,it) }
             }
             done()
