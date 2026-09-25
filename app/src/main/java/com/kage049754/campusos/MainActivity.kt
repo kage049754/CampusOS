@@ -2115,8 +2115,13 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
     var lockOn by remember { mutableStateOf(store.lockEnabled()) }
     var showPin by remember { mutableStateOf(false) }
     var notificationsOn by remember { mutableStateOf(context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).getBoolean("enabled", false) && CampusReminders.notificationsEnabled(context)) }
+
     val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) { notificationsOn = true; context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", true).apply(); CampusReminders.reschedule(context) }
+        if (granted) {
+            notificationsOn = true
+            context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", true).apply()
+            CampusReminders.reschedule(context)
+        }
     }
     val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         uri ?: return@rememberLauncherForActivityResult
@@ -2126,77 +2131,117 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
         uri ?: return@rememberLauncherForActivityResult
         runCatching { context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { store.restoreJson(it.readText()) } }
     }
-    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Notifications", fontWeight = FontWeight.Bold)
-                Text("Get reminders before your next class and upcoming task deadlines.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (notificationsOn && CampusReminders.notificationsEnabled(context)) "Enabled" else "Off")
-                    Switch(
-                        checked = notificationsOn,
-                        onCheckedChange = { enabled ->
-                            if (!enabled) {
-                                notificationsOn = false
-                                context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", false).apply()
-                                CampusReminders.reschedule(context)
-                            } else if (android.os.Build.VERSION.SDK_INT >= 33) {
-                                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                            } else {
-                                notificationsOn = true
-                                context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", true).apply()
-                                CampusReminders.reschedule(context)
-                            }
-                        }
-                    )
-                }
-            }
-        }}
 
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
-                Text("Schedule", fontWeight = FontWeight.Bold)
-                Text("Choose which class days and timetable hours are shown.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedButton(onClick = openScheduleSettings, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.CalendarMonth, null); Spacer(Modifier.width(8.dp)); Text("Class Schedule Settings") }
-            }
-        }}
-        item { Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Appearance", fontWeight = FontWeight.Bold)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    listOf("system","light","dark").forEach { mode ->
-                        FilterChip(theme == mode, { setTheme(mode) }, label = { Text(mode.replaceFirstChar { it.uppercase() }) })
+
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Notifications", fontWeight = FontWeight.Bold)
+                    Text("Get reminders before your next class and upcoming task deadlines.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (notificationsOn && CampusReminders.notificationsEnabled(context)) "Enabled" else "Off")
+                        Switch(
+                            checked = notificationsOn,
+                            onCheckedChange = { enabled ->
+                                if (!enabled) {
+                                    notificationsOn = false
+                                    context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", false).apply()
+                                    CampusReminders.reschedule(context)
+                                } else if (android.os.Build.VERSION.SDK_INT >= 33) {
+                                    notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    notificationsOn = true
+                                    context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", true).apply()
+                                    CampusReminders.reschedule(context)
+                                }
+                            }
+                        )
                     }
                 }
             }
-        }}
-        item { Card(Modifier.fillMaxWidth()) {
-            ListItem(headlineContent = { Text("App lock") },
-                supportingContent = { Text(if (pin.isBlank()) "Set a PIN first" else "Require PIN when opening CampusOS") },
-                trailingContent = { Switch(lockOn && pin.isNotBlank(), {
-                    lockOn = it; store.setLockEnabled(it); if (it) lock()
-                }) })
-            TextButton({ showPin = true }, Modifier.padding(start = 12.dp)) { Text(if (pin.isBlank()) "Set PIN" else "Change PIN") }
-        }}
-        item { Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("Backup & restore", fontWeight = FontWeight.Bold)
-                Text("Export local data to JSON or restore it later.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 10.dp)) {
-                    Button({ backup.launch("CampusOS-backup.json") }) { Text("Backup") }
-                    OutlinedButton({ restore.launch(arrayOf("application/json","text/plain")) }) { Text("Restore") }
+        }
+
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Schedule", fontWeight = FontWeight.Bold)
+                    Text("Choose which class days and timetable hours are shown.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedButton(onClick = openScheduleSettings, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.CalendarMonth, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Class Schedule Settings")
+                    }
                 }
             }
-        }}
+        }
+
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Appearance", fontWeight = FontWeight.Bold)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        listOf("system", "light", "dark").forEach { mode ->
+                            FilterChip(theme == mode, { setTheme(mode) }, label = { Text(mode.replaceFirstChar { it.uppercase() }) })
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                ListItem(
+                    headlineContent = { Text("App lock") },
+                    supportingContent = { Text(if (pin.isBlank()) "Set a PIN first" else "Require PIN when opening CampusOS") },
+                    trailingContent = {
+                        Switch(
+                            checked = lockOn && pin.isNotBlank(),
+                            onCheckedChange = {
+                                lockOn = it
+                                store.setLockEnabled(it)
+                                if (it) lock()
+                            }
+                        )
+                    }
+                )
+                TextButton({ showPin = true }, Modifier.padding(start = 12.dp)) {
+                    Text(if (pin.isBlank()) "Set PIN" else "Change PIN")
+                }
+            }
+        }
+
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Backup & restore", fontWeight = FontWeight.Bold)
+                    Text("Export local data to JSON or restore it later.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 10.dp)) {
+                        Button({ backup.launch("CampusOS-backup.json") }) { Text("Backup") }
+                        OutlinedButton({ restore.launch(arrayOf("application/json", "text/plain")) }) { Text("Restore") }
+                    }
+                }
+            }
+        }
+
         item { Text("CampusOS 1.0.0 • Offline-first", color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
+
     if (showPin) {
         var newPin by remember { mutableStateOf("") }
-        AlertDialog(onDismissRequest = { showPin = false }, title = { Text("Set 4–8 digit PIN") },
+        AlertDialog(
+            onDismissRequest = { showPin = false },
+            title = { Text("Set 4–8 digit PIN") },
             text = { OutlinedTextField(newPin, { newPin = it.filter(Char::isDigit).take(8) }, label = { Text("PIN") }) },
-            confirmButton = { Button({ if (newPin.length in 4..8) { pin = newPin; store.setPin(newPin); showPin = false } }) { Text("Save") } },
-            dismissButton = { TextButton({ showPin = false }) { Text("Cancel") } })
+            confirmButton = {
+                Button({ if (newPin.length in 4..8) { pin = newPin; store.setPin(newPin); showPin = false } }) { Text("Save") }
+            },
+            dismissButton = { TextButton({ showPin = false }) { Text("Cancel") } }
+        )
     }
 }
+
 
 @Composable
 fun LockScreen(store: LocalStore, unlock: () -> Unit) {
