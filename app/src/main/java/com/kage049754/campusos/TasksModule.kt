@@ -163,13 +163,13 @@ fun TasksScreen(store:LocalStore,query:String,clear:()->Unit,openSubject:(Long)-
         Text("Attachments",fontWeight=FontWeight.Bold);Button({picker.launch(arrayOf("*/*"))}){Icon(Icons.Default.AttachFile,null);Spacer(Modifier.width(5.dp));Text("Add file")};attachments.forEach{Text("📎 "+it)}
         OutlinedTextField(link,{link=it},Modifier.fillMaxWidth(),label={Text("Link")},singleLine=true);OutlinedTextField(location,{location=it},Modifier.fillMaxWidth(),label={Text("Location")},singleLine=true);OutlinedTextField(notes,{notes=it},Modifier.fillMaxWidth(),label={Text("Notes")})
         Text("Checklist / Subtasks",fontWeight=FontWeight.Bold);subtasks.forEach{s->Row(verticalAlignment=Alignment.CenterVertically){Checkbox(s.done,{subtasks=subtasks.map{if(it.id==s.id)it.copy(done=!s.done)else it}});Text(s.title,Modifier.weight(1f));IconButton({subtasks=subtasks.filterNot{it.id==s.id}}){Icon(Icons.Default.Delete,null)}}};Row{OutlinedTextField(newSub,{newSub=it},Modifier.weight(1f),label={Text("Add subtask")},singleLine=true);IconButton({if(newSub.isNotBlank()){subtasks=subtasks+TaskSub(System.currentTimeMillis(),newSub.trim(),false);newSub=""}}){Icon(Icons.Default.Add,null)}}
-    }},confirmButton={Button({if(title.isNotBlank()&&sid!=0L){val m=TaskMeta(type,priority,status,reminders.toList(),attachments,link,location,notes,pinned,semester,subtasks);val base=existing?:Record(id=nextId(store),title=title,subjectId=sid);val r=saveTask(base,m).copy(title=title.trim(),subtitle=desc.trim(),subjectId=sid,dueDate=date,dueTime=time);store.put("tasks",if(existing==null)store.get("tasks")+r else store.get("tasks").map{if(it.id==existing.id)r else it});done()}}){Text("Save Task")}},dismissButton={TextButton(done){Text("Cancel")}})
+    }},confirmButton={Button({if(title.isNotBlank()&&sid!=0L){val m=TaskMeta(type,priority,status,reminders.toList(),attachments,link,location,notes,pinned,semester,subtasks);val base=existing?:Record(id=nextRecordId(store,"tasks"),title=title,subjectId=sid);val r=saveTask(base,m).copy(title=title.trim(),subtitle=desc.trim(),subjectId=sid,dueDate=date,dueTime=time);store.put("tasks",if(existing==null)store.get("tasks")+r else store.get("tasks").map{if(it.id==existing.id)r else it});done()}}){Text("Save Task")}},dismissButton={TextButton(done){Text("Cancel")}})
 }
 @Composable private fun TaskDetailDialog(r:Record,store:LocalStore,subjects:List<Record>,openSubject:(Long)->Unit,done:()->Unit){
     val c=androidx.compose.ui.platform.LocalContext.current;var edit by remember{mutableStateOf(false)};var file by remember{mutableStateOf<File?>(null)};val m=taskMeta(r);val subject=subjects.firstOrNull{it.id==r.subjectId}
     if(file!=null){Dialog(onDismissRequest={file=null}){Surface(Modifier.fillMaxSize()){InAppFileViewerPage(file!!){file=null}}};return}
     if(edit){TaskEditorDialog(store,subjects,m.semester,r){edit=false;done()};return}
-    val attachments=m.attachments.map{File(c,"task_files/"+it)}.filter{it.exists()}
+    val attachments=m.attachments.map{File(File(c.filesDir,"task_files"),it)}.filter{it.exists()}
     AlertDialog(onDismissRequest=done,title={Text(r.title)},text={Column(Modifier.heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(7.dp)){
         Text(pIcon(m.priority)+" "+m.priority+" priority • "+m.status,fontWeight=FontWeight.Bold);subject?.let{Text("📚 "+it.title,color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold,modifier=Modifier.clickable{openSubject(it.id)})};Text("📅 "+taskLabel(r));if(taskOverdue(r))Text("⚠️ OVERDUE",color=MaterialTheme.colorScheme.error,fontWeight=FontWeight.Bold)
         if(r.subtitle.isNotBlank())Text(r.subtitle);if(m.location.isNotBlank())Text("📍 "+m.location);if(m.link.isNotBlank())Text("🔗 "+m.link,color=MaterialTheme.colorScheme.primary);if(m.notes.isNotBlank())Text("📝 "+m.notes)
@@ -178,10 +178,49 @@ fun TasksScreen(store:LocalStore,query:String,clear:()->Unit,openSubject:(Long)-
     }},confirmButton={Button({edit=true}){Text("Edit")}},dismissButton={TextButton({store.put("tasks",store.get("tasks").filterNot{it.id==r.id});done()}){Text("Delete")}})
 }
 @Composable private fun TaskExportDialog(tasks:List<Record>,done:()->Unit){
-    val c=androidx.compose.ui.platform.LocalContext.current;var kind by remember{mutableStateOf("JSON")}
-    val creator=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument()){uri->uri?:return@rememberLauncherForActivityResult;runCatching{c.contentResolver.openOutputStream(uri)?.use{o->when(kind){"CSV"->o.write(taskCsv(tasks).toByteArray());"PDF"->o.write(taskPdf(tasks));else->o.write(taskJson(tasks).toByteArray())}}};done()}
-    AlertDialog(onDismissRequest=done,title={Text("Export Tasks")},text={Column{Text("Export the current semester.");listOf("PDF","CSV","JSON").forEach{x->FilterChip(kind==x,{kind=x},label={Text(x)})}},confirmButton={Button({creator.launch("CampusOS-Tasks."+kind.lowercase())}){Text("Export")}},dismissButton={TextButton(done){Text("Cancel")}})
+    val c=androidx.compose.ui.platform.LocalContext.current
+    var kind by remember{mutableStateOf("JSON")}
+    val creator=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument()){uri->
+        if(uri!=null) runCatching{
+            c.contentResolver.openOutputStream(uri)?.use{o->
+                when(kind){
+                    "CSV"->o.write(taskCsv(tasks).toByteArray())
+                    "PDF"->o.write(taskPdf(tasks))
+                    else->o.write(taskJson(tasks).toByteArray())
+                }
+            }
+        }
+        done()
+    }
+    AlertDialog(
+        onDismissRequest=done,
+        title={Text("Export Tasks")},
+        text={Column{
+            Text("Export the current semester.")
+            listOf("PDF","CSV","JSON").forEach{x->FilterChip(kind==x,{kind=x},label={Text(x)})}
+        }},
+        confirmButton={Button({creator.launch("CampusOS-Tasks."+kind.lowercase())}){Text("Export")}},
+        dismissButton={TextButton(done){Text("Cancel")}}
+    )
 }
-private fun taskJson(ts:List<Record>)=JSONArray().apply{ts.forEach{r->val m=taskMeta(r);put(JSONObject().apply{put("id",r.id);put("title",r.title);put("description",r.subtitle);put("subjectId",r.subjectId);put("dueDate",r.dueDate);put("dueTime",r.dueTime);put("type",m.type);put("priority",m.priority);put("status",m.status);put("semester",m.semester);put("pinned",m.pinned);put("link",m.link);put("location",m.location);put("notes",m.notes);put("attachments",JSONArray(m.attachments))})}}.toString(2)
-private fun taskCsv(ts:List<Record>)="Title,Subject,Type,Priority,Status,Due Date,Due Time,Semester,Pinned\n"+ts.joinToString("\n"){r->{val m=taskMeta(r);listOf(r.title,r.subjectId,m.type,m.priority,m.status,r.dueDate,r.dueTime,m.semester,m.pinned).joinToString(","){v->"\""+v.toString().replace("\"","\"\"")+"\""}}}
+private fun taskJson(ts:List<Record>):String=JSONArray().apply{
+    ts.forEach{r->
+        val m=taskMeta(r)
+        put(JSONObject().apply{
+            put("id",r.id);put("title",r.title);put("description",r.subtitle);put("subjectId",r.subjectId)
+            put("dueDate",r.dueDate);put("dueTime",r.dueTime);put("type",m.type);put("priority",m.priority)
+            put("status",m.status);put("semester",m.semester);put("pinned",m.pinned);put("link",m.link)
+            put("location",m.location);put("notes",m.notes);put("attachments",JSONArray(m.attachments))
+        })
+    }
+}.toString(2)
+private fun taskCsv(ts:List<Record>):String{
+    val header="Title,Subject,Type,Priority,Status,Due Date,Due Time,Semester,Pinned"
+    val rows=ts.joinToString("\n"){r->
+        val m=taskMeta(r)
+        listOf(r.title,r.subjectId,m.type,m.priority,m.status,r.dueDate,r.dueTime,m.semester,m.pinned)
+            .joinToString(","){v->"\""+v.toString().replace("\"","\"\"")+"\""}
+    }
+    return header+"\n"+rows
+}
 private fun taskPdf(ts:List<Record>):ByteArray{val d=PdfDocument();val p=d.startPage(PdfDocument.PageInfo.Builder(595,842,1).create());val paint=android.graphics.Paint().apply{textSize=16f};p.canvas.drawText("CampusOS Tasks",36f,48f,paint);paint.textSize=10f;var y=72f;ts.take(55).forEach{r->val m=taskMeta(r);p.canvas.drawText(pIcon(m.priority)+" "+r.title+" • "+r.dueDate+" "+r.dueTime+" • "+m.status,36f,y,paint);y+=14f};d.finishPage(p);val o=java.io.ByteArrayOutputStream();d.writeTo(o);d.close();return o.toByteArray()}
