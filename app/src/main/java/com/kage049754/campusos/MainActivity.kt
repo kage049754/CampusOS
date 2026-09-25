@@ -118,7 +118,9 @@ private fun readOfficeText(file: File): String? = runCatching {
             "pptx" -> zip.entries().asSequence()
                 .filter { it.name.startsWith("ppt/slides/slide") && it.name.endsWith(".xml") }
                 .sortedBy { it.name }
-                .joinToString("\n\n") { entry ->
+                .joinToString("
+
+") { entry ->
                     zip.getInputStream(entry).use { stream ->
                         DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(stream).documentElement.textContent
                     }
@@ -126,7 +128,8 @@ private fun readOfficeText(file: File): String? = runCatching {
             "xlsx" -> zip.entries().asSequence()
                 .filter { it.name.startsWith("xl/worksheets/sheet") && it.name.endsWith(".xml") }
                 .sortedBy { it.name }
-                .joinToString("\n") { entry ->
+                .joinToString("
+") { entry ->
                     zip.getInputStream(entry).bufferedReader().use { it.readText() }
                         .replace(Regex("<[^>]+>"), " ")
                         .replace(Regex("\\s+"), " ")
@@ -347,7 +350,8 @@ fun CampusOSApp(activity: Activity) {
     var screenName by rememberSaveable { mutableStateOf(Screen.HOME.name) }
     val screen = Screen.valueOf(screenName)
     var search by rememberSaveable { mutableStateOf("") }
-    var showHomeAdd by remember { mutableStateOf(false) }\n    var showHomeWidgetSettings by remember { mutableStateOf(false) }
+    var showHomeAdd by remember { mutableStateOf(false) }
+    var showHomeWidgetSettings by remember { mutableStateOf(false) }
     var showHomeColors by remember { mutableStateOf(false) }
     var showHomeSettings by remember { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }
@@ -397,7 +401,12 @@ fun CampusOSApp(activity: Activity) {
                 settingsModule = settingsParent
                 settingsParent = null
             }
-            showHomeWidgetSettings -> {\n                showHomeWidgetSettings = false\n                settingsModule = settingsParent\n                settingsParent = null\n            }\n            showHomeSettings -> showHomeSettings = false
+            showHomeWidgetSettings -> {
+                showHomeWidgetSettings = false
+                settingsModule = settingsParent
+                settingsParent = null
+            }
+            showHomeSettings -> showHomeSettings = false
             settingsModule != null -> {
                 settingsModule = null
                 settingsParent = null
@@ -508,7 +517,8 @@ fun CampusOSApp(activity: Activity) {
             if (showHomeSettings) {
                 HomeSettingsDialog(onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, done = { showHomeSettings = false })
             }
-            if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }\n            if (showHomeWidgetSettings) HomeWidgetSettingsDialog(store) { showHomeWidgetSettings = false }
+            if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
+            if (showHomeWidgetSettings) HomeWidgetSettingsDialog(store) { showHomeWidgetSettings = false }
             if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }) { showHomeColors = false }
             if (showProfile) ProfileDialog(store) { showProfile = false }
             if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
