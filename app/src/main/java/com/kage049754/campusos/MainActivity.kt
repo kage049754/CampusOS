@@ -265,6 +265,21 @@ class LocalStore(context: Context) {
     fun scheduleStartHour() = prefs.getInt("schedule_start_hour", 7)
     fun scheduleEndHour() = prefs.getInt("schedule_end_hour", 19)
     fun setScheduleHours(start: Int, end: Int) { prefs.edit().putInt("schedule_start_hour", start).putInt("schedule_end_hour", end).apply(); revision++; CampusReminders.reschedule(appContext); CampusWidgets.updateAll(appContext) }
+    fun homeWidgetOrder(): List<String> {
+        val defaults = listOf("profile", "stats", "next", "today", "tasks", "quick")
+        val stored = (prefs.getString("home_widget_order", "") ?: "").split(",").filter { it in defaults }
+        return (stored + defaults).distinct()
+    }
+    fun setHomeWidgetOrder(order: List<String>) {
+        prefs.edit().putString("home_widget_order", order.distinct().joinToString(",")).apply()
+        revision++
+    }
+    fun homeWidgetHidden(): Set<String> =
+        (prefs.getString("home_widget_hidden", "") ?: "").split(",").filter { it.isNotBlank() }.toSet()
+    fun setHomeWidgetHidden(hidden: Set<String>) {
+        prefs.edit().putString("home_widget_hidden", hidden.joinToString(",")).apply()
+        revision++
+    }
     fun backupJson(selected: Set<String> = setOf("homepage","schedule","tasks","academics")): String {
         val root = JSONObject()
         if ("schedule" in selected) root.put("schedule", prefs.getString("schedule", "[]"))
@@ -332,7 +347,7 @@ fun CampusOSApp(activity: Activity) {
     var screenName by rememberSaveable { mutableStateOf(Screen.HOME.name) }
     val screen = Screen.valueOf(screenName)
     var search by rememberSaveable { mutableStateOf("") }
-    var showHomeAdd by remember { mutableStateOf(false) }
+    var showHomeAdd by remember { mutableStateOf(false) }\n    var showHomeWidgetSettings by remember { mutableStateOf(false) }
     var showHomeColors by remember { mutableStateOf(false) }
     var showHomeSettings by remember { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }
@@ -382,7 +397,7 @@ fun CampusOSApp(activity: Activity) {
                 settingsModule = settingsParent
                 settingsParent = null
             }
-            showHomeSettings -> showHomeSettings = false
+            showHomeWidgetSettings -> showHomeWidgetSettings = false\n            showHomeSettings -> showHomeSettings = false
             settingsModule != null -> {
                 settingsModule = null
                 settingsParent = null
@@ -493,13 +508,13 @@ fun CampusOSApp(activity: Activity) {
             if (showHomeSettings) {
                 HomeSettingsDialog(onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, done = { showHomeSettings = false })
             }
-            if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
+            if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }\n            if (showHomeWidgetSettings) HomeWidgetSettingsDialog(store) { showHomeWidgetSettings = false }
             if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }) { showHomeColors = false }
             if (showProfile) ProfileDialog(store) { showProfile = false }
             if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
             if (showScheduleTableSettings) ScheduleTableSettingsDialog(store) { showScheduleTableSettings = false }
             if (showScheduleManager) ScheduleManagerDialog(store) { showScheduleManager = false }
-            settingsModule?.let { module -> ModuleSettingsDialog(module, { settingsModule = null; settingsParent = null; showHomeSettings = true }, { settingsParent = module; settingsModule = null; showProfile = true }, { settingsParent = module; settingsModule = null; showScheduleManager = true }, { settingsParent = module; settingsModule = null; showScheduleSettings = true }, { settingsParent = module; settingsModule = null; showScheduleTableSettings = true }, { settingsParent = module; settingsModule = null; showHomeAdd = true }, { settingsModule = null; settingsParent = null; screenName = Screen.TASKS.name }, { settingsModule = null; settingsParent = null; screenName = Screen.ACADEMICS.name }) }
+            settingsModule?.let { module -> ModuleSettingsDialog(module, { settingsModule = null; settingsParent = null; showHomeSettings = true }, { settingsParent = module; settingsModule = null; showProfile = true }, { settingsParent = module; settingsModule = null; showScheduleManager = true }, { settingsParent = module; settingsModule = null; showScheduleSettings = true }, { settingsParent = module; settingsModule = null; showScheduleTableSettings = true }, { settingsParent = module; settingsModule = null; showHomeAdd = true }, { settingsModule = null; settingsParent = null; screenName = Screen.TASKS.name }, { settingsModule = null; settingsParent = null; screenName = Screen.ACADEMICS.name }, { settingsParent = module; settingsModule = null; showHomeWidgetSettings = true }) }
             if (showScheduleDetails) SubjectDetailsDialog(store.get("schedule"), { showScheduleDetails = false })
         }
         }
@@ -524,10 +539,10 @@ fun HomeSettingsDialog(onModule:(String)->Unit,onAppearance:()->Unit,done:()->Un
     }},confirmButton={TextButton(done){Text("Close")}})
 }
 @Composable
-fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleManager:()->Unit,scheduleSettings:()->Unit,tableSettings:()->Unit,addClass:()->Unit,openTasks:()->Unit,openAcademics:()->Unit) {
+fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleManager:()->Unit,scheduleSettings:()->Unit,tableSettings:()->Unit,addClass:()->Unit,openTasks:()->Unit,openAcademics:()->Unit,homepageWidgets:()->Unit) {
     AlertDialog(onDismissRequest=close,title={Text("$module Settings")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
         when(module){
-            "Homepage"->{Text("Homepage controls",fontWeight=FontWeight.Bold);OutlinedButton(profile,Modifier.fillMaxWidth()){Icon(Icons.Default.Person,null);Spacer(Modifier.width(8.dp));Text("Profile & homepage information")}}
+            "Homepage"->{Text("Homepage controls",fontWeight=FontWeight.Bold);OutlinedButton(profile,Modifier.fillMaxWidth()){Icon(Icons.Default.Person,null);Spacer(Modifier.width(8.dp));Text("Profile & homepage information")};OutlinedButton(homepageWidgets,Modifier.fillMaxWidth()){Icon(Icons.Default.DashboardCustomize,null);Spacer(Modifier.width(8.dp));Text("Customize Homepage Widgets")}}
             "Schedule"->{Text("Schedule controls",fontWeight=FontWeight.Bold);OutlinedButton(addClass,Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Spacer(Modifier.width(8.dp));Text("Add Class")};OutlinedButton(scheduleManager,Modifier.fillMaxWidth()){Icon(Icons.Default.EditCalendar,null);Spacer(Modifier.width(8.dp));Text("Edit / Delete Classes")};OutlinedButton(scheduleSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.CalendarMonth,null);Spacer(Modifier.width(8.dp));Text("Class Schedule Settings")};OutlinedButton(tableSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.TableView,null);Spacer(Modifier.width(8.dp));Text("Schedule Table Settings")}}
             "Tasks"->{Text("Task controls",fontWeight=FontWeight.Bold);Text("Task records are stored offline. Use the Tasks screen to add, complete, and delete tasks.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openTasks,Modifier.fillMaxWidth()){Icon(Icons.Default.CheckCircle,null);Spacer(Modifier.width(8.dp));Text("Open Tasks")}}
             "Academics"->{Text("Academics controls",fontWeight=FontWeight.Bold);Text("Subjects, Notepad, and Lecture Files are stored offline. Use the Academics screen to manage them.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openAcademics,Modifier.fillMaxWidth()){Icon(Icons.Default.School,null);Spacer(Modifier.width(8.dp));Text("Open Academics")}}
@@ -619,106 +634,77 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     val todaySchedule = remember(schedule, todayName) { mergeTodayClasses(schedule.filter { it.day.equals(todayName, true) }) }
     val pendingTasks = remember(tasks) { tasks.filter { !it.done }.sortedWith(compareBy({ it.dueDate }, { it.dueTime })).take(5) }
     val photo = remember(photoPath, revision) { if (photoPath.isNotBlank()) runCatching { BitmapFactory.decodeFile(photoPath) }.getOrNull() else null }
+    var nowTick by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var selectedClass by remember { mutableStateOf<Record?>(null) }
+    LaunchedEffect(Unit) { while (true) { nowTick = System.currentTimeMillis(); kotlinx.coroutines.delay(1000) } }
+    val calendar = remember(nowTick) { Calendar.getInstance() }
+    val nowMinutes = calendar.get(Calendar.HOUR_OF_DAY) * 60 + calendar.get(Calendar.MINUTE)
+    val ongoingClass = todaySchedule.firstOrNull { isClassOngoing(it, nowMinutes) }
+    val nextClass = todaySchedule.firstOrNull { (parseClockMinutes(it.startTime) ?: Int.MAX_VALUE) > nowMinutes }
+    val widgetOrder = remember(revision) { store.homeWidgetOrder() }
+    val hidden = remember(revision) { store.homeWidgetHidden() }
 
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (photo != null) Image(photo.asImageBitmap(), "Profile photo", Modifier.size(64.dp), contentScale = ContentScale.Crop)
-                    else Box(Modifier.size(64.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50)), contentAlignment = Alignment.Center) {
-                        Text(profileName.take(1).uppercase(), color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Welcome back", style = MaterialTheme.typography.labelLarge)
-                        Text(profileName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        val details = listOf(studentId, section).filter { it.isNotBlank() }.joinToString(" • ")
-                        if (details.isNotBlank()) Text(details, style = MaterialTheme.typography.bodyMedium)
-                        Text(date, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        widgetOrder.filterNot { it in hidden }.forEach { widget ->
+            when (widget) {
+                "profile" -> item(key="home_profile") {
+                    Card(Modifier.fillMaxWidth(), shape=RoundedCornerShape(22.dp), colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer)) {
+                        Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment=Alignment.CenterVertically) {
+                            if (photo != null) Image(photo.asImageBitmap(),"Profile photo",Modifier.size(64.dp),contentScale=ContentScale.Crop)
+                            else Box(Modifier.size(64.dp).background(MaterialTheme.colorScheme.primary,RoundedCornerShape(50)),contentAlignment=Alignment.Center){Text(profileName.take(1).uppercase(),color=MaterialTheme.colorScheme.onPrimary,style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)}
+                            Spacer(Modifier.width(14.dp)); Column(Modifier.weight(1f)) {
+                                Text("Welcome back",style=MaterialTheme.typography.labelLarge); Text(profileName,style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+                                val details=listOf(studentId,section).filter{it.isNotBlank()}.joinToString(" • "); if(details.isNotBlank())Text(details,style=MaterialTheme.typography.bodyMedium)
+                                Text(date,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
+                        }
                     }
                 }
-            }
-        }
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatCard("Classes", schedule.size.toString(), Modifier.weight(1f))
-                StatCard("Subjects", subjects.size.toString(), Modifier.weight(1f))
-                StatCard("Tasks", tasks.count { !it.done }.toString(), Modifier.weight(1f))
-            }
-        }
-        item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                SectionTitle("Today's classes")
-                Spacer(Modifier.width(8.dp))
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    Text(
-                        todaySchedule.size.toString(),
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold
-                    )
+                "stats" -> item(key="home_stats") { Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){StatCard("Classes",schedule.size.toString(),Modifier.weight(1f));StatCard("Subjects",subjects.size.toString(),Modifier.weight(1f));StatCard("Tasks",tasks.count{!it.done}.toString(),Modifier.weight(1f))} }
+                "next" -> item(key="home_next") {
+                    val title=if(ongoingClass!=null)"Current class" else "Next class"
+                    Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(18.dp)){ListItem(
+                        headlineContent={Row(verticalAlignment=Alignment.CenterVertically){Text(title,fontWeight=FontWeight.Bold);if(ongoingClass!=null){Spacer(Modifier.width(8.dp));Surface(shape=RoundedCornerShape(50),color=MaterialTheme.colorScheme.errorContainer){Text("ONGOING",Modifier.padding(horizontal=8.dp,vertical=3.dp),style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)}}}},
+                        supportingContent={if(ongoingClass!=null)Text("${ongoingClass.title} • ${ongoingClass.startTime}-${ongoingClass.endTime}") else if(nextClass!=null){val start=parseClockMinutes(nextClass.startTime)?:nowMinutes;Text("${nextClass.title} • ${nextClass.startTime}-${nextClass.endTime} • starts in ${formatCountdown(start-nowMinutes)}")}else Text("No more classes scheduled today.")},
+                        leadingContent={Icon(if(ongoingClass!=null)Icons.Default.PlayCircle else Icons.Default.Schedule,null)},
+                        modifier=Modifier.clickable(enabled=ongoingClass!=null||nextClass!=null){selectedClass=ongoingClass?:nextClass}
+                    )}
                 }
-            }
-        }
-        if (todaySchedule.isEmpty()) item { EmptyCard("No classes scheduled for today.") }
-        else items(todaySchedule.take(5), key = { it.id }) { r -> HomeTodayClassCard(r) }
-        item { SectionTitle("Tasks to do") }
-        if (pendingTasks.isEmpty()) item { EmptyCard("You're all caught up.") }
-        else items(pendingTasks, key = { it.id }) { r ->
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-                ListItem(
-                    headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) },
-                    supportingContent = { Column { if (r.subtitle.isNotBlank()) Text(r.subtitle, maxLines = 2); if (r.dueDate.isNotBlank()) Text("Due ${r.dueDate} ${r.dueTime}") } },
-                    leadingContent = { Icon(Icons.Default.CheckCircleOutline, null) }
-                )
-            }
-        }
-        item { SectionTitle("Quick access") }
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SmallAction("Subjects", Icons.Default.School) { go(Screen.ACADEMICS) }
-                SmallAction("Files", Icons.Default.Folder) { go(Screen.FILES) }
-                SmallAction("Tasks", Icons.Default.CheckCircle) { go(Screen.TASKS) }
+                "today" -> item(key="home_today") {
+                    Column(verticalArrangement=Arrangement.spacedBy(8.dp)){Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){SectionTitle("Today's classes");Spacer(Modifier.width(8.dp));Surface(shape=RoundedCornerShape(50),color=MaterialTheme.colorScheme.primaryContainer){Text(todaySchedule.size.toString(),Modifier.padding(horizontal=9.dp,vertical=3.dp),style=MaterialTheme.typography.labelMedium,fontWeight=FontWeight.Bold)}}
+                        if(todaySchedule.isEmpty())EmptyCard("No classes scheduled for today.") else todaySchedule.take(5).forEach{r->HomeTodayClassCard(r,nowMinutes){selectedClass=r}}
+                    }
+                }
+                "tasks" -> item(key="home_tasks") {
+                    Column(verticalArrangement=Arrangement.spacedBy(8.dp)){SectionTitle("Tasks to do");if(pendingTasks.isEmpty())EmptyCard("You're all caught up.") else pendingTasks.forEach{r->Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(16.dp)){ListItem(headlineContent={Text(r.title,fontWeight=FontWeight.SemiBold)},supportingContent={Column{if(r.subtitle.isNotBlank())Text(r.subtitle,maxLines=2);if(r.dueDate.isNotBlank())Text("Due ${r.dueDate} ${r.dueTime}")}},leadingContent={Icon(Icons.Default.CheckCircleOutline,null)})}}}
+                }
+                "quick" -> item(key="home_quick") { Column(verticalArrangement=Arrangement.spacedBy(8.dp)){SectionTitle("Quick access");Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){SmallAction("Subjects",Icons.Default.School){go(Screen.ACADEMICS)};SmallAction("Files",Icons.Default.Folder){go(Screen.FILES)};SmallAction("Tasks",Icons.Default.CheckCircle){go(Screen.TASKS)}}} }
             }
         }
     }
+    selectedClass?.let{HomeClassDetailsDialog(it){selectedClass=null}}
 }
 @Composable
-fun HomeTodayClassCard(r: Record) {
-    val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
-    Card(
-        Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = bg, contentColor = readableContentColor(bg))
-    ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    r.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
-                )
-                if (r.startTime.isNotBlank() && r.endTime.isNotBlank()) {
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        "${r.startTime}-${r.endTime}",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-            if (r.subtitle.isNotBlank()) Text(r.subtitle)
-            if (r.day.isNotBlank()) Text(r.day, style = MaterialTheme.typography.labelMedium)
-            if (r.room.isNotBlank()) Text("Room: ${r.room}")
-            if (r.professor.isNotBlank()) Text("Professor: ${r.professor}")
-            if (r.classType.isNotBlank()) Text("Option: ${r.classType}")
-        }
-    }
+fun HomeTodayClassCard(r: Record, nowMinutes: Int, onClick: () -> Unit) {
+    val bg=if(r.color!=0L)Color(r.color)else MaterialTheme.colorScheme.primaryContainer
+    val ongoing=isClassOngoing(r,nowMinutes)
+    Card(Modifier.fillMaxWidth().clickable(onClick=onClick),colors=CardDefaults.cardColors(containerColor=bg,contentColor=readableContentColor(bg))){Column(Modifier.padding(14.dp)){
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text(r.title,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f));if(ongoing){Surface(shape=RoundedCornerShape(50),color=MaterialTheme.colorScheme.errorContainer){Text("ONGOING",Modifier.padding(horizontal=8.dp,vertical=3.dp),style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)}};if(r.startTime.isNotBlank()&&r.endTime.isNotBlank()){Spacer(Modifier.width(8.dp));Text("${r.startTime}-${r.endTime}",style=MaterialTheme.typography.labelMedium,fontWeight=FontWeight.SemiBold)}}
+        if(r.subtitle.isNotBlank())Text(r.subtitle);if(r.day.isNotBlank())Text(r.day,style=MaterialTheme.typography.labelMedium);if(r.room.isNotBlank())Text("Room: ${r.room}");if(r.professor.isNotBlank())Text("Professor: ${r.professor}");if(r.classType.isNotBlank())Text("Option: ${r.classType}")
+    }}
 }
-
+@Composable
+fun HomeClassDetailsDialog(r: Record, done: () -> Unit) {
+    AlertDialog(onDismissRequest=done,title={Text("Class details")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){Text(r.title,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold);if(r.subtitle.isNotBlank())Text(r.subtitle);if(r.day.isNotBlank())Text("Day: ${r.day}");if(r.startTime.isNotBlank()&&r.endTime.isNotBlank())Text("Time: ${r.startTime} – ${r.endTime}");if(r.room.isNotBlank())Text("Room: ${r.room}");if(r.professor.isNotBlank())Text("Professor: ${r.professor}");if(r.classType.isNotBlank())Text("Type: ${r.classType}")}},confirmButton={TextButton(onClick=done){Text("Close")}})
+}
+@Composable
+fun HomeWidgetSettingsDialog(store: LocalStore, done: () -> Unit) {
+    val defaultOrder=listOf("profile","stats","next","today","tasks","quick")
+    var order by remember{mutableStateOf(store.homeWidgetOrder().ifEmpty{defaultOrder})}
+    var hidden by remember{mutableStateOf(store.homeWidgetHidden())}
+    val labels=mapOf("profile" to "Profile header","stats" to "Summary statistics","next" to "Next / current class","today" to "Today's classes","tasks" to "Tasks to do","quick" to "Quick access")
+    AlertDialog(onDismissRequest=done,title={Text("Customize Homepage")},text={Column(Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){Text("Show, hide, and reorder homepage sections.",color=MaterialTheme.colorScheme.onSurfaceVariant);order.forEachIndexed{index,id->Card(Modifier.fillMaxWidth()){Row(Modifier.fillMaxWidth().padding(horizontal=10.dp,vertical=6.dp),verticalAlignment=Alignment.CenterVertically){Checkbox(id !in hidden,{checked->hidden=if(checked)hidden-id else hidden+id});Text(labels[id]?:id,Modifier.weight(1f),fontWeight=FontWeight.Medium);IconButton(enabled=index>0,onClick={order=order.toMutableList().apply{add(index-1,removeAt(index))}}){Icon(Icons.Default.KeyboardArrowUp,"Move up")};IconButton(enabled=index<order.lastIndex,onClick={order=order.toMutableList().apply{add(index+1,removeAt(index))}}){Icon(Icons.Default.KeyboardArrowDown,"Move down")}}}}}},confirmButton={Button(onClick={store.setHomeWidgetOrder(order);store.setHomeWidgetHidden(hidden);done()}){Text("Save")}},dismissButton={TextButton(onClick=done){Text("Cancel")}})
+}
 @Composable
 fun ScheduleDaySetupDialog(store: LocalStore, done: () -> Unit) {
     val allDays=listOf("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"); var chosen by remember{mutableStateOf(emptySet<String>())}
