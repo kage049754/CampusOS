@@ -165,6 +165,7 @@ private fun renderPdfPage(file: File, pageIndex: Int): Bitmap? = runCatching {
 }.getOrNull()
 
 class LocalStore(context: Context) {
+    private val appContext = context.applicationContext
     var revision by mutableIntStateOf(0)
         private set
     private val prefs = context.getSharedPreferences("campusos", Context.MODE_PRIVATE)
@@ -192,6 +193,8 @@ class LocalStore(context: Context) {
         }) }
         prefs.edit().putString(key, a.toString()).apply()
         revision++
+        CampusReminders.reschedule(appContext)
+        CampusWidgets.updateAll(appContext)
     }
     fun get(key: String) = read(key)
     fun put(key: String, list: List<Record>) = save(key, list)
@@ -232,6 +235,8 @@ class LocalStore(context: Context) {
         if (root.has("lock")) e.putBoolean("lock", root.getBoolean("lock"))
         e.apply()
         revision++
+        CampusReminders.reschedule(appContext)
+        CampusWidgets.updateAll(appContext)
     }
 }
 
@@ -259,6 +264,7 @@ fun CampusOSApp(activity: Activity) {
     var showHomeColors by remember { mutableStateOf(false) }
     var showHomeSettings by remember { mutableStateOf(false) }
     var showScheduleSettings by remember { mutableStateOf(false) }
+    var scheduleFullscreen by remember { mutableStateOf(false) }
 
     if (locked) { LockScreen(store) { locked = false }; return }
 
@@ -270,17 +276,17 @@ fun CampusOSApp(activity: Activity) {
 
     MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
         Scaffold(
-            topBar = {
-                TopAppBar(
+            topBar = if (!scheduleFullscreen) {
+                { TopAppBar(
                     title = { Text("CampusOS", fontWeight = FontWeight.Bold) },
                     actions = {
                         IconButton(onClick = { showHomeSettings = true }) {
                             Icon(Icons.Default.Settings, "CampusOS settings")
                         }
                     }
-                )
-            },
-            bottomBar = {
+                ) }
+            } else null,
+            bottomBar = if (!scheduleFullscreen) {
                 NavigationBar {
                     listOf(
                         Screen.HOME,
@@ -296,7 +302,7 @@ fun CampusOSApp(activity: Activity) {
                         )
                     }
                 }
-            },
+            } else null,
             floatingActionButton = {
                 if (screen == Screen.TASKS || screen == Screen.ACADEMICS) {
                     FloatingActionButton(onClick = { search = "__ADD__" }) {
@@ -308,13 +314,13 @@ fun CampusOSApp(activity: Activity) {
             Column(Modifier.fillMaxSize().padding(padding)) {
                 when (screen) {
                     Screen.HOME -> HomeScreen(store) { screen = it }
-                    Screen.SCHEDULE -> ScheduleScreen(store, search) { search = "" }
+                    Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }) { search = "" }
                     Screen.TASKS -> CrudScreen("Assignments & To-do", "tasks", store, search) { search = "" }
                     Screen.ACADEMICS -> AcademicsScreen(store, search) { search = "" }
                     Screen.FILES -> FilesScreen()
                     Screen.SETTINGS -> SettingsScreen(store, theme, { theme = it; store.setTheme(it) }, { locked = true }) { showScheduleSettings = true }
                 }
-                if (screen != Screen.HOME && screen != Screen.SETTINGS && screen != Screen.FILES) {
+                if (!scheduleFullscreen && screen != Screen.HOME && screen != Screen.SETTINGS && screen != Screen.FILES) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                         OutlinedTextField(
                             value = search.takeUnless { it == "__ADD__" } ?: "",
@@ -386,7 +392,33 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
             .sortedWith(compareBy({ it.dueDate }, { it.dueTime }))
             .take(5)
     }
-    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Notifications", fontWeight = FontWeight.Bold)
+                Text("Get reminders before your next class and upcoming task deadlines.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (notificationsOn && CampusReminders.notificationsEnabled(context)) "Enabled" else "Off")
+                    Switch(
+                        checked = notificationsOn,
+                        onCheckedChange = { enabled ->
+                            if (!enabled) {
+                                notificationsOn = false
+                                context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", false).apply()
+                                CampusReminders.reschedule(context)
+                            } else if (android.os.Build.VERSION.SDK_INT >= 33) {
+                                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                notificationsOn = true
+                                context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", true).apply()
+                                CampusReminders.reschedule(context)
+                            }
+                        }
+                    )
+                }
+            }
+        }}
+        item { Card(Modifier.fillMaxWidth()) {
         item { Text("Good day 👋", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text(date, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item { Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
             StatCard("Classes", schedule.size.toString(), Modifier.weight(1f))
@@ -511,13 +543,15 @@ fun ColorChoiceCircle(value: Long, selected: Boolean, click: () -> Unit) {
 }
 
 @Composable
-fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
+fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFullscreen: (Boolean) -> Unit, clear: () -> Unit) {
     val revision = store.revision
     var refresh by remember { mutableIntStateOf(0) }
     var showAdd by remember { mutableStateOf(false) }
     var showDaySetup by remember { mutableStateOf(!store.scheduleDaysConfigured()) }
-    var showColors by remember { mutableStateOf(false) }
+    var showDetails by remember { mutableStateOf(false) }
+    var showScheduleSettings by remember { mutableStateOf(false) }
     var nowTick by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
     LaunchedEffect(Unit) {
         while (true) {
             nowTick = System.currentTimeMillis()
@@ -529,12 +563,10 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
     val all = remember(refresh, revision, query) {
         store.get("schedule").filter {
             query.isBlank() || query == "__ADD__" ||
-                (it.title + " " + it.subtitle + " " + it.extra + " " + it.day + " " + it.room + " " + it.professor)
-                    .contains(query, true)
+                (it.title + " " + it.subtitle + " " + it.extra + " " + it.day + " " + it.room + " " + it.professor).contains(query, true)
         }
     }
 
-    // Show only configured days/hours and highlight the current day, current hour, and matching class.
     val scheduleDays = store.scheduleDays()
     val startHour = store.scheduleStartHour().coerceIn(0, 23)
     val endHour = store.scheduleEndHour().coerceIn(startHour + 1, 24)
@@ -550,44 +582,48 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
                 Text("Class Schedule", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
-                    "${scheduleDays.joinToString(" • ")} • %02d:00–%02d:00".format(startHour, endHour),
+                    scheduleDays.joinToString(" • ") + " • " + "%02d:00–%02d:00".format(startHour, endHour),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1
                 )
             }
-            IconButton({ showColors = true }) {
-                Icon(Icons.Default.Palette, "Schedule colors")
+            IconButton({ showDetails = true }) { Icon(Icons.Default.Info, "Subject details") }
+            IconButton({ showScheduleSettings = true }) { Icon(Icons.Default.Settings, "Schedule settings") }
+            IconButton({ setFullscreen(!fullscreen) }) {
+                Icon(if (fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, "Full screen schedule")
             }
         }
 
-        BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal=4.dp)) {
-            val dayWidth=(maxWidth-56.dp).coerceAtLeast(0.dp)/scheduleDays.size.coerceAtLeast(1)
+        BoxWithConstraints(
+            Modifier.fillMaxWidth().weight(1f).padding(horizontal = 4.dp)
+        ) {
+            val dayWidth = (maxWidth - 56.dp).coerceAtLeast(0.dp) / scheduleDays.size.coerceAtLeast(1)
+            val headerHeight = 38.dp
+            val footerHeight = 24.dp
+            val rowHeight = ((maxHeight - headerHeight - footerHeight) / hours.size.coerceAtLeast(1)).coerceAtLeast(28.dp)
 
-            Column(
-                Modifier.fillMaxWidth().heightIn(max=430.dp).verticalScroll(rememberScrollState())
-            ) {
-                Row {
-                    Box(
-                        Modifier.width(56.dp).height(42.dp).background(tableBg).border(1.dp, tableBorder),
-                        contentAlignment = Alignment.Center
-                    ) { Text("Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall) }
-
+            Column(Modifier.fillMaxSize()) {
+                Row(Modifier.height(headerHeight)) {
+                    Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) {
+                        Text("Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                    }
                     scheduleDays.forEach { d ->
                         val isToday = d.equals(today, true)
                         Box(
-                            Modifier.width(dayWidth).height(42.dp)
+                            Modifier.width(dayWidth).fillMaxHeight()
                                 .background(if (isToday) dayHighlight.copy(alpha = 0.16f) else tableBg)
                                 .border(if (isToday) 2.dp else 1.dp, if (isToday) dayHighlight else tableBorder),
                             contentAlignment = Alignment.Center
                         ) {
-                            Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(3.dp)) {
-                                if(isToday) Box(Modifier.size(7.dp).background(dayHighlight,RoundedCornerShape(50)))
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                if (isToday) Box(Modifier.size(6.dp).background(dayHighlight, RoundedCornerShape(50)))
                                 Text(d.take(3), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                             }
                         }
@@ -596,65 +632,37 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
 
                 hours.forEach { h ->
                     val isCurrentHour = h == currentHour
-                    Row {
+                    Row(Modifier.height(rowHeight)) {
                         Box(
-                            Modifier.width(56.dp).height(62.dp).background(tableBg).border(1.dp, tableBorder)
+                            Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder)
                                 .then(if (isCurrentHour) Modifier.border(2.dp, timeHighlight) else Modifier),
                             contentAlignment = Alignment.Center
                         ) {
-                            Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(3.dp)) {
-                                if(isCurrentHour) Box(Modifier.size(7.dp).background(timeHighlight,RoundedCornerShape(50)))
-                                Text("%02d:00".format(h),color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.labelSmall)
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                if (isCurrentHour) Box(Modifier.size(6.dp).background(timeHighlight, RoundedCornerShape(50)))
+                                Text("%02d:00".format(h), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                             }
                         }
 
                         scheduleDays.forEach { day ->
-                            val classes = all.filter {
-                                it.day.equals(day, true) && it.startTime.toHourOrNull() == h
-                            }
+                            val classes = all.filter { it.day.equals(day, true) && it.startTime.toHourOrNull() == h }
                             Box(
-                                Modifier.width(dayWidth).height(62.dp)
-                                .background(if (day.equals(today, true) && isCurrentHour) timeHighlight.copy(alpha = 0.10f) else tableBg)
-                                .border(
-                                    if (day.equals(today, true) && isCurrentHour) 2.dp else 1.dp,
-                                    if (day.equals(today, true) && isCurrentHour) timeHighlight else tableBorder
-                                )
-                                .padding(2.dp)
+                                Modifier.width(dayWidth).fillMaxHeight()
+                                    .background(if (day.equals(today, true) && isCurrentHour) timeHighlight.copy(alpha = 0.10f) else tableBg)
+                                    .border(if (day.equals(today, true) && isCurrentHour) 2.dp else 1.dp, if (day.equals(today, true) && isCurrentHour) timeHighlight else tableBorder)
+                                    .padding(1.dp)
                             ) {
-                                classes.take(2).forEach { r ->
-                                    val isCurrentClass = day.equals(today, true) && isCurrentHour
-                                    val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
-                                    Card(
-                                        Modifier.fillMaxWidth().height(28.dp)
-                                            .then(if (isCurrentClass) Modifier.border(3.dp, dayHighlight, RoundedCornerShape(10.dp)) else Modifier),
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = if (isCurrentClass) bg.copy(alpha = 0.92f) else bg,
-                                            contentColor = readableContentColor(bg)
-                                        )
-                                    ) {
-                                        Column(
-                                            Modifier.fillMaxSize().padding(horizontal = 5.dp, vertical = 4.dp),
-                                            verticalArrangement = Arrangement.Center
+                                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                    classes.take(2).forEach { r ->
+                                        val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
+                                        Card(
+                                            Modifier.fillMaxWidth().weight(1f, fill = false),
+                                            colors = CardDefaults.cardColors(containerColor = bg, contentColor = readableContentColor(bg)),
+                                            shape = RoundedCornerShape(6.dp)
                                         ) {
-                                            Text(
-                                                r.title,
-                                                fontWeight = FontWeight.Bold,
-                                                style = MaterialTheme.typography.labelMedium,
-                                                maxLines = 2
-                                            )
-                                            if (r.room.isNotBlank()) {
-                                                Text(
-                                                    r.room,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    maxLines = 1
-                                                )
-                                            }
-                                            if (r.classType.isNotBlank()) {
-                                                Text(
-                                                    r.classType,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    maxLines = 1
-                                                )
+                                            Column(Modifier.fillMaxSize().padding(horizontal = 3.dp, vertical = 2.dp), verticalArrangement = Arrangement.Center) {
+                                                Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                                                Text(r.classType, style = MaterialTheme.typography.labelSmall, maxLines = 1)
                                             }
                                         }
                                     }
@@ -664,88 +672,62 @@ fun ScheduleScreen(store: LocalStore, query: String, clear: () -> Unit) {
                     }
                 }
 
-                // Explicit bottom boundary makes the 19:00 end of the timetable clear.
-                Row {
-                    Box(
-                        Modifier.width(56.dp).height(28.dp).background(tableBg).border(1.dp, tableBorder),
-                        contentAlignment = Alignment.Center
-                    ) { Text("19:00", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
-                    scheduleDays.forEach {
-                        Box(Modifier.width(dayWidth).height(28.dp).background(tableBg).border(1.dp, tableBorder))
+                Row(Modifier.height(footerHeight)) {
+                    Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) {
+                        Text("%02d:00".format(endHour), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                     }
-                }
-            }
-        }
-
-        Text(
-            "Subject details",
-            Modifier.padding(start = 16.dp, top = 10.dp, bottom = 6.dp),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
-        )
-
-        LazyColumn(
-            Modifier.fillMaxSize().padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            items(all, key = { it.id }) { r ->
-                Card(Modifier.fillMaxWidth()) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            Modifier.size(width = 4.dp, height = 48.dp)
-                                .background(
-                                    if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primary,
-                                    RoundedCornerShape(4.dp)
-                                )
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
-                                if (r.room.isNotBlank()) {
-                                    Text(
-                                        "  •  ${r.room}",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            if (r.subtitle.isNotBlank()) {
-                                Text(
-                                    r.subtitle,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 1
-                                )
-                            }
-                            if (r.professor.isNotBlank()) {
-                                Text(
-                                    r.professor,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1
-                                )
-                            }
-                            Text(
-                                "${r.day} • ${r.startTime}-${r.endTime}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        IconButton({ deleteScheduleAndSync(store, r); refresh++ }) {
-                            Icon(Icons.Default.Delete, "Delete")
-                        }
-                    }
+                    scheduleDays.forEach { Box(Modifier.width(dayWidth).fillMaxHeight().background(tableBg).border(1.dp, tableBorder)) }
                 }
             }
         }
     }
 
     if (showAdd) ScheduleDialog(store) { showAdd = false; clear(); refresh++ }
-    if (showColors) ScheduleHighlightColorDialog(store) { showColors = false }
+    if (showDetails) SubjectDetailsDialog(all, { showDetails = false })
+    if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
     if (showDaySetup) ScheduleDaySetupDialog(store) { showDaySetup = false }
+}
+
+@Composable
+fun SubjectDetailsDialog(all: List<Record>, done: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = done,
+        title = { Text("Subject details") },
+        text = {
+            if (all.isEmpty()) {
+                EmptyCard("No classes in the current schedule.")
+            } else {
+                LazyColumn(
+                    Modifier.fillMaxWidth().heightIn(max = 520.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(all, key = { it.id }) { r ->
+                        Card(Modifier.fillMaxWidth()) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    Modifier.size(width = 4.dp, height = 48.dp).background(
+                                        if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primary,
+                                        RoundedCornerShape(4.dp)
+                                    )
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                                        if (r.room.isNotBlank()) Text("  •  " + r.room, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    if (r.subtitle.isNotBlank()) Text(r.subtitle, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                                    if (r.professor.isNotBlank()) Text(r.professor, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                    Text(r.day + " • " + r.startTime + "-" + r.endTime + " • " + r.classType, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(done) { Text("Close") } }
+    )
 }
 
 @Composable
@@ -1301,6 +1283,10 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
     var pin by remember { mutableStateOf(store.pin()) }
     var lockOn by remember { mutableStateOf(store.lockEnabled()) }
     var showPin by remember { mutableStateOf(false) }
+    var notificationsOn by remember { mutableStateOf(context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).getBoolean("enabled", false)) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) { notificationsOn = true; context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", true).apply(); CampusReminders.reschedule(context) }
+    }
     val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         context.contentResolver.openOutputStream(uri)?.use { it.write(store.backupJson().toByteArray()) }
