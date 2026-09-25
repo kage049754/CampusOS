@@ -764,7 +764,7 @@ fun ScheduleHighlightColorDialog(store: LocalStore, done: () -> Unit) {
     )
 }
 
-private fun String.toHourOrNull(): Int? = substringBefore(":").toIntOrNull()
+fun String.toHourOrNull(): Int? = substringBefore(":").toIntOrNull()
 
 private fun deleteScheduleAndSync(store: LocalStore, classRecord: Record) {
     store.delete("schedule", classRecord.id)
@@ -1279,37 +1279,6 @@ private fun formatSize(size: Long) = when {
     else -> "%.1f MB".format(size/1024.0/1024.0)
 }
 
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var notificationsOn by remember {{
-        item { Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Notifications", fontWeight = FontWeight.Bold)
-                Text("Get reminders before your next class and upcoming task deadlines.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (notificationsOn && CampusReminders.notificationsEnabled(context)) "Enabled" else "Off")
-                    Switch(
-                        checked = notificationsOn,
-                        onCheckedChange = { enabled ->
-                            if (!enabled) {
-                                notificationsOn = false
-                                context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", false).apply()
-                                CampusReminders.reschedule(context)
-                            } else if (android.os.Build.VERSION.SDK_INT >= 33) {
-                                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                            } else {
-                                notificationsOn = true
-                                context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", true).apply()
-                                CampusReminders.reschedule(context)
-                            }
-                        }
-                    )
-                }
-            }
-        }}
- mutableStateOf(context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).getBoolean("enabled", false) && CampusReminders.notificationsEnabled(context)) }
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) { notificationsOn = true; context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).edit().putBoolean("enabled", true).apply(); CampusReminders.reschedule(context) }
-    }
 
 @Composable
 fun ScheduleDaySetupDialog(store: LocalStore, done: () -> Unit) {
@@ -1593,7 +1562,6 @@ fun ScheduleHighlightColorDialog(store: LocalStore, done: () -> Unit) {
     )
 }
 
-private fun String.toHourOrNull(): Int? = substringBefore(":").toIntOrNull()
 
 private fun deleteScheduleAndSync(store: LocalStore, classRecord: Record) {
     store.delete("schedule", classRecord.id)
