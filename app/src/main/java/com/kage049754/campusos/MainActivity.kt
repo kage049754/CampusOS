@@ -278,33 +278,37 @@ fun CampusOSApp(activity: Activity) {
 
     MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
         Scaffold(
-            topBar = if (!scheduleFullscreen) {
-                { TopAppBar(
-                    title = { Text("CampusOS", fontWeight = FontWeight.Bold) },
-                    actions = {
-                        IconButton(onClick = { showHomeSettings = true }) {
-                            Icon(Icons.Default.Settings, "CampusOS settings")
+            topBar = {
+                if (!scheduleFullscreen) {
+                    TopAppBar(
+                        title = { Text("CampusOS", fontWeight = FontWeight.Bold) },
+                        actions = {
+                            IconButton(onClick = { showHomeSettings = true }) {
+                                Icon(Icons.Default.Settings, "CampusOS settings")
+                            }
+                        }
+                    )
+                }
+            },
+            bottomBar = {
+                if (!scheduleFullscreen) {
+                    NavigationBar {
+                        listOf(
+                            Screen.HOME,
+                            Screen.SCHEDULE,
+                            Screen.TASKS,
+                            Screen.ACADEMICS
+                        ).forEach {
+                            NavigationBarItem(
+                                selected = screen == it,
+                                onClick = { screen = it },
+                                icon = { Icon(iconFor(it), it.label) },
+                                label = { Text(it.label) }
+                            )
                         }
                     }
-                ) }
-            } else null,
-            bottomBar = if (!scheduleFullscreen) {
-                { NavigationBar {
-                    listOf(
-                        Screen.HOME,
-                        Screen.SCHEDULE,
-                        Screen.TASKS,
-                        Screen.ACADEMICS
-                    ).forEach {
-                        NavigationBarItem(
-                            selected = screen == it,
-                            onClick = { screen = it },
-                            icon = { Icon(iconFor(it), it.label) },
-                            label = { Text(it.label) }
-                        )
-                    }
-                } }
-            } else null,
+                }
+            },
             floatingActionButton = {
                 if (screen == Screen.TASKS || screen == Screen.ACADEMICS) {
                     FloatingActionButton(onClick = { search = "__ADD__" }) {
@@ -435,6 +439,24 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
             SmallAction("Files", Icons.Default.Folder) { go(Screen.FILES) }
             SmallAction("Tasks", Icons.Default.CheckCircle) { go(Screen.TASKS) }
         }}
+    }
+}
+
+@Composable
+fun HomeTodayClassCard(r: Record) {
+    val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = bg, contentColor = readableContentColor(bg))
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(r.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            if (r.subtitle.isNotBlank()) Text(r.subtitle)
+            if (r.day.isNotBlank()) Text("${r.day} • ${r.startTime}-${r.endTime}", style = MaterialTheme.typography.labelMedium)
+            if (r.room.isNotBlank()) Text("Room: ${r.room}")
+            if (r.professor.isNotBlank()) Text("Professor: ${r.professor}")
+            if (r.classType.isNotBlank()) Text("Option: ${r.classType}")
+        }
     }
 }
 
