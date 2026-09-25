@@ -1009,7 +1009,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                         Text("Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
                     }
                     visibleDays.forEach { d ->
-                        val isToday = d.equals(today, true)
+                        val isToday = weekOffset == 0 && d.equals(today, true)
                         Box(
                             Modifier.width(dayWidth).fillMaxHeight()
                                 .background(if (isToday) dayHighlight.copy(alpha = 0.16f) else tableBg)
