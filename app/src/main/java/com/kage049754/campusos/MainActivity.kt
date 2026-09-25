@@ -424,65 +424,69 @@ fun ProfileDialog(store: LocalStore, done: () -> Unit) {
 @Composable
 fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     val revision = store.revision
-    var tick by remember { mutableIntStateOf(0) }
-    val tasks = remember(tick, revision) { store.get("tasks") }
-    val schedule = remember(tick, revision) { store.get("schedule") }
+    val tasks = remember(revision) { store.get("tasks") }
+    val schedule = remember(revision) { store.get("schedule") }
+    val subjects = remember(revision) { store.get("subjects") }
+    val profileName = store.profileName().ifBlank { "Student" }
+    val studentId = store.profileStudentId()
+    val section = store.profileSection()
+    val photoPath = store.profilePhotoPath()
     val date = SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date())
     val todayName = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date())
-    val todaySchedule = remember(schedule, todayName) {
-        schedule
-            .filter { it.day.equals(todayName, ignoreCase = true) }
-            .sortedBy { it.startTime }
-    }
-    val pendingTasks = remember(tasks) {
-        tasks.filter { !it.done }
-            .sortedWith(compareBy({ it.dueDate }, { it.dueTime }))
-            .take(5)
-    }
-    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Text("Good day 👋", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text(date, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        item { Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            StatCard("Classes", schedule.size.toString(), Modifier.weight(1f))
-            StatCard("Tasks", tasks.count { !it.done }.toString(), Modifier.weight(1f))
-        }}
-        item { SectionTitle("Today • $todayName") }
-        if (todaySchedule.isEmpty()) {
-            item { EmptyCard("No classes scheduled for today.") }
-        } else {
-            items(todaySchedule.take(5), key = { it.id }) { r ->
-                HomeTodayClassCard(r)
-            }
-        }
-        item { SectionTitle("Tasks to do") }
-        if (pendingTasks.isEmpty()) {
-            item { EmptyCard("No unfinished tasks.") }
-        } else {
-            items(pendingTasks, key = { it.id }) { r ->
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(r.title, fontWeight = FontWeight.Bold)
-                        if (r.subtitle.isNotBlank()) Text(r.subtitle, maxLines = 2)
-                        if (r.dueDate.isNotBlank()) {
-                            Text("Due: ${r.dueDate} ${r.dueTime}", style = MaterialTheme.typography.labelMedium)
-                        }
-                        if (r.subjectId != 0L) {
-                            store.get("subjects").firstOrNull { it.id == r.subjectId }?.let { sub ->
-                                Text("Subject: ${sub.title}", style = MaterialTheme.typography.labelSmall)
-                            }
-                        }
+    val todaySchedule = remember(schedule, todayName) { schedule.filter { it.day.equals(todayName, true) }.sortedBy { it.startTime } }
+    val pendingTasks = remember(tasks) { tasks.filter { !it.done }.sortedWith(compareBy({ it.dueDate }, { it.dueTime })).take(5) }
+    val photo = remember(photoPath, revision) { if (photoPath.isNotBlank()) runCatching { BitmapFactory.decodeFile(photoPath) }.getOrNull() else null }
+
+    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        item {
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (photo != null) Image(photo.asImageBitmap(), "Profile photo", Modifier.size(64.dp), contentScale = ContentScale.Crop)
+                    else Box(Modifier.size(64.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50)), contentAlignment = Alignment.Center) {
+                        Text(profileName.take(1).uppercase(), color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Welcome back", style = MaterialTheme.typography.labelLarge)
+                        Text(profileName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        val details = listOf(studentId, section).filter { it.isNotBlank() }.joinToString(" • ")
+                        if (details.isNotBlank()) Text(details, style = MaterialTheme.typography.bodyMedium)
+                        Text(date, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
                 }
             }
         }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatCard("Classes", schedule.size.toString(), Modifier.weight(1f))
+                StatCard("Subjects", subjects.size.toString(), Modifier.weight(1f))
+                StatCard("Tasks", tasks.count { !it.done }.toString(), Modifier.weight(1f))
+            }
+        }
+        item { SectionTitle("Today's classes") }
+        if (todaySchedule.isEmpty()) item { EmptyCard("No classes scheduled for today.") }
+        else items(todaySchedule.take(5), key = { it.id }) { r -> HomeTodayClassCard(r) }
+        item { SectionTitle("Tasks to do") }
+        if (pendingTasks.isEmpty()) item { EmptyCard("You're all caught up.") }
+        else items(pendingTasks, key = { it.id }) { r ->
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                ListItem(
+                    headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) },
+                    supportingContent = { Column { if (r.subtitle.isNotBlank()) Text(r.subtitle, maxLines = 2); if (r.dueDate.isNotBlank()) Text("Due ${r.dueDate} ${r.dueTime}") } },
+                    leadingContent = { Icon(Icons.Default.CheckCircleOutline, null) }
+                )
+            }
+        }
         item { SectionTitle("Quick access") }
-        item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            SmallAction("Subjects", Icons.Default.School) { go(Screen.ACADEMICS) }
-            SmallAction("Files", Icons.Default.Folder) { go(Screen.FILES) }
-            SmallAction("Tasks", Icons.Default.CheckCircle) { go(Screen.TASKS) }
-        }}
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SmallAction("Subjects", Icons.Default.School) { go(Screen.ACADEMICS) }
+                SmallAction("Files", Icons.Default.Folder) { go(Screen.FILES) }
+                SmallAction("Tasks", Icons.Default.CheckCircle) { go(Screen.TASKS) }
+            }
+        }
     }
 }
-
 @Composable
 fun HomeTodayClassCard(r: Record) {
     val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
