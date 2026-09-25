@@ -343,6 +343,7 @@ fun CampusOSApp(activity: Activity) {
     var showScheduleTableSettings by remember { mutableStateOf(false) }
     var showScheduleManager by remember { mutableStateOf(false) }
     var showScheduleDetails by remember { mutableStateOf(false) }
+    var settingsModule by remember { mutableStateOf<String?>(null) }
     var scheduleFullscreen by remember { mutableStateOf(false) }
 
     if (locked) { LockScreen(store) { locked = false }; return }
@@ -428,18 +429,7 @@ fun CampusOSApp(activity: Activity) {
                 }
             }
             if (showHomeSettings) {
-                HomeSettingsDialog(
-                    store = store,
-                    theme = theme,
-                    setTheme = { theme = it; store.setTheme(it) },
-                    onAddClass = { showHomeAdd = true; showHomeSettings = false },
-                    onScheduleSettings = { showScheduleSettings = true; showHomeSettings = false },
-                    onScheduleTableSettings = { showScheduleTableSettings = true; showHomeSettings = false },
-                    onScheduleManager = { showScheduleManager = true; showHomeSettings = false },
-                    onAppearance = { showHomeColors = true; showHomeSettings = false },
-                    onProfile = { showProfile = true; showHomeSettings = false },
-                    done = { showHomeSettings = false }
-                )
+                HomeSettingsDialog(onModule = { settingsModule = it; showHomeSettings = false }, onAppearance = { showHomeColors = true; showHomeSettings = false }, done = { showHomeSettings = false })
             }
             if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
             if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }) { showHomeColors = false }
@@ -447,6 +437,7 @@ fun CampusOSApp(activity: Activity) {
             if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
             if (showScheduleTableSettings) ScheduleTableSettingsDialog(store) { showScheduleTableSettings = false }
             if (showScheduleManager) ScheduleManagerDialog(store) { showScheduleManager = false }
+            settingsModule?.let { module -> ModuleSettingsDialog(module, { settingsModule = null }, { settingsModule = null; showProfile = true }, { settingsModule = null; showScheduleManager = true }, { settingsModule = null; showScheduleSettings = true }, { settingsModule = null; showScheduleTableSettings = true }, { settingsModule = null; showHomeAdd = true }, { settingsModule = null; screen = Screen.TASKS }, { settingsModule = null; screen = Screen.ACADEMICS }) }
             if (showScheduleDetails) SubjectDetailsDialog(store.get("schedule"), { showScheduleDetails = false })
         }
     }
@@ -462,21 +453,25 @@ private fun iconFor(s: Screen) = when(s) {
 }
 
 @Composable
-fun HomeSettingsDialog(store: LocalStore, theme: String, setTheme: (String) -> Unit, onAddClass: () -> Unit, onScheduleSettings: () -> Unit, onScheduleTableSettings: () -> Unit, onScheduleManager: () -> Unit, onAppearance: () -> Unit, onProfile: () -> Unit, done: () -> Unit) {
-    AlertDialog(onDismissRequest = done, title = { Text("CampusOS Settings") }, text = {
-        Column(Modifier.heightIn(max = 620.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Personal", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            OutlinedButton(onClick = onProfile, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Person, null); Spacer(Modifier.width(8.dp)); Text("Profile") }
-            Text("Campus", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            Button(onClick = onAddClass, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("Add Class") }
-            OutlinedButton(onClick = onScheduleManager, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.EditCalendar, null); Spacer(Modifier.width(8.dp)); Text("Edit / Delete Classes") }
-            OutlinedButton(onClick = onScheduleSettings, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.CalendarMonth, null); Spacer(Modifier.width(8.dp)); Text("Class Schedule Settings") }
-            OutlinedButton(onClick = onScheduleTableSettings, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.TableView, null); Spacer(Modifier.width(8.dp)); Text("Schedule Table Settings") }
-            Text("Appearance", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            OutlinedButton(onClick = onAppearance, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Palette, null); Spacer(Modifier.width(8.dp)); Text("Colors & Appearance") }
-            OutlinedButton(onClick = { setTheme(if (theme == "dark") "light" else "dark") }, modifier = Modifier.fillMaxWidth()) { Icon(if (theme == "dark") Icons.Default.LightMode else Icons.Default.DarkMode, null); Spacer(Modifier.width(8.dp)); Text(if (theme == "dark") "Switch to Light Mode" else "Switch to Dark Mode") }
+fun HomeSettingsDialog(onModule:(String)->Unit,onAppearance:()->Unit,done:()->Unit) {
+    AlertDialog(onDismissRequest=done,title={Text("CampusOS Settings")},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
+        Text("Choose a module",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+        Text("Open the dedicated settings for each part of CampusOS.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+        listOf("Homepage" to Icons.Default.Home,"Schedule" to Icons.Default.CalendarMonth,"Tasks" to Icons.Default.CheckCircle,"Academics" to Icons.Default.School).forEach{(name,icon)->OutlinedButton({onModule(name)},Modifier.fillMaxWidth()){Icon(icon,null);Spacer(Modifier.width(8.dp));Text(name)}}
+        HorizontalDivider()
+        OutlinedButton(onAppearance,Modifier.fillMaxWidth()){Icon(Icons.Default.Palette,null);Spacer(Modifier.width(8.dp));Text("Appearance & Design")}
+    }},confirmButton={TextButton(done){Text("Close")}})
+}
+@Composable
+fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleManager:()->Unit,scheduleSettings:()->Unit,tableSettings:()->Unit,addClass:()->Unit,openTasks:()->Unit,openAcademics:()->Unit) {
+    AlertDialog(onDismissRequest=close,title={Text("$module Settings")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+        when(module){
+            "Homepage"->{Text("Homepage controls",fontWeight=FontWeight.Bold);OutlinedButton(profile,Modifier.fillMaxWidth()){Icon(Icons.Default.Person,null);Spacer(Modifier.width(8.dp));Text("Profile & homepage information")}}
+            "Schedule"->{Text("Schedule controls",fontWeight=FontWeight.Bold);OutlinedButton(addClass,Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Spacer(Modifier.width(8.dp));Text("Add Class")};OutlinedButton(scheduleManager,Modifier.fillMaxWidth()){Icon(Icons.Default.EditCalendar,null);Spacer(Modifier.width(8.dp));Text("Edit / Delete Classes")};OutlinedButton(scheduleSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.CalendarMonth,null);Spacer(Modifier.width(8.dp));Text("Class Schedule Settings")};OutlinedButton(tableSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.TableView,null);Spacer(Modifier.width(8.dp));Text("Schedule Table Settings")}}
+            "Tasks"->{Text("Task controls",fontWeight=FontWeight.Bold);Text("Task records are stored offline. Use the Tasks screen to add, complete, and delete tasks.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openTasks,Modifier.fillMaxWidth()){Icon(Icons.Default.CheckCircle,null);Spacer(Modifier.width(8.dp));Text("Open Tasks")}}
+            "Academics"->{Text("Academics controls",fontWeight=FontWeight.Bold);Text("Subjects, Notepad, and Lecture Files are stored offline. Use the Academics screen to manage them.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openAcademics,Modifier.fillMaxWidth()){Icon(Icons.Default.School,null);Spacer(Modifier.width(8.dp));Text("Open Academics")}}
         }
-    }, confirmButton = { TextButton(done) { Text("Close") } })
+    }},confirmButton={TextButton(close){Text("Close")}})
 }
 @Composable
 fun ScheduleTableSettingsDialog(store: LocalStore, done: () -> Unit) {
@@ -1997,20 +1992,3 @@ fun LockScreen(store: LocalStore, unlock: () -> Unit) {
     var entered by remember { mutableStateOf("") }
     var error by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Icon(Icons.Default.Lock, null, Modifier.size(64.dp))
-        Spacer(Modifier.height(18.dp)); Text("CampusOS is locked", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("Enter your PIN to continue.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(18.dp))
-        OutlinedTextField(entered, { entered = it.filter(Char::isDigit).take(8) }, label = { Text("PIN") })
-        if (error) Text("Incorrect PIN", color = MaterialTheme.colorScheme.error)
-        Spacer(Modifier.height(12.dp)); Button({ if (entered == store.pin()) unlock() else error = true }) { Text("Unlock") }
-    }
-}
-@Composable fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier) { Column(Modifier.padding(14.dp)) { Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-}
-@Composable fun SectionTitle(text: String) { Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-@Composable fun EmptyCard(text: String) { Card(Modifier.fillMaxWidth()) { Text(text, Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-@Composable fun SmallAction(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, click: () -> Unit) {
-    OutlinedButton(onClick = click, modifier = Modifier.fillMaxWidth()) { Icon(icon, null); Spacer(Modifier.width(4.dp)); Text(text) }
-}
