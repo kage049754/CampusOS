@@ -267,7 +267,7 @@ class LocalStore(context: Context) {
     fun scheduleEndHour() = prefs.getInt("schedule_end_hour", 19)
     fun setScheduleHours(start: Int, end: Int) { prefs.edit().putInt("schedule_start_hour", start).putInt("schedule_end_hour", end).apply(); revision++; CampusReminders.reschedule(appContext); CampusWidgets.updateAll(appContext) }
     fun homeWidgetOrder(): List<String> {
-        val defaults = listOf("profile", "stats", "next", "today", "pinned", "tasks", "quick")
+        val defaults = listOf("profile", "stats", "progress", "next", "today", "pinned", "tasks", "quick")
         val stored = (prefs.getString("home_widget_order", "") ?: "").split(",").filter { it in defaults }
         return (stored + defaults).distinct()
     }
@@ -676,6 +676,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     val ongoingClass = todaySchedule.firstOrNull { isClassOngoing(it, nowMinutes) }
     val nextTodayClass = todaySchedule.firstOrNull { (parseClockMinutes(it.startTime) ?: Int.MAX_VALUE) > nowMinutes }
     val nextClass = nextTodayClass ?: tomorrowSchedule.firstOrNull()
+    val completedToday = todaySchedule.count { (parseClockMinutes(it.endTime) ?: Int.MAX_VALUE) <= nowMinutes }
     val widgetOrder = remember(revision) { store.homeWidgetOrder() }
     val hidden = remember(revision) { store.homeWidgetHidden() }
     val pinnedIds = remember(revision) { store.pinnedClassIds() }
@@ -698,6 +699,19 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                     }
                 }
                 "stats" -> item(key="home_stats") { Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){StatCard("Classes",schedule.size.toString(),Modifier.weight(1f));StatCard("Subjects",subjects.size.toString(),Modifier.weight(1f));StatCard("Tasks",tasks.count{!it.done}.toString(),Modifier.weight(1f))} }
+                "progress" -> item(key="home_progress") {
+                    Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                            SectionTitle("Today's Progress")
+                            Spacer(Modifier.width(8.dp))
+                            Text(completedToday.toString() + " / " + todaySchedule.size + " classes completed",style=MaterialTheme.typography.labelMedium,fontWeight=FontWeight.SemiBold)
+                        }
+                        LinearProgressIndicator(
+                            progress = { if (todaySchedule.isEmpty()) 0f else completedToday.toFloat() / todaySchedule.size.toFloat() },
+                            modifier = Modifier.fillMaxWidth().height(8.dp)
+                        )
+                    }
+                }
                 "next" -> item(key="home_next") {
                     val title=if(ongoingClass!=null)"Current class" else "Next class"
                     Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(18.dp)){ListItem(
@@ -782,10 +796,10 @@ fun HomeClassDetailsDialog(r: Record, done: () -> Unit) {
 }
 @Composable
 fun HomeWidgetSettingsDialog(store: LocalStore, done: () -> Unit) {
-    val defaultOrder=listOf("profile","stats","next","today","pinned","tasks","quick")
+    val defaultOrder=listOf("profile","stats","progress","next","today","pinned","tasks","quick")
     var order by remember{mutableStateOf(store.homeWidgetOrder().ifEmpty{defaultOrder})}
     var hidden by remember{mutableStateOf(store.homeWidgetHidden())}
-    val labels=mapOf("profile" to "Profile header","stats" to "Summary statistics","next" to "Next / current class","today" to "Today's classes","pinned" to "Pinned classes","tasks" to "Tasks to do","quick" to "Quick access")
+    val labels=mapOf("profile" to "Profile header","stats" to "Summary statistics","progress" to "Today's progress","next" to "Next / current class","today" to "Today's classes","pinned" to "Pinned classes","tasks" to "Tasks to do","quick" to "Quick access")
     AlertDialog(onDismissRequest=done,title={Text("Customize Homepage")},text={Column(Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){Text("Show, hide, and reorder homepage sections.",color=MaterialTheme.colorScheme.onSurfaceVariant);order.forEachIndexed{index,id->Card(Modifier.fillMaxWidth()){Row(Modifier.fillMaxWidth().padding(horizontal=10.dp,vertical=6.dp),verticalAlignment=Alignment.CenterVertically){Checkbox(id !in hidden,{checked->hidden=if(checked)hidden-id else hidden+id});Text(labels[id]?:id,Modifier.weight(1f),fontWeight=FontWeight.Medium);IconButton(enabled=index>0,onClick={order=order.toMutableList().apply{add(index-1,removeAt(index))}}){Icon(Icons.Default.KeyboardArrowUp,"Move up")};IconButton(enabled=index<order.lastIndex,onClick={order=order.toMutableList().apply{add(index+1,removeAt(index))}}){Icon(Icons.Default.KeyboardArrowDown,"Move down")}}}}}},confirmButton={Button(onClick={store.setHomeWidgetOrder(order);store.setHomeWidgetHidden(hidden);done()}){Text("Save")}},dismissButton={TextButton(onClick=done){Text("Cancel")}})
 }
 @Composable
