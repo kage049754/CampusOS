@@ -289,7 +289,7 @@ fun CampusOSApp(activity: Activity) {
                 ) }
             } else null,
             bottomBar = if (!scheduleFullscreen) {
-                NavigationBar {
+                { NavigationBar {
                     listOf(
                         Screen.HOME,
                         Screen.SCHEDULE,
@@ -303,7 +303,7 @@ fun CampusOSApp(activity: Activity) {
                             label = { Text(it.label) }
                         )
                     }
-                }
+                } }
             } else null,
             floatingActionButton = {
                 if (screen == Screen.TASKS || screen == Screen.ACADEMICS) {
