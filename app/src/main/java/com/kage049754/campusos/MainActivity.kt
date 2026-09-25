@@ -331,6 +331,42 @@ fun CampusOSApp(activity: Activity) {
     var locked by remember { mutableStateOf(store.lockEnabled() && store.pin().isNotBlank()) }
     var screenName by rememberSaveable { mutableStateOf(Screen.HOME.name) }
     val screen = Screen.valueOf(screenName)
+    var search by rememberSaveable { mutableStateOf("") }
+    var showHomeAdd by remember { mutableStateOf(false) }
+    var showHomeColors by remember { mutableStateOf(false) }
+    var showHomeSettings by remember { mutableStateOf(false) }
+    var showProfile by remember { mutableStateOf(false) }
+    var showScheduleSettings by remember { mutableStateOf(false) }
+    var showScheduleTableSettings by remember { mutableStateOf(false) }
+    var showScheduleManager by remember { mutableStateOf(false) }
+    var showScheduleDetails by remember { mutableStateOf(false) }
+    var settingsModule by remember { mutableStateOf<String?>(null) }
+    var settingsParent by rememberSaveable { mutableStateOf<String?>(null) }
+    var scheduleFullscreen by rememberSaveable { mutableStateOf(false) }
+    var subjectPageId by rememberSaveable { mutableLongStateOf(0L) }
+    var subjectPageMode by rememberSaveable { mutableIntStateOf(0) }
+    var subjectOpenedFile by rememberSaveable { mutableStateOf("") }
+
+    BackHandler {
+        when {
+            subjectPageId != 0L && subjectOpenedFile.isNotBlank() -> subjectOpenedFile = ""
+            subjectPageId != 0L -> { subjectPageId = 0L; subjectOpenedFile = "" }
+            showScheduleDetails -> showScheduleDetails = false
+            showScheduleTableSettings -> {
+                showScheduleTableSettings = false
+                settingsModule = settingsParent
+                settingsParent = null
+            }
+            showScheduleManager -> {
+                showScheduleManager = false
+                settingsModule = settingsParent
+                settingsParent = null
+            }
+            showScheduleSettings -> {
+                showScheduleSettings = false
+                settingsModule = settingsParent
+                settingsParent = null
+            }
             showProfile -> {
                 showProfile = false
                 settingsModule = settingsParent
@@ -354,37 +390,8 @@ fun CampusOSApp(activity: Activity) {
             }
             scheduleFullscreen -> scheduleFullscreen = false
             screen != Screen.HOME -> screenName = Screen.HOME.name
-            else -> Unit
         }
     }
-    var search by rememberSaveable { mutableStateOf("") }
-    var showHomeAdd by remember { mutableStateOf(false) }
-    var showHomeColors by remember { mutableStateOf(false) }
-    var showHomeSettings by remember { mutableStateOf(false) }
-    var showProfile by remember { mutableStateOf(false) }
-    var showScheduleSettings by remember { mutableStateOf(false) }
-    var showScheduleTableSettings by remember { mutableStateOf(false) }
-    var showScheduleManager by remember { mutableStateOf(false) }
-    var showScheduleDetails by remember { mutableStateOf(false) }
-    var settingsModule by remember { mutableStateOf<String?>(null) }
-    var settingsParent by rememberSaveable { mutableStateOf<String?>(null) }
-    var scheduleFullscreen by rememberSaveable { mutableStateOf(false) }
-    var subjectPageId by rememberSaveable { mutableLongStateOf(0L) }
-    var subjectPageMode by rememberSaveable { mutableIntStateOf(0) }
-    var subjectOpenedFile by rememberSaveable { mutableStateOf("") }
-
-    BackHandler(enabled = true) {
-        when {
-            subjectPageId != 0L && subjectOpenedFile.isNotBlank() -> subjectOpenedFile = ""
-            subjectPageId != 0L -> { subjectPageId = 0L; subjectOpenedFile = "" }
-            showScheduleDetails -> showScheduleDetails = false
-            showScheduleTableSettings -> showScheduleTableSettings = false
-            showScheduleManager -> showScheduleManager = false
-            showScheduleSettings -> {
-                showScheduleSettings = false
-                settingsModule = settingsParent
-                settingsParent = null
-            }
 
     if (locked) { LockScreen(store) { locked = false }; return }
 
