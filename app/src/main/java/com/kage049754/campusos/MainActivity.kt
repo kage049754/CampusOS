@@ -690,7 +690,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                                         val center = draggedInfo?.let { it.offset + it.size / 2 } ?: 0
                                         val pointerCenter = center.toFloat() + dragOffset
                                         var targetPosition = -1
-                                        var targetDistance = Int.MAX_VALUE
+                                        var targetDistance = Float.MAX_VALUE
                                         for (position in visible.indices) {
                                             val itemIndex = firstIndex + position
                                             if (itemIndex == draggedIndex) continue
