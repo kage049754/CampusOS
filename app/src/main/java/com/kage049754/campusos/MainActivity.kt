@@ -2216,6 +2216,26 @@ fun LockScreen(store: LocalStore, unlock: () -> Unit) {
     OutlinedButton(onClick = click, modifier = Modifier.fillMaxWidth()) { Icon(icon, null); Spacer(Modifier.width(4.dp)); Text(text) }
 }@Composable
 fun HomeClassesTile(todaySchedule: List<Record>) {
+    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            nowMillis = System.currentTimeMillis()
+            kotlinx.coroutines.delay(30_000)
+        }
+    }
+    val now = Calendar.getInstance().apply { timeInMillis = nowMillis }
+    val currentMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+    val currentClass = todaySchedule.firstOrNull { r ->
+        val start = r.startTime.toMinutesOrNull()
+        val end = r.endTime.toMinutesOrNull()
+        start != null && end != null && currentMinutes >= start && currentMinutes < end
+    }
+    val nextClass = todaySchedule
+        .mapNotNull { r -> r.startTime.toMinutesOrNull()?.let { it to r } }
+        .filter { it.first > currentMinutes }
+        .minByOrNull { it.first }
+        ?.second
+    fun minutesUntil(time: String): Int? = time.toMinutesOrNull()?.let { (it - currentMinutes).coerceAtLeast(0) }
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             SectionTitle("Today's classes")
@@ -2225,9 +2245,43 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
             }
         }
         Spacer(Modifier.height(8.dp))
+        currentClass?.let { r ->
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer), shape = RoundedCornerShape(16.dp)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.PlayCircle, "Current class")
+                        Spacer(Modifier.width(8.dp))
+                        Text("CURRENT CLASS", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Text(r.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Ends at ${r.endTime} • ${r.endTime.toMinutesOrNull()?.let { (it - currentMinutes).coerceAtLeast(0) } ?: 0} min remaining", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        } ?: nextClass?.let { r ->
+            val mins = minutesUntil(r.startTime) ?: 0
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), shape = RoundedCornerShape(16.dp)) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Schedule, "Next class")
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("NEXT CLASS", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                        Text(r.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Next class in ${mins} min • ${r.startTime}", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
         if (todaySchedule.isEmpty()) EmptyCard("No classes scheduled for today.")
         else for (r in todaySchedule.take(5)) { HomeTodayClassCard(r); Spacer(Modifier.height(8.dp)) }
     }
+}
+private fun String.toMinutesOrNull(): Int? {
+    val parts = trim().split(":")
+    val hour = parts.getOrNull(0)?.toIntOrNull() ?: return null
+    val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
+    return if (hour in 0..23 && minute in 0..59) hour * 60 + minute else null
 }
 @Composable
 fun HomePinnedTile(pinnedTasks: List<Record>) {
