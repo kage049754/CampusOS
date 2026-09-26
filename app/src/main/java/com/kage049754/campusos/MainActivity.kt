@@ -2325,7 +2325,7 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
                 }
             }
             Spacer(Modifier.height(8.dp))
-        } ?: if (parsedClasses.isNotEmpty()) {
+        } ?: run { if (parsedClasses.isNotEmpty()) {
             Card(
                 Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -2346,6 +2346,8 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
             }
             Spacer(Modifier.height(8.dp))
         }
+
+        } }
 
         if (todaySchedule.isEmpty()) EmptyCard("No classes scheduled for today.")
         else for (r in todaySchedule.take(5)) {
