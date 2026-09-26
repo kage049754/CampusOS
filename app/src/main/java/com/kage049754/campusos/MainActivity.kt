@@ -816,8 +816,19 @@ fun HomeTileSettingsDialog(
         confirmButton = { TextButton(onClick = done) { Text("Done") } }
     )
 }
+private fun formatClassCountdown(totalMinutes: Int): String {
+    val minutes = totalMinutes.coerceAtLeast(0)
+    val hours = minutes / 60
+    val remainder = minutes % 60
+    return when {
+        hours > 0 && remainder > 0 -> "${hours}h ${remainder}m"
+        hours > 0 -> "${hours}h"
+        else -> "${remainder}m"
+    }
+}
+
 @Composable
-fun HomeTodayClassCard(r: Record) {
+fun HomeTodayClassCard(r: Record, status: String? = null) {
     val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
     Card(
         Modifier.fillMaxWidth(),
@@ -831,14 +842,22 @@ fun HomeTodayClassCard(r: Record) {
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f)
                 )
-                if (r.startTime.isNotBlank() && r.endTime.isNotBlank()) {
+                if (status != null) {
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        "${r.startTime}-${r.endTime}",
+                        status,
                         style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.Bold
                     )
                 }
+            }
+            if (r.startTime.isNotBlank() && r.endTime.isNotBlank()) {
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    "${r.startTime}-${r.endTime}",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
             if (r.subtitle.isNotBlank()) Text(r.subtitle)
             if (r.day.isNotBlank()) Text(r.day, style = MaterialTheme.typography.labelMedium)
@@ -848,7 +867,6 @@ fun HomeTodayClassCard(r: Record) {
         }
     }
 }
-
 @Composable
 fun ScheduleDaySetupDialog(store: LocalStore, done: () -> Unit) {
     val allDays=listOf("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"); var chosen by remember{mutableStateOf(emptySet<String>())}
@@ -2352,7 +2370,15 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
 
         if (todaySchedule.isEmpty()) EmptyCard("No classes scheduled for today.")
         else for (r in todaySchedule.take(5)) {
-            HomeTodayClassCard(r)
+            val start = r.startTime.toMinutesOrNull()
+            val end = r.endTime.toMinutesOrNull()
+            val status = when {
+                start == null || end == null -> null
+                currentMinutes >= end -> "✓ Completed"
+                currentMinutes >= start -> "● Now"
+                else -> "Starts in ${formatClassCountdown(start - currentMinutes)}"
+            }
+            HomeTodayClassCard(r, status)
             Spacer(Modifier.height(8.dp))
         }
     }
