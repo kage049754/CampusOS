@@ -2223,58 +2223,135 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
             kotlinx.coroutines.delay(30_000)
         }
     }
+
     val now = Calendar.getInstance().apply { timeInMillis = nowMillis }
     val currentMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
-    val currentClass = todaySchedule.firstOrNull { r ->
+
+    val parsedClasses = todaySchedule.mapNotNull { r ->
         val start = r.startTime.toMinutesOrNull()
         val end = r.endTime.toMinutesOrNull()
-        start != null && end != null && currentMinutes >= start && currentMinutes < end
+        if (start != null && end != null && end > start) Triple(r, start, end) else null
+    }.sortedBy { it.second }
+
+    val currentClass = parsedClasses.firstOrNull { (_, start, end) ->
+        currentMinutes >= start && currentMinutes < end
     }
-    val nextClass = todaySchedule
-        .mapNotNull { r -> r.startTime.toMinutesOrNull()?.let { it to r } }
-        .filter { it.first > currentMinutes }
-        .minByOrNull { it.first }
-        ?.second
-    fun minutesUntil(time: String): Int? = time.toMinutesOrNull()?.let { (it - currentMinutes).coerceAtLeast(0) }
+    val nextClass = parsedClasses.firstOrNull { (_, start, _) -> start > currentMinutes }
+
+    fun minutesUntil(time: Int): Int = (time - currentMinutes).coerceAtLeast(0)
+
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             SectionTitle("Today's classes")
             Spacer(Modifier.width(8.dp))
-            Surface(shape = RoundedCornerShape(50.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                Text(todaySchedule.size.toString(), Modifier.padding(horizontal = 9.dp, vertical = 3.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            Surface(
+                shape = RoundedCornerShape(50.dp),
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Text(
+                    todaySchedule.size.toString(),
+                    Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
         Spacer(Modifier.height(8.dp))
-        currentClass?.let { r ->
-            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer), shape = RoundedCornerShape(16.dp)) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+
+        currentClass?.let { (r, start, end) ->
+            val elapsed = (currentMinutes - start).coerceAtLeast(0)
+            val duration = (end - start).coerceAtLeast(1)
+            val progress = (elapsed.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+            val remaining = minutesUntil(end)
+
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.PlayCircle, "Current class")
                         Spacer(Modifier.width(8.dp))
-                        Text("CURRENT CLASS", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            "CURRENT CLASS",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                     Text(r.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("Ends at ${r.endTime} • ${r.endTime.toMinutesOrNull()?.let { (it - currentMinutes).coerceAtLeast(0) } ?: 0} min remaining", style = MaterialTheme.typography.bodyMedium)
+                    Text("undefined–undefined", style = MaterialTheme.typography.bodyMedium)
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        "Ends in $remaining min",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
             Spacer(Modifier.height(8.dp))
-        } ?: nextClass?.let { r ->
-            val mins = minutesUntil(r.startTime) ?: 0
-            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), shape = RoundedCornerShape(16.dp)) {
-                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        } ?: nextClass?.let { (r, start, _) ->
+            val mins = minutesUntil(start)
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(Icons.Default.Schedule, "Next class")
                     Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("NEXT CLASS", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(
+                            "NEXT CLASS",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
                         Text(r.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("Next class in ${mins} min • ${r.startTime}", style = MaterialTheme.typography.bodyMedium)
+                        Text("Starts in $mins min • undefined", style = MaterialTheme.typography.bodyMedium)
+                        if (r.room.isNotBlank()) {
+                            Text(
+                                "Room undefined",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        } ?: if (parsedClasses.isNotEmpty()) {
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.EventAvailable, "No more classes")
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text("NO MORE CLASSES", fontWeight = FontWeight.Bold)
+                        Text(
+                            "No more classes today",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
             Spacer(Modifier.height(8.dp))
         }
+
         if (todaySchedule.isEmpty()) EmptyCard("No classes scheduled for today.")
-        else for (r in todaySchedule.take(5)) { HomeTodayClassCard(r); Spacer(Modifier.height(8.dp)) }
+        else for (r in todaySchedule.take(5)) {
+            HomeTodayClassCard(r)
+            Spacer(Modifier.height(8.dp))
+        }
     }
 }
 private fun String.toMinutesOrNull(): Int? {
