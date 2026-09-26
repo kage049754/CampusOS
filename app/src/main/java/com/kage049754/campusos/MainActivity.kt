@@ -2133,7 +2133,7 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
         }
         Spacer(Modifier.height(8.dp))
         if (todaySchedule.isEmpty()) EmptyCard("No classes scheduled for today.")
-        else todaySchedule.take(5).forEach { r -> HomeTodayClassCard(r); Spacer(Modifier.height(8.dp)) }
+        else for (r in todaySchedule.take(5)) { HomeTodayClassCard(r); Spacer(Modifier.height(8.dp)) }
     }
 }
 @Composable
@@ -2142,7 +2142,7 @@ fun HomePinnedTile(pinnedTasks: List<Record>) {
         SectionTitle("Pinned tasks")
         Spacer(Modifier.height(8.dp))
         if (pinnedTasks.isEmpty()) EmptyCard("No pinned tasks. Long-press a task to pin it.")
-        else pinnedTasks.forEach { r ->
+        else for (r in pinnedTasks) {
             Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
                 ListItem(headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) }, supportingContent = { if (r.dueDate.isNotBlank()) Text("Due " + r.dueDate + " " + r.dueTime) }, leadingContent = { Icon(Icons.Default.PushPin, "Pinned") })
             }
@@ -2156,7 +2156,7 @@ fun HomeTasksTile(pendingTasks: List<Record>) {
         SectionTitle("Tasks to do")
         Spacer(Modifier.height(8.dp))
         if (pendingTasks.isEmpty()) EmptyCard("You're all caught up.")
-        else pendingTasks.forEach { r ->
+        else for (r in pendingTasks) {
             Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
                 ListItem(headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) }, supportingContent = { Column { if (r.subtitle.isNotBlank()) Text(r.subtitle, maxLines = 2); if (r.dueDate.isNotBlank()) Text("Due ${r.dueDate} ${r.dueTime}") } }, leadingContent = { Icon(Icons.Default.CheckCircleOutline, null) })
             }
