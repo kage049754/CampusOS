@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -687,14 +688,14 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                                         val draggedPosition = draggedIndex - firstIndex
                                         val draggedInfo = visible.getOrNull(draggedPosition)
                                         val center = draggedInfo?.let { it.offset + it.size / 2 } ?: 0
-                                        val pointerCenter = center + dragOffset
+                                        val pointerCenter = center.toFloat() + dragOffset
                                         var targetPosition = -1
                                         var targetDistance = Int.MAX_VALUE
                                         for (position in visible.indices) {
                                             val itemIndex = firstIndex + position
                                             if (itemIndex == draggedIndex) continue
                                             val item = visible[position]
-                                            val distance = kotlin.math.abs((item.offset + item.size / 2) - pointerCenter)
+                                            val distance = kotlin.math.abs((item.offset + item.size / 2).toFloat() - pointerCenter)
                                             if (distance < targetDistance) {
                                                 targetDistance = distance
                                                 targetPosition = position
