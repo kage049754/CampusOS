@@ -681,7 +681,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                                     onDrag = { change, amount ->
                                         change.consume()
                                         dragOffset += amount.y
-                                        val visible = listState.layoutInfo.visibleItemsInfo
+                                        val visible: List<androidx.compose.foundation.lazy.LazyListItemInfo> = listState.layoutInfo.visibleItemsInfo
                                         val firstIndex = listState.firstVisibleItemIndex
                                         val draggedIndex = tileOrder.indexOf(tileKey)
                                         val draggedPosition = draggedIndex - firstIndex
