@@ -2299,15 +2299,22 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
                         )
                     }
                     Text(r.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    if (r.room.isNotBlank()) {
+                        Text("Room \${r.room}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    }
                     Text("\${r.startTime}–\${r.endTime}", style = MaterialTheme.typography.bodyMedium)
                     LinearProgressIndicator(
                         progress = { progress },
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Started at \${r.startTime}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Ends in \$remaining min", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                    }
                     Text(
-                        "Ends in \$remaining min",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
+                        "Duration: \${formatClassDuration(duration)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -2333,15 +2340,21 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.secondary
                         )
-                        Text(r.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("Starts in \$mins min • \${r.startTime}", style = MaterialTheme.typography.bodyMedium)
-                        if (r.room.isNotBlank()) {
-                            Text(
-                                "Room \${r.room}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.NotificationsActive, "Upcoming class reminder", Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("UPCOMING • Starts in \${formatClassCountdown(mins)}", fontWeight = FontWeight.Bold)
                         }
+                        Text(r.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("\${r.startTime}–\${r.endTime}", style = MaterialTheme.typography.bodyMedium)
+                        if (r.room.isNotBlank()) {
+                            Text("Room \${r.room}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        }
+                        Text(
+                            "Duration: \${formatClassDuration((r.endTime.toMinutesOrNull() ?: start) - start)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -2378,7 +2391,38 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
                 currentMinutes >= start -> "● Now"
                 else -> "Starts in ${formatClassCountdown(start - currentMinutes)}"
             }
-            HomeTodayClassCard(r, status)
+            val isCurrent = status == "● Now"
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isCurrent) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surface
+                ),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(if (isCurrent) Icons.Default.PlayCircle else Icons.Default.Event, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(r.title, modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                        if (status != null) {
+                            Text(status, color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    Text("\${r.startTime}–\${r.endTime}", style = MaterialTheme.typography.bodyMedium)
+                    if (r.room.isNotBlank()) Text("Room \${r.room}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                    val durationMinutes = if (start != null && end != null) (end - start).coerceAtLeast(0) else 0
+                    if (start != null && end != null) {
+                        Text(
+                            if (isCurrent) "Started at \${r.startTime} • Duration: \${formatClassDuration(durationMinutes)}"
+                            else if (currentMinutes >= end) "Ended at \${r.endTime} • Duration: \${formatClassDuration(durationMinutes)}"
+                            else "Starts at \${r.startTime} • Duration: \${formatClassDuration(durationMinutes)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
             Spacer(Modifier.height(8.dp))
         }
     }
