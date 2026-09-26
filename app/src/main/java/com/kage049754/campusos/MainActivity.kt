@@ -681,17 +681,33 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                                     onDrag = { change, amount ->
                                         change.consume()
                                         dragOffset += amount.y
+                                        val visible = listState.layoutInfo.visibleItemsInfo
+                                        val firstIndex = listState.firstVisibleItemIndex
                                         val draggedIndex = tileOrder.indexOf(tileKey)
-                                        val draggedInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { item -> item.index == draggedIndex }
+                                        val draggedPosition = draggedIndex - firstIndex
+                                        val draggedInfo = visible.getOrNull(draggedPosition)
                                         val center = draggedInfo?.let { it.offset + it.size / 2 } ?: 0
                                         val pointerCenter = center + dragOffset
-                                        val target = listState.layoutInfo.visibleItemsInfo
-                                            .filter { item -> item.index != draggedIndex }
-                                            .minByOrNull { item -> kotlin.math.abs((item.offset + item.size / 2) - pointerCenter) }
-                                        if (target != null && kotlin.math.abs((target.offset + target.size / 2) - pointerCenter) < target.size / 2) {
-                                            val targetKey = tileOrder.getOrNull(target.index)
-                                            if (targetKey != null) moveTile(tileKey, targetKey)
-                                            dragOffset = 0f
+                                        var targetPosition = -1
+                                        var targetDistance = Int.MAX_VALUE
+                                        for (position in visible.indices) {
+                                            val itemIndex = firstIndex + position
+                                            if (itemIndex == draggedIndex) continue
+                                            val item = visible[position]
+                                            val distance = kotlin.math.abs((item.offset + item.size / 2) - pointerCenter)
+                                            if (distance < targetDistance) {
+                                                targetDistance = distance
+                                                targetPosition = position
+                                            }
+                                        }
+                                        if (targetPosition >= 0) {
+                                            val targetIndex = firstIndex + targetPosition
+                                            val targetKey = tileOrder.getOrNull(targetIndex)
+                                            val targetItem = visible[targetPosition]
+                                            if (targetKey != null && targetDistance < targetItem.size / 2) {
+                                                moveTile(tileKey, targetKey)
+                                                dragOffset = 0f
+                                            }
                                         }
                                     }
                                 )
