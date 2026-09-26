@@ -20,6 +20,7 @@ import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.lazy.LazyColumn
@@ -661,16 +662,16 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
             modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            items(tileOrder, key = { it }) { key ->
-                val isDragged = draggedKey == key
+            items(items = tileOrder, key = { tile -> tile }) { tileKey ->
+                val isDragged = draggedKey == tileKey
                 Box(
                     Modifier
                         .fillMaxWidth()
                         .graphicsLayer { translationY = if (isDragged) dragOffset else 0f; alpha = if (isDragged) 0.82f else 1f }
                         .then(
-                            if (editMode) Modifier.pointerInput(key, tileOrder) {
+                            if (editMode) Modifier.pointerInput(tileKey, tileOrder) {
                                 detectDragGesturesAfterLongPress(
-                                    onDragStart = { draggedKey = key; dragOffset = 0f },
+                                    onDragStart = { draggedKey = tileKey; dragOffset = 0f },
                                     onDragCancel = { draggedKey = null; dragOffset = 0f },
                                     onDragEnd = {
                                         draggedKey = null
@@ -682,12 +683,12 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                                         dragOffset += amount.y
                                         val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key != key && (it.offset + it.size / 2) > (listState.layoutInfo.visibleItemsInfo.firstOrNull { v -> v.key == key }?.let { it.offset + it.size / 2 } ?: 0) + dragOffset }
                                         if (info != null && dragOffset > 20f) {
-                                            moveTile(key, info.key.toString())
+                                            moveTile(tileKey, info.key.toString())
                                             dragOffset -= 20f
                                         } else {
                                             val infoAbove = listState.layoutInfo.visibleItemsInfo.filter { it.key != key }.lastOrNull { (it.offset + it.size / 2) < (listState.layoutInfo.visibleItemsInfo.firstOrNull { v -> v.key == key }?.let { it.offset + it.size / 2 } ?: 0) + dragOffset }
                                             if (infoAbove != null && dragOffset < -20f) {
-                                                moveTile(key, infoAbove.key.toString())
+                                                moveTile(tileKey, infoAbove.key.toString())
                                                 dragOffset += 20f
                                             }
                                         }
@@ -696,7 +697,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                             } else Modifier
                         )
                 ) {
-                    when (key) {
+                    when (tileKey) {
                         "profile" -> Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                             Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                                 if (photo != null) Image(photo.asImageBitmap(), "Profile photo", Modifier.size(64.dp), contentScale = ContentScale.Crop)
@@ -716,48 +717,9 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                             StatCard("Subjects", subjects.size.toString(), Modifier.weight(1f))
                             StatCard("Tasks", tasks.count { !it.done }.toString(), Modifier.weight(1f))
                         }
-                        "classes" -> Column(Modifier.fillMaxWidth()) {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                SectionTitle("Today's classes")
-                                Spacer(Modifier.width(8.dp))
-                                Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.primaryContainer) {
-                                    Text(todaySchedule.size.toString(), Modifier.padding(horizontal = 9.dp, vertical = 3.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            if (todaySchedule.isEmpty()) EmptyCard("No classes scheduled for today.")
-                            else todaySchedule.take(5).forEach { HomeTodayClassCard(it); Spacer(Modifier.height(8.dp)) }
-                        }
-                        "pinned" -> Column(Modifier.fillMaxWidth()) {
-                            SectionTitle("Pinned tasks")
-                            Spacer(Modifier.height(8.dp))
-                            if (pinnedTasks.isEmpty()) EmptyCard("No pinned tasks. Long-press a task to pin it.")
-                            else pinnedTasks.forEach { r ->
-                                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-                                    ListItem(
-                                        headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) },
-                                        supportingContent = { if (r.dueDate.isNotBlank()) Text("Due " + r.dueDate + " " + r.dueTime) },
-                                        leadingContent = { Icon(Icons.Default.PushPin, "Pinned") }
-                                    )
-                                }
-                                Spacer(Modifier.height(8.dp))
-                            }
-                        }
-                        "tasks" -> Column(Modifier.fillMaxWidth()) {
-                            SectionTitle("Tasks to do")
-                            Spacer(Modifier.height(8.dp))
-                            if (pendingTasks.isEmpty()) EmptyCard("You're all caught up.")
-                            else pendingTasks.forEach { r ->
-                                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-                                    ListItem(
-                                        headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) },
-                                        supportingContent = { Column { if (r.subtitle.isNotBlank()) Text(r.subtitle, maxLines = 2); if (r.dueDate.isNotBlank()) Text("Due ${r.dueDate} ${r.dueTime}") } },
-                                        leadingContent = { Icon(Icons.Default.CheckCircleOutline, null) }
-                                    )
-                                }
-                                Spacer(Modifier.height(8.dp))
-                            }
-                        }
+                        "classes" -> HomeClassesTile(todaySchedule)
+                        "pinned" -> HomePinnedTile(pinnedTasks)
+                        "tasks" -> HomeTasksTile(pendingTasks)
                         "quick" -> Column(Modifier.fillMaxWidth()) {
                             SectionTitle("Quick access")
                             Spacer(Modifier.height(8.dp))
@@ -2159,4 +2121,47 @@ fun LockScreen(store: LocalStore, unlock: () -> Unit) {
 @Composable fun EmptyCard(text: String) { Card(Modifier.fillMaxWidth()) { Text(text, Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) } }
 @Composable fun SmallAction(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, click: () -> Unit) {
     OutlinedButton(onClick = click, modifier = Modifier.fillMaxWidth()) { Icon(icon, null); Spacer(Modifier.width(4.dp)); Text(text) }
+}@Composable
+fun HomeClassesTile(todaySchedule: List<Record>) {
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            SectionTitle("Today's classes")
+            Spacer(Modifier.width(8.dp))
+            Surface(shape = RoundedCornerShape(50.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                Text(todaySchedule.size.toString(), Modifier.padding(horizontal = 9.dp, vertical = 3.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        if (todaySchedule.isEmpty()) EmptyCard("No classes scheduled for today.")
+        else todaySchedule.take(5).forEach { r -> HomeTodayClassCard(r); Spacer(Modifier.height(8.dp)) }
+    }
 }
+@Composable
+fun HomePinnedTile(pinnedTasks: List<Record>) {
+    Column(Modifier.fillMaxWidth()) {
+        SectionTitle("Pinned tasks")
+        Spacer(Modifier.height(8.dp))
+        if (pinnedTasks.isEmpty()) EmptyCard("No pinned tasks. Long-press a task to pin it.")
+        else pinnedTasks.forEach { r ->
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                ListItem(headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) }, supportingContent = { if (r.dueDate.isNotBlank()) Text("Due " + r.dueDate + " " + r.dueTime) }, leadingContent = { Icon(Icons.Default.PushPin, "Pinned") })
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+@Composable
+fun HomeTasksTile(pendingTasks: List<Record>) {
+    Column(Modifier.fillMaxWidth()) {
+        SectionTitle("Tasks to do")
+        Spacer(Modifier.height(8.dp))
+        if (pendingTasks.isEmpty()) EmptyCard("You're all caught up.")
+        else pendingTasks.forEach { r ->
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                ListItem(headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) }, supportingContent = { Column { if (r.subtitle.isNotBlank()) Text(r.subtitle, maxLines = 2); if (r.dueDate.isNotBlank()) Text("Due ${r.dueDate} ${r.dueTime}") } }, leadingContent = { Icon(Icons.Default.CheckCircleOutline, null) })
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
