@@ -454,13 +454,7 @@ fun CampusOSApp(activity: Activity) {
                     }
                 }
             },
-            floatingActionButton = {
-                if (screen == Screen.ACADEMICS) {
-                    FloatingActionButton(onClick = { search = "__ADD__" }) {
-                        Icon(Icons.Default.Add, "Add")
-                    }
-                }
-            }
+            floatingActionButton = { }
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
                 when (screen) {
@@ -1364,11 +1358,8 @@ fun TaskCalendar(selectedDate:String,onSelect:(String)->Unit){
             },
         verticalArrangement=Arrangement.spacedBy(6.dp)
     ) {
-        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
-            IconButton({monthOffset++}){Icon(Icons.Default.ChevronLeft,"Previous month")}
-            Text(SimpleDateFormat("MMMM yyyy",Locale.getDefault()).format(first.time),Modifier.weight(1f),textAlign=androidx.compose.ui.text.style.TextAlign.Center,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
-            IconButton({monthOffset--}){Icon(Icons.Default.ChevronRight,"Next month")}
-        }
+        Text(SimpleDateFormat("MMMM yyyy",Locale.getDefault()).format(first.time),Modifier.weight(1f),textAlign=androidx.compose.ui.text.style.TextAlign.Center,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+            
         Row(Modifier.fillMaxWidth()){
             listOf("M","T","W","T","F","S","S").forEach{Text(it,Modifier.weight(1f),textAlign=androidx.compose.ui.text.style.TextAlign.Center,style=MaterialTheme.typography.labelSmall)}
         }
@@ -1525,7 +1516,7 @@ fun SubjectNotepadPage(subject: Record, store: LocalStore, done: () -> Unit) {
         }
     )
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))) {
         TopAppBar(
             title = {
                 Column {
@@ -1553,7 +1544,7 @@ fun SubjectNotepadPage(subject: Record, store: LocalStore, done: () -> Unit) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                     Text("Sort:", fontWeight = FontWeight.SemiBold)
                     listOf("Modified", "Created", "Alphabetical", "Manual").forEach { option ->
-                        TextButton(onClick = { noteSort = option }) { Text(if (noteSort == option) "✓ " + option else option) }
+                        FilterChip(selected = noteSort == option, onClick = { noteSort = option }, label = { Text(option) }, modifier = Modifier.padding(end=6.dp))
                     }
                 }
                 if (noteList.isEmpty()) {
@@ -1590,7 +1581,7 @@ fun SubjectNotepadPage(subject: Record, store: LocalStore, done: () -> Unit) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(noteTitle, { noteTitle = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Title") })
                 Spacer(Modifier.height(10.dp))
-                OutlinedTextField(noteBody, { noteBody = it }, Modifier.fillMaxWidth().weight(1f), label = { Text("Note") }, placeholder = { Text("Write your notes here...") })
+                OutlinedTextField(noteBody, { noteBody = it }, Modifier.fillMaxWidth().weight(1f), label = { Text("Note") }, placeholder = { Text("Write your notes here...") }, textStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp))
                 Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { editingNoteId = null }, Modifier.weight(1f)) { Text("Cancel") }
                     Button(onClick = { saveNote() }, Modifier.weight(1f)) { Text("Save") }
@@ -1620,7 +1611,7 @@ fun SubjectLectureFilesPage(subject: Record, openFile: (String) -> Unit, done: (
             }
         }
     )
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))) {
         TopAppBar(
             title = {
                 Column {
@@ -1635,11 +1626,11 @@ fun SubjectLectureFilesPage(subject: Record, openFile: (String) -> Unit, done: (
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 Text("Sort:", fontWeight = FontWeight.SemiBold)
                 listOf("Newest", "Oldest", "Alphabetical", "Manual").forEach { option ->
-                    TextButton(onClick = { fileSort = option }) { Text(if (fileSort == option) "✓ " + option else option) }
+                    FilterChip(selected = fileSort == option, onClick = { fileSort = option }, label = { Text(option) }, modifier = Modifier.padding(end=6.dp))
                 }
             }
             if (fileList.isEmpty()) {
-                EmptyCard("No lecture files yet. Tap + to add a PDF, PowerPoint, Word file, image, or other lecture file.")
+                EmptyCard("No lecture files yet. Add a PDF, PowerPoint, Word file, image, or other lecture file.")
             } else {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(fileList, key = { it.name }) { file ->
@@ -1679,75 +1670,92 @@ fun SubjectLectureFilesPage(subject: Record, openFile: (String) -> Unit, done: (
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InAppFileViewerPage(file: File, done: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val activity = context as? Activity
     var page by rememberSaveable(file.absolutePath) { mutableIntStateOf(0) }
     var slide by rememberSaveable(file.absolutePath) { mutableIntStateOf(0) }
+    var fullscreen by rememberSaveable(file.absolutePath) { mutableStateOf(false) }
+    var landscape by rememberSaveable(file.absolutePath) { mutableStateOf(false) }
     val ext = fileExtension(file)
+    DisposableEffect(file.absolutePath) {
+        onDispose {
+            activity?.window?.decorView?.systemUiVisibility = 0
+            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
+    fun toggleFullscreen() {
+        fullscreen = !fullscreen
+        activity?.window?.decorView?.systemUiVisibility = if (fullscreen)
+            android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        else 0
+    }
+    fun toggleOrientation() {
+        landscape = !landscape
+        activity?.requestedOrientation = if (landscape) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    }
     Column(Modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text(file.name, maxLines = 2, fontWeight = FontWeight.Bold) },
-            navigationIcon = { IconButton(onClick = done) { Icon(Icons.Default.ArrowBack, "Back to Lecture Files") } }
-        )
-        HorizontalDivider()
+        if (!fullscreen) {
+            TopAppBar(
+                title = { Column {
+                    Text(file.name, maxLines = 2, fontWeight = FontWeight.Bold)
+                    Text(when (ext) { "pdf" -> "PDF • Swipe left/right to change page"; "pptx","ppt" -> "Slides • Swipe left/right to change"; "docx" -> "Word • A4 reading layout"; else -> "Reading view" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }},
+                navigationIcon = { IconButton(onClick = done) { Icon(Icons.Default.ArrowBack, "Back") } },
+                actions = {
+                    IconButton(onClick = { toggleOrientation() }) { Icon(if (landscape) Icons.Default.ScreenLockPortrait else Icons.Default.ScreenLockLandscape, "Portrait or landscape") }
+                    IconButton(onClick = { toggleFullscreen() }) { Icon(Icons.Default.Fullscreen, "Full screen") }
+                }
+            )
+        }
         when {
             ext == "pdf" -> {
-                val pageCount = remember(file) {
-                    runCatching {
-                        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
-                            PdfRenderer(descriptor).use { it.pageCount }
+                val pageCount = remember(file) { runCatching { ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { d -> PdfRenderer(d).use { it.pageCount } } }.getOrDefault(0) }
+                if (pageCount > 0) {
+                    val safePage = page.coerceIn(0, pageCount - 1)
+                    Column(Modifier.fillMaxSize()) {
+                        Box(Modifier.fillMaxWidth().weight(1f).pointerInput(page, pageCount) {
+                            var dragTotal = 0f
+                            detectHorizontalDragGestures(onHorizontalDrag = { _, amount -> dragTotal += amount }, onDragEnd = {
+                                if (dragTotal < -70f && page < pageCount - 1) page++ else if (dragTotal > 70f && page > 0) page--
+                                dragTotal = 0f
+                            }, onDragCancel = { dragTotal = 0f })
+                        }, contentAlignment = Alignment.Center) {
+                            renderPdfPage(file, safePage)?.let { bitmap -> Image(bitmap.asImageBitmap(), file.name, Modifier.fillMaxSize().padding(if (fullscreen) 0.dp else 6.dp), contentScale = ContentScale.Fit) } ?: EmptyCard("Unable to render this PDF.")
                         }
-                    }.getOrDefault(0)
-                }
-                Column(Modifier.fillMaxSize()) {
-                    if (pageCount > 0) {
-                        Box(Modifier.fillMaxWidth().weight(1f).padding(6.dp), contentAlignment = Alignment.Center) {
-                            renderPdfPage(file, page.coerceIn(0, pageCount - 1))?.let { bitmap ->
-                                Image(bitmap.asImageBitmap(), file.name, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-                            } ?: EmptyCard("Unable to render this PDF.")
-                        }
-                        Row(Modifier.fillMaxWidth().padding(6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("Page " + (page + 1) + " of " + pageCount)
-                            Row {
-                                TextButton({ if (page > 0) page-- }, enabled = page > 0) { Text("Previous") }
-                                TextButton({ if (page < pageCount - 1) page++ }, enabled = page < pageCount - 1) { Text("Next") }
-                            }
-                        }
-                    } else EmptyCard("Unable to open this PDF.")
-                }
-            }
-            ext == "pptx" || ext == "ppt" -> {
-                val slides = remember(file) { readOfficeSlides(file) }
-                Column(Modifier.fillMaxSize()) {
-                    if (slides.isNotEmpty()) {
-                        Box(Modifier.fillMaxWidth().weight(1f).padding(10.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                            Text(slides[slide.coerceIn(0, slides.lastIndex)].ifBlank { "Blank slide" }, Modifier.padding(24.dp), style = MaterialTheme.typography.titleMedium)
-                        }
-                        Row(Modifier.fillMaxWidth().padding(6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("Slide " + (slide + 1) + " of " + slides.size)
-                            Row {
-                                TextButton({ if (slide > 0) slide-- }, enabled = slide > 0) { Text("Previous") }
-                                TextButton({ if (slide < slides.lastIndex) slide++ }, enabled = slide < slides.lastIndex) { Text("Next") }
-                            }
-                        }
-                    } else EmptyCard("Unable to read this PowerPoint offline.")
-                }
-            }
-            ext == "docx" -> {
-                val text = remember(file) { readOfficeText(file) ?: "No readable text was found in this Word document." }
-                LazyColumn(Modifier.fillMaxSize().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    item {
-                        Card(Modifier.fillMaxWidth().widthIn(max = 794.dp), shape = RoundedCornerShape(0.dp)) {
-                            Column(Modifier.padding(36.dp)) {
-                                Text("A4 Print Layout", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Spacer(Modifier.height(10.dp))
-                                Text(text, style = MaterialTheme.typography.bodyLarge)
+                        Surface(tonalElevation = 3.dp) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("Page ${safePage + 1} / $pageCount", fontWeight = FontWeight.SemiBold)
+                                Row { IconButton({ if (page > 0) page-- }, enabled = page > 0) { Icon(Icons.Default.ChevronLeft, "Previous page") }; IconButton({ if (page < pageCount - 1) page++ }, enabled = page < pageCount - 1) { Icon(Icons.Default.ChevronRight, "Next page") }; if (fullscreen) IconButton({ toggleFullscreen() }) { Icon(Icons.Default.FullscreenExit, "Exit full screen") } }
                             }
                         }
                     }
+                } else EmptyCard("Unable to open this PDF.")
+            }
+            ext == "pptx" || ext == "ppt" -> {
+                val slides = remember(file) { readOfficeSlides(file) }
+                if (slides.isNotEmpty()) {
+                    val safeSlide = slide.coerceIn(0, slides.lastIndex)
+                    Column(Modifier.fillMaxSize()) {
+                        Box(Modifier.fillMaxWidth().weight(1f).padding(if (fullscreen) 0.dp else 10.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(if (fullscreen) 0.dp else 16.dp)).pointerInput(slide, slides.size) {
+                            var dragTotal = 0f
+                            detectHorizontalDragGestures(onHorizontalDrag = { _, amount -> dragTotal += amount }, onDragEnd = {
+                                if (dragTotal < -70f && slide < slides.lastIndex) slide++ else if (dragTotal > 70f && slide > 0) slide--
+                                dragTotal = 0f
+                            }, onDragCancel = { dragTotal = 0f })
+                        }, contentAlignment = Alignment.Center) { Text(slides[safeSlide].ifBlank { "Blank slide" }, Modifier.padding(24.dp), style = MaterialTheme.typography.titleMedium) }
+                        Surface(tonalElevation = 3.dp) { Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Slide ${safeSlide + 1} / ${slides.size}", fontWeight = FontWeight.SemiBold); Row { IconButton({ if (slide > 0) slide-- }, enabled = slide > 0) { Icon(Icons.Default.ChevronLeft, "Previous slide") }; IconButton({ if (slide < slides.lastIndex) slide++ }, enabled = slide < slides.lastIndex) { Icon(Icons.Default.ChevronRight, "Next slide") } } } }
+                    }
+                } else EmptyCard("Unable to read this PowerPoint offline.")
+            }
+            ext == "docx" -> {
+                val text = remember(file) { readOfficeText(file) ?: "No readable text was found in this Word document." }
+                LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, contentPadding = PaddingValues(vertical = 16.dp)) {
+                    item { Card(Modifier.fillMaxWidth().widthIn(max = 794.dp), shape = RoundedCornerShape(6.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) { Column(Modifier.padding(horizontal = 36.dp, vertical = 42.dp)) { Text("A4 PRINT LAYOUT", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold); HorizontalDivider(Modifier.padding(vertical = 12.dp)); Text(text, style = MaterialTheme.typography.bodyLarge, lineHeight = 25.sp) } } }
                 }
             }
             else -> {
                 val text = remember(file) { readDisplayText(file) }
-                LazyColumn(Modifier.fillMaxSize().padding(16.dp)) { item { Text(text, style = MaterialTheme.typography.bodyLarge) } }
+                LazyColumn(Modifier.fillMaxSize().padding(20.dp)) { item { Card(Modifier.fillMaxWidth()) { Text(text, Modifier.padding(20.dp), style = MaterialTheme.typography.bodyLarge, lineHeight = 25.sp) } } }
             }
         }
     }
