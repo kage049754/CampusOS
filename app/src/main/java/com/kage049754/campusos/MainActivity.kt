@@ -213,6 +213,9 @@ class LocalStore(context: Context) {
     fun theme() = prefs.getString("theme", "system") ?: "system"
     fun homeLayoutOrder(): List<String> = (prefs.getString("home_layout_order", "") ?: "").split(",").filter { it.isNotBlank() }
     fun setHomeLayoutOrder(order: List<String>) { prefs.edit().putString("home_layout_order", order.joinToString(",")).apply(); revision++ }
+    fun homeHiddenTiles(): Set<String> = (prefs.getString("home_hidden_tiles", "") ?: "").split(",").filter { it.isNotBlank() }.toSet()
+    fun setHomeHiddenTiles(hidden: Set<String>) { prefs.edit().putString("home_hidden_tiles", hidden.joinToString(",")).apply(); revision++ }
+    fun resetHomeLayout() { prefs.edit().remove("home_layout_order").remove("home_hidden_tiles").apply(); revision++ }
     fun setTheme(v: String) { prefs.edit().putString("theme", v).apply(); revision++ }
     fun lockEnabled() = prefs.getBoolean("lock", false)
     fun setLockEnabled(v: Boolean) { prefs.edit().putBoolean("lock", v).apply(); revision++ }
@@ -625,9 +628,12 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     val savedOrder = store.homeLayoutOrder()
     var tileOrder by remember(revision) { mutableStateOf((savedOrder + defaultOrder).distinct().filter { it in defaultOrder }) }
     var editMode by remember { mutableStateOf(false) }
+    var showHomeTileSettings by remember { mutableStateOf(false) }
+    var hiddenTiles by remember(revision) { mutableStateOf(store.homeHiddenTiles()) }
     val listState = rememberLazyListState()
     var draggedKey by remember { mutableStateOf<String?>(null) }
     var dragOffset by remember { mutableFloatStateOf(0f) }
+    val visibleOrder = tileOrder.filter { it !in hiddenTiles }
 
     fun moveTile(key: String, targetKey: String) {
         val from = tileOrder.indexOf(key)
@@ -652,9 +658,17 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
             IconButton(onClick = {
                 editMode = !editMode
                 if (editMode) tileOrder = (store.homeLayoutOrder() + defaultOrder).distinct().filter { it in defaultOrder }
-                else store.setHomeLayoutOrder(tileOrder)
+                else {
+                    store.setHomeLayoutOrder(tileOrder)
+                    store.setHomeHiddenTiles(hiddenTiles)
+                }
             }) {
                 Icon(if (editMode) Icons.Default.Check else Icons.Default.Edit, if (editMode) "Done" else "Customize Home")
+            }
+            if (!editMode) {
+                IconButton(onClick = { showHomeTileSettings = true }) {
+                    Icon(Icons.Default.ViewModule, "Home tiles")
+                }
             }
         }
 
@@ -663,7 +677,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
             modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            items(items = tileOrder, key = { tile -> tile }) { tileKey ->
+            items(items = visibleOrder, key = { tile -> tile }) { tileKey ->
                 val isDragged = draggedKey == tileKey
                 Box(
                     Modifier
@@ -752,6 +766,55 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
             }
         }
     }
+}
+@Composable
+fun HomeTileSettingsDialog(
+    defaultOrder: List<String>,
+    hiddenTiles: Set<String>,
+    onHiddenChanged: (Set<String>) -> Unit,
+    onReset: () -> Unit,
+    done: () -> Unit
+) {
+    val labels = mapOf(
+        "profile" to "Profile / Welcome",
+        "stats" to "Statistics",
+        "classes" to "Today's Classes",
+        "pinned" to "Pinned Tasks",
+        "tasks" to "Tasks to Do",
+        "quick" to "Quick Access"
+    )
+    AlertDialog(
+        onDismissRequest = done,
+        title = { Text("Home Tiles") },
+        text = {
+            Column(
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text("Choose which tiles appear on your Home screen.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                defaultOrder.forEach { key ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(labels[key] ?: key, Modifier.weight(1f))
+                        Switch(
+                            checked = key !in hiddenTiles,
+                            onCheckedChange = { shown ->
+                                val next = hiddenTiles.toMutableSet()
+                                if (shown) next.remove(key) else next.add(key)
+                                onHiddenChanged(next)
+                            }
+                        )
+                    }
+                }
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                OutlinedButton(onClick = onReset, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.RestartAlt, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Reset Home Layout")
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = done) { Text("Done") } }
+    )
 }
 @Composable
 fun HomeTodayClassCard(r: Record) {
