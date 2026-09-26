@@ -2007,6 +2007,8 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
     var lockOn by remember { mutableStateOf(store.lockEnabled()) }
     var showPin by remember { mutableStateOf(false) }
     var showTableSettings by remember { mutableStateOf(false) }
+    var showHomeTiles by remember { mutableStateOf(false) }
+    var homeHiddenTiles by remember { mutableStateOf(store.homeHiddenTiles()) }
     var notificationsOn by remember { mutableStateOf(context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).getBoolean("enabled", false) && CampusReminders.notificationsEnabled(context)) }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -2082,7 +2084,8 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Homepage", fontWeight = FontWeight.Bold)
-                    Text("Profile, theme, lock, and other homepage/app behavior.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Customize which Home tiles are visible and restore the default Home layout.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedButton(onClick = { showHomeTiles = true }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.ViewModule, null); Spacer(Modifier.width(8.dp)); Text("Customize Home Tiles") }
                     Text("Use the CampusOS settings button from the top bar for profile and appearance options.", style = MaterialTheme.typography.bodySmall)
                 }
             }
@@ -2161,6 +2164,15 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
     if (restoreMode) ModuleBackupDialog("Choose modules to restore", selectedModules, { selectedModules=it }) { restoreMode=false; if(selectedModules.isNotEmpty()) restore.launch(arrayOf("application/json","text/plain")) }
     if (showTableSettings) {
         ScheduleTableSettingsDialog(store) { showTableSettings = false }
+    }
+    if (showHomeTiles) {
+        HomeTileSettingsDialog(
+            defaultOrder = listOf("profile", "stats", "classes", "pinned", "tasks", "quick"),
+            hiddenTiles = homeHiddenTiles,
+            onHiddenChanged = { homeHiddenTiles = it; store.setHomeHiddenTiles(it) },
+            onReset = { store.resetHomeLayout(); homeHiddenTiles = emptySet(); showHomeTiles = false },
+            done = { showHomeTiles = false }
+        )
     }
 
     if (showPin) {
