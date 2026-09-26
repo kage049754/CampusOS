@@ -681,14 +681,16 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                                     onDrag = { change, amount ->
                                         change.consume()
                                         dragOffset += amount.y
-                                        val draggedInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { item -> item.key == tileKey }
+                                        val draggedIndex = tileOrder.indexOf(tileKey)
+                                        val draggedInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { item -> item.index == draggedIndex }
                                         val center = draggedInfo?.let { it.offset + it.size / 2 } ?: 0
                                         val pointerCenter = center + dragOffset
                                         val target = listState.layoutInfo.visibleItemsInfo
-                                            .filter { item -> item.key != tileKey }
+                                            .filter { item -> item.index != draggedIndex }
                                             .minByOrNull { item -> kotlin.math.abs((item.offset + item.size / 2) - pointerCenter) }
                                         if (target != null && kotlin.math.abs((target.offset + target.size / 2) - pointerCenter) < target.size / 2) {
-                                            moveTile(tileKey, target.key.toString())
+                                            val targetKey = tileOrder.getOrNull(target.index)
+                                            if (targetKey != null) moveTile(tileKey, targetKey)
                                             dragOffset = 0f
                                         }
                                     }
