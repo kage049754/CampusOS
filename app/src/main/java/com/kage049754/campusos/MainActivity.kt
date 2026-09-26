@@ -16,6 +16,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.Color
@@ -208,6 +209,8 @@ class LocalStore(context: Context) {
     fun pin() = prefs.getString("pin", "") ?: ""
     fun setPin(v: String) { prefs.edit().putString("pin", v).apply(); revision++ }
     fun theme() = prefs.getString("theme", "system") ?: "system"
+    fun homeLayoutOrder(): List<String> = (prefs.getString("home_layout_order", "") ?: "").split(",").filter { it.isNotBlank() }
+    fun setHomeLayoutOrder(order: List<String>) { prefs.edit().putString("home_layout_order", order.joinToString(",")).apply(); revision++ }
     fun setTheme(v: String) { prefs.edit().putString("theme", v).apply(); revision++ }
     fun lockEnabled() = prefs.getBoolean("lock", false)
     fun setLockEnabled(v: Boolean) { prefs.edit().putBoolean("lock", v).apply(); revision++ }
@@ -616,72 +619,156 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     val pendingTasks = remember(tasks) { tasks.filter { !it.done }.sortedWith(compareBy({ it.dueDate }, { it.dueTime })).take(5) }
     val pinnedTasks = remember(tasks) { tasks.filter { !it.done && taskPinned(it) }.sortedWith(compareBy({ it.dueDate }, { it.dueTime })).take(5) }
     val photo = remember(photoPath, revision) { if (photoPath.isNotBlank()) runCatching { BitmapFactory.decodeFile(photoPath) }.getOrNull() else null }
+    val defaultOrder = listOf("profile", "stats", "classes", "pinned", "tasks", "quick")
+    val savedOrder = store.homeLayoutOrder()
+    var tileOrder by remember(revision) { mutableStateOf((savedOrder + defaultOrder).distinct().filter { it in defaultOrder }) }
+    var editMode by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    var draggedKey by remember { mutableStateOf<String?>(null) }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
 
-    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (photo != null) Image(photo.asImageBitmap(), "Profile photo", Modifier.size(64.dp), contentScale = ContentScale.Crop)
-                    else Box(Modifier.size(64.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50)), contentAlignment = Alignment.Center) {
-                        Text(profileName.take(1).uppercase(), color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Welcome back", style = MaterialTheme.typography.labelLarge)
-                        Text(profileName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        val details = listOf(studentId, section).filter { it.isNotBlank() }.joinToString(" • ")
-                        if (details.isNotBlank()) Text(details, style = MaterialTheme.typography.bodyMedium)
-                        Text(date, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    }
-                }
+    fun moveTile(key: String, targetKey: String) {
+        val from = tileOrder.indexOf(key)
+        val to = tileOrder.indexOf(targetKey)
+        if (from >= 0 && to >= 0 && from != to) {
+            tileOrder = tileOrder.toMutableList().apply {
+                val item = removeAt(from)
+                add(to, item)
             }
         }
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatCard("Classes", schedule.size.toString(), Modifier.weight(1f))
-                StatCard("Subjects", subjects.size.toString(), Modifier.weight(1f))
-                StatCard("Tasks", tasks.count { !it.done }.toString(), Modifier.weight(1f))
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("CampusOS", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                if (editMode) Text("Drag tiles to arrange your Home screen", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            IconButton(onClick = {
+                editMode = !editMode
+                if (editMode) tileOrder = (store.homeLayoutOrder() + defaultOrder).distinct().filter { it in defaultOrder }
+                else store.setHomeLayoutOrder(tileOrder)
+            }) {
+                Icon(if (editMode) Icons.Default.Check else Icons.Default.Edit, if (editMode) "Done" else "Customize Home")
             }
         }
-        item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                SectionTitle("Today's classes")
-                Spacer(Modifier.width(8.dp))
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.primaryContainer
+
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            items(tileOrder, key = { it }) { key ->
+                val isDragged = draggedKey == key
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer { translationY = if (isDragged) dragOffset else 0f; alpha = if (isDragged) 0.82f else 1f }
+                        .then(
+                            if (editMode) Modifier.pointerInput(key, tileOrder) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { draggedKey = key; dragOffset = 0f },
+                                    onDragCancel = { draggedKey = null; dragOffset = 0f },
+                                    onDragEnd = {
+                                        draggedKey = null
+                                        dragOffset = 0f
+                                        store.setHomeLayoutOrder(tileOrder)
+                                    },
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        dragOffset += amount.y
+                                        val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key != key && (it.offset + it.size / 2) > (listState.layoutInfo.visibleItemsInfo.firstOrNull { v -> v.key == key }?.let { it.offset + it.size / 2 } ?: 0) + dragOffset }
+                                        if (info != null && dragOffset > 20f) {
+                                            moveTile(key, info.key.toString())
+                                            dragOffset -= 20f
+                                        } else {
+                                            val infoAbove = listState.layoutInfo.visibleItemsInfo.filter { it.key != key }.lastOrNull { (it.offset + it.size / 2) < (listState.layoutInfo.visibleItemsInfo.firstOrNull { v -> v.key == key }?.let { it.offset + it.size / 2 } ?: 0) + dragOffset }
+                                            if (infoAbove != null && dragOffset < -20f) {
+                                                moveTile(key, infoAbove.key.toString())
+                                                dragOffset += 20f
+                                            }
+                                        }
+                                    }
+                                )
+                            } else Modifier
+                        )
                 ) {
-                    Text(
-                        todaySchedule.size.toString(),
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold
-                    )
+                    when (key) {
+                        "profile" -> Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                            Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                                if (photo != null) Image(photo.asImageBitmap(), "Profile photo", Modifier.size(64.dp), contentScale = ContentScale.Crop)
+                                else Box(Modifier.size(64.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50)), contentAlignment = Alignment.Center) { Text(profileName.take(1).uppercase(), color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+                                Spacer(Modifier.width(14.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("Welcome back", style = MaterialTheme.typography.labelLarge)
+                                    Text(profileName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                                    val details = listOf(studentId, section).filter { it.isNotBlank() }.joinToString(" • ")
+                                    if (details.isNotBlank()) Text(details, style = MaterialTheme.typography.bodyMedium)
+                                    Text(date, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                }
+                            }
+                        }
+                        "stats" -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            StatCard("Classes", schedule.size.toString(), Modifier.weight(1f))
+                            StatCard("Subjects", subjects.size.toString(), Modifier.weight(1f))
+                            StatCard("Tasks", tasks.count { !it.done }.toString(), Modifier.weight(1f))
+                        }
+                        "classes" -> Column(Modifier.fillMaxWidth()) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                SectionTitle("Today's classes")
+                                Spacer(Modifier.width(8.dp))
+                                Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.primaryContainer) {
+                                    Text(todaySchedule.size.toString(), Modifier.padding(horizontal = 9.dp, vertical = 3.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            if (todaySchedule.isEmpty()) EmptyCard("No classes scheduled for today.")
+                            else todaySchedule.take(5).forEach { HomeTodayClassCard(it); Spacer(Modifier.height(8.dp)) }
+                        }
+                        "pinned" -> Column(Modifier.fillMaxWidth()) {
+                            SectionTitle("Pinned tasks")
+                            Spacer(Modifier.height(8.dp))
+                            if (pinnedTasks.isEmpty()) EmptyCard("No pinned tasks. Long-press a task to pin it.")
+                            else pinnedTasks.forEach { r ->
+                                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                                    ListItem(
+                                        headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) },
+                                        supportingContent = { if (r.dueDate.isNotBlank()) Text("Due " + r.dueDate + " " + r.dueTime) },
+                                        leadingContent = { Icon(Icons.Default.PushPin, "Pinned") }
+                                    )
+                                }
+                                Spacer(Modifier.height(8.dp))
+                            }
+                        }
+                        "tasks" -> Column(Modifier.fillMaxWidth()) {
+                            SectionTitle("Tasks to do")
+                            Spacer(Modifier.height(8.dp))
+                            if (pendingTasks.isEmpty()) EmptyCard("You're all caught up.")
+                            else pendingTasks.forEach { r ->
+                                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                                    ListItem(
+                                        headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) },
+                                        supportingContent = { Column { if (r.subtitle.isNotBlank()) Text(r.subtitle, maxLines = 2); if (r.dueDate.isNotBlank()) Text("Due ${r.dueDate} ${r.dueTime}") } },
+                                        leadingContent = { Icon(Icons.Default.CheckCircleOutline, null) }
+                                    )
+                                }
+                                Spacer(Modifier.height(8.dp))
+                            }
+                        }
+                        "quick" -> Column(Modifier.fillMaxWidth()) {
+                            SectionTitle("Quick access")
+                            Spacer(Modifier.height(8.dp))
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SmallAction("Subjects", Icons.Default.School) { go(Screen.ACADEMICS) }
+                                SmallAction("Files", Icons.Default.Folder) { go(Screen.FILES) }
+                                SmallAction("Tasks", Icons.Default.CheckCircle) { go(Screen.TASKS) }
+                            }
+                        }
+                    }
                 }
-            }
-        }
-        if (todaySchedule.isEmpty()) item { EmptyCard("No classes scheduled for today.") }
-        else items(todaySchedule.take(5), key = { it.id }) { r -> HomeTodayClassCard(r) }
-        item { SectionTitle("Pinned tasks") }
-        if (pinnedTasks.isEmpty()) item { EmptyCard("No pinned tasks. Long-press a task to pin it.") }
-        else items(pinnedTasks, key = { "pinned-" + it.id }) { r -> Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) { ListItem(headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) }, supportingContent = { if (r.dueDate.isNotBlank()) Text("Due " + r.dueDate + " " + r.dueTime) }, leadingContent = { Icon(Icons.Default.PushPin, "Pinned") }) } }
-        item { SectionTitle("Tasks to do") }
-        if (pendingTasks.isEmpty()) item { EmptyCard("You're all caught up.") }
-        else items(pendingTasks, key = { it.id }) { r ->
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-                ListItem(
-                    headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) },
-                    supportingContent = { Column { if (r.subtitle.isNotBlank()) Text(r.subtitle, maxLines = 2); if (r.dueDate.isNotBlank()) Text("Due ${r.dueDate} ${r.dueTime}") } },
-                    leadingContent = { Icon(Icons.Default.CheckCircleOutline, null) }
-                )
-            }
-        }
-        item { SectionTitle("Quick access") }
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SmallAction("Subjects", Icons.Default.School) { go(Screen.ACADEMICS) }
-                SmallAction("Files", Icons.Default.Folder) { go(Screen.FILES) }
-                SmallAction("Tasks", Icons.Default.CheckCircle) { go(Screen.TASKS) }
             }
         }
     }
