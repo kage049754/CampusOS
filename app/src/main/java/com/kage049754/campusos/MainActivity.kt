@@ -681,16 +681,15 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                                     onDrag = { change, amount ->
                                         change.consume()
                                         dragOffset += amount.y
-                                        val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key != key && (it.offset + it.size / 2) > (listState.layoutInfo.visibleItemsInfo.firstOrNull { v -> v.key == key }?.let { it.offset + it.size / 2 } ?: 0) + dragOffset }
-                                        if (info != null && dragOffset > 20f) {
-                                            moveTile(tileKey, info.key.toString())
-                                            dragOffset -= 20f
-                                        } else {
-                                            val infoAbove = listState.layoutInfo.visibleItemsInfo.filter { it.key != key }.lastOrNull { (it.offset + it.size / 2) < (listState.layoutInfo.visibleItemsInfo.firstOrNull { v -> v.key == key }?.let { it.offset + it.size / 2 } ?: 0) + dragOffset }
-                                            if (infoAbove != null && dragOffset < -20f) {
-                                                moveTile(tileKey, infoAbove.key.toString())
-                                                dragOffset += 20f
-                                            }
+                                        val draggedInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { item -> item.key == tileKey }
+                                        val center = draggedInfo?.let { it.offset + it.size / 2 } ?: 0
+                                        val pointerCenter = center + dragOffset
+                                        val target = listState.layoutInfo.visibleItemsInfo
+                                            .filter { item -> item.key != tileKey }
+                                            .minByOrNull { item -> kotlin.math.abs((item.offset + item.size / 2) - pointerCenter) }
+                                        if (target != null && kotlin.math.abs((target.offset + target.size / 2) - pointerCenter) < target.size / 2) {
+                                            moveTile(tileKey, target.key.toString())
+                                            dragOffset = 0f
                                         }
                                     }
                                 )
