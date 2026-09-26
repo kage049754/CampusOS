@@ -2258,7 +2258,8 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
         }
         Spacer(Modifier.height(8.dp))
 
-        currentClass?.let { (r, start, end) ->
+        if (currentClass != null) {
+            val (r, start, end) = currentClass
             val elapsed = (currentMinutes - start).coerceAtLeast(0)
             val duration = (end - start).coerceAtLeast(1)
             val progress = (elapsed.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
@@ -2280,21 +2281,23 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
                         )
                     }
                     Text(r.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("undefined–undefined", style = MaterialTheme.typography.bodyMedium)
+                    Text("\${r.startTime}–\${r.endTime}", style = MaterialTheme.typography.bodyMedium)
                     LinearProgressIndicator(
                         progress = { progress },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Text(
-                        "Ends in $remaining min",
+                        "Ends in \$remaining min",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
             }
             Spacer(Modifier.height(8.dp))
-        } ?: nextClass?.let { (r, start, _) ->
+        } else if (nextClass != null) {
+            val (r, start, _) = nextClass
             val mins = minutesUntil(start)
+
             Card(
                 Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
@@ -2313,10 +2316,10 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
                             color = MaterialTheme.colorScheme.secondary
                         )
                         Text(r.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("Starts in $mins min • undefined", style = MaterialTheme.typography.bodyMedium)
+                        Text("Starts in \$mins min • \${r.startTime}", style = MaterialTheme.typography.bodyMedium)
                         if (r.room.isNotBlank()) {
                             Text(
-                                "Room undefined",
+                                "Room \${r.room}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -2325,7 +2328,7 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
                 }
             }
             Spacer(Modifier.height(8.dp))
-        } ?: run { if (parsedClasses.isNotEmpty()) {
+        } else if (parsedClasses.isNotEmpty()) {
             Card(
                 Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -2346,8 +2349,6 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
             }
             Spacer(Modifier.height(8.dp))
         }
-
-        } }
 
         if (todaySchedule.isEmpty()) EmptyCard("No classes scheduled for today.")
         else for (r in todaySchedule.take(5)) {
