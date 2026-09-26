@@ -614,6 +614,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     val todayName = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date())
     val todaySchedule = remember(schedule, todayName) { mergeTodayClasses(schedule.filter { it.day.equals(todayName, true) }) }
     val pendingTasks = remember(tasks) { tasks.filter { !it.done }.sortedWith(compareBy({ it.dueDate }, { it.dueTime })).take(5) }
+    val pinnedTasks = remember(tasks) { tasks.filter { !it.done && taskPinned(it) }.sortedWith(compareBy({ it.dueDate }, { it.dueTime })).take(5) }
     val photo = remember(photoPath, revision) { if (photoPath.isNotBlank()) runCatching { BitmapFactory.decodeFile(photoPath) }.getOrNull() else null }
 
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -661,6 +662,9 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
         }
         if (todaySchedule.isEmpty()) item { EmptyCard("No classes scheduled for today.") }
         else items(todaySchedule.take(5), key = { it.id }) { r -> HomeTodayClassCard(r) }
+        item { SectionTitle("Pinned tasks") }
+        if (pinnedTasks.isEmpty()) item { EmptyCard("No pinned tasks. Long-press a task to pin it.") }
+        else items(pinnedTasks, key = { "pinned-" + it.id }) { r -> Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) { ListItem(headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) }, supportingContent = { if (r.dueDate.isNotBlank()) Text("Due " + r.dueDate + " " + r.dueTime) }, leadingContent = { Icon(Icons.Default.PushPin, "Pinned") }) } }
         item { SectionTitle("Tasks to do") }
         if (pendingTasks.isEmpty()) item { EmptyCard("You're all caught up.") }
         else items(pendingTasks, key = { it.id }) { r ->
