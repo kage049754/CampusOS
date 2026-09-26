@@ -5,6 +5,7 @@ import android.app.TimePickerDialog
 import android.content.Context
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.rememberScrollState
@@ -42,6 +43,10 @@ data class TaskMeta(
     val semester: String = "2026–2027 1st Semester",
     val subtasks: List<TaskSub> = emptyList()
 )
+
+fun taskPinned(r: Record): Boolean = runCatching { JSONObject(r.extra).optBoolean("pinned", false) }.getOrDefault(false)
+
+fun setTaskPinned(store: LocalStore, taskId: Long, pinned: Boolean) { store.put("tasks", store.get("tasks").map { r -> if (r.id != taskId) r else { val o = runCatching { JSONObject(r.extra) }.getOrElse { JSONObject() }; o.put("pinned", pinned); r.copy(extra = o.toString()) } }) }
 
 fun taskMeta(r: Record): TaskMeta {
     return runCatching {
@@ -104,8 +109,9 @@ fun TasksScreen(store: LocalStore, query: String, clear: () -> Unit, openSubject
     var shownMonth by rememberSaveable { mutableStateOf(SimpleDateFormat("yyyy-MM").format(Date())) }
     var showEditor by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Record?>(null) }
+    var taskFilter by rememberSaveable { mutableIntStateOf(0) }
     val allTasks = remember(revision) { store.get("tasks") }
-    val selectedTasks = allTasks.filter { it.dueDate == selectedDate }.sortedBy { taskDue(it) }
+    val selectedTasks = allTasks.filter { it.dueDate == selectedDate }.filter { taskFilter == 0 || (taskFilter == 1 && taskPinned(it)) || (taskFilter == 2 && it.done) }.sortedWith(compareByDescending<Record> { taskPinned(it) }.thenBy { taskDue(it) })
     val monthCalendar = remember(shownMonth) { parseDate(shownMonth + "-01") }
     val todayKey = taskDateFormat().format(Date())
 
@@ -175,6 +181,8 @@ fun TasksScreen(store: LocalStore, query: String, clear: () -> Unit, openSubject
                     Text("Add task")
                 }
             }
+
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { FilterChip(selected = taskFilter == 0, onClick = { taskFilter = 0 }, label = { Text("All") }); FilterChip(selected = taskFilter == 1, onClick = { taskFilter = 1 }, label = { Text("Pinned") }); FilterChip(selected = taskFilter == 2, onClick = { taskFilter = 2 }, label = { Text("Completed") }) }
 
             if (selectedTasks.isEmpty()) {
                 Column(
@@ -308,7 +316,7 @@ private fun SimpleTaskCard(
     onDelete: () -> Unit
 ) {
     val subject = if (task.subjectId != 0L) store.get("subjects").firstOrNull { it.id == task.subjectId } else null
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+    Card(Modifier.fillMaxWidth().pointerInput(task.id, taskPinned(task)) { detectTapGestures(onLongPress = { setTaskPinned(store, task.id, !taskPinned(task)) }) }, shape = RoundedCornerShape(14.dp)) {
         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Checkbox(
                 checked = task.done,
@@ -317,7 +325,7 @@ private fun SimpleTaskCard(
                 }
             )
             Column(Modifier.weight(1f)) {
-                Text(task.title, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically) { if (taskPinned(task)) { Icon(Icons.Default.PushPin, "Pinned", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(4.dp)) }; Text(task.title, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                 if (subject != null) {
                     TextButton(onClick = { openSubject(subject.id) }, contentPadding = PaddingValues(0.dp)) { Text(subject.title) }
                 }
