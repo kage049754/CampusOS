@@ -2230,6 +2230,7 @@ fun AddRecordDialog(
     var showDueDatePicker by remember{mutableStateOf(false)}
     val subjects=store.get("subjects")
     val isTask=key=="tasks"
+    val context = androidx.compose.ui.platform.LocalContext.current
     AlertDialog(
         onDismissRequest=done,
         title={Text("Add $label")},
@@ -2290,6 +2291,26 @@ fun AddRecordDialog(
         },
         dismissButton={TextButton(done){Text("Cancel")}}
     )
+    if (showDueDatePicker && isTask) {
+        val parsed = Calendar.getInstance().apply {
+            runCatching {
+                time = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(dueDate) ?: time
+            }
+        }
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                dueDate = "%04d-%02d-%02d".format(year, month + 1, dayOfMonth)
+                showDueDatePicker = false
+            },
+            parsed.get(Calendar.YEAR),
+            parsed.get(Calendar.MONTH),
+            parsed.get(Calendar.DAY_OF_MONTH)
+        ).apply {
+            setOnDismissListener { showDueDatePicker = false }
+            show()
+        }
+    }
 }
 
 @Composable
