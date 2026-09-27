@@ -1142,20 +1142,33 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
     val customRowHeight = remember(revision) { store.scheduleTableRowHeight() }
     var zoom by remember(revision) { mutableFloatStateOf(1f) }
 
+    val dayOrder = listOf("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday")
+    fun dayIndex(name: String) = dayOrder.indexOfFirst { it.equals(name, true) }.let { if (it < 0) 99 else it }
+    val todayIndex = dayIndex(today)
+    val orderedDays = remember(scheduleDays, today) {
+        val configured = scheduleDays.distinct()
+        configured.sortedWith(compareBy<String> {
+            val idx = dayIndex(it)
+            when {
+                idx == todayIndex -> 0
+                idx > todayIndex -> idx - todayIndex
+                else -> 7 + idx - todayIndex
+            }
+        })
+    }
+
     Column(Modifier.fillMaxSize()) {
-        BoxWithConstraints(
-            Modifier.fillMaxWidth().weight(1f).padding(horizontal = 4.dp)
-        ) {
-            val baseDayWidth = if (customDayWidth > 0f) customDayWidth.dp else (maxWidth - 56.dp).coerceAtLeast(0.dp) / scheduleDays.size.coerceAtLeast(1)
+        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 4.dp)) {
+            val visibleDayCount = orderedDays.size.coerceAtMost(3).coerceAtLeast(1)
+            val baseDayWidth = if (customDayWidth > 0f) customDayWidth.dp else (maxWidth - 56.dp).coerceAtLeast(0.dp) / visibleDayCount
             val dayWidth = baseDayWidth * zoom
             val headerHeight = 34.dp
-            val footerHeight = 0.dp
-            val baseRowHeight = if (customRowHeight > 0f) customRowHeight.dp else ((maxHeight - headerHeight - footerHeight) / hours.size.coerceAtLeast(1)).coerceAtLeast(30.dp)
+            val baseRowHeight = if (customRowHeight > 0f) customRowHeight.dp else ((maxHeight - headerHeight).coerceAtLeast(0.dp) / hours.size.coerceAtLeast(1)).coerceAtLeast(30.dp)
             val rowHeight = baseRowHeight * zoom
+            val needsDaySwipe = orderedDays.size > 3
+            val dayScroll = rememberScrollState()
 
-            Column(Modifier.fillMaxSize()
-                .then(if (horizontalScrollEnabled) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
-                .then(if (verticalScrollEnabled) Modifier.verticalScroll(rememberScrollState()) else Modifier)) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                 if (horizontalScrollEnabled || verticalScrollEnabled) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Zoom ${zoom.toInt()}x", style = MaterialTheme.typography.labelSmall)
@@ -1169,60 +1182,42 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                     Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) {
                         Text("Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
                     }
-                    scheduleDays.forEach { d ->
-                        val isToday = d.equals(today, true)
-                        Box(
-                            Modifier.width(dayWidth).fillMaxHeight()
-                                .background(if (isToday) dayHighlight.copy(alpha = 0.16f) else tableBg)
-                                .border(if (isToday) 2.dp else 1.dp, if (isToday) dayHighlight else tableBorder),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                                if (isToday) Box(Modifier.size(6.dp).background(dayHighlight, RoundedCornerShape(50)))
-                                Text(d.take(3), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
+                    Row(Modifier.weight(1f).then(if (needsDaySwipe) Modifier.horizontalScroll(dayScroll) else Modifier)) {
+                        orderedDays.forEach { d ->
+                            val isToday = d.equals(today, true)
+                            Box(Modifier.width(dayWidth).fillMaxHeight().background(if (isToday) dayHighlight.copy(alpha = 0.16f) else tableBg).border(if (isToday) 2.dp else 1.dp, if (isToday) dayHighlight else tableBorder), contentAlignment = Alignment.Center) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    if (isToday) Box(Modifier.size(6.dp).background(dayHighlight, RoundedCornerShape(50)))
+                                    Text(d.take(3), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
+                                }
                             }
                         }
                     }
                 }
-
                 hours.forEach { h ->
                     val isCurrentHour = h == currentHour
                     Row(Modifier.height(rowHeight)) {
-                        Box(
-                            Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder)
-                                .then(if (isCurrentHour) Modifier.border(2.dp, timeHighlight) else Modifier),
-                            contentAlignment = Alignment.Center
-                        ) {
+                        Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder).then(if (isCurrentHour) Modifier.border(2.dp, timeHighlight) else Modifier), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 if (isCurrentHour) Box(Modifier.size(6.dp).background(timeHighlight, RoundedCornerShape(50)))
                                 Text(formatHourRange(h, h + 1), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
                             }
                         }
-
-                        scheduleDays.forEach { day ->
-                            val classes = all.filter { it.day.equals(day, true) && it.startTime.toHourOrNull() == h }
-                            Box(
-                                Modifier.width(dayWidth).fillMaxHeight()
-                                    .background(if (day.equals(today, true) && isCurrentHour) timeHighlight.copy(alpha = 0.10f) else tableBg)
-                                    .border(if (day.equals(today, true) && isCurrentHour) 2.dp else 1.dp, if (day.equals(today, true) && isCurrentHour) timeHighlight else tableBorder)
-                                    .padding(1.dp)
-                            ) {
-                                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                                    classes.groupBy { it.title.trim().uppercase(Locale.getDefault()) }
-                                        .values.take(2).forEach { subjectClasses ->
-                                        val r = subjectClasses.first()
-                                        val types = subjectClasses.map { if (it.classType.equals("Lecture", true)) "Lec" else "Lab" }.distinct().joinToString(" + ")
-                                        val rooms = subjectClasses.map { it.room.trim() }.filter { it.isNotBlank() }.distinct().joinToString(" / ")
-                                        val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
-                                        Card(
-                                            Modifier.fillMaxWidth().weight(1f, fill = false),
-                                            colors = CardDefaults.cardColors(containerColor = bg, contentColor = readableContentColor(bg)),
-                                            shape = RoundedCornerShape(6.dp)
-                                        ) {
-                                            Column(Modifier.fillMaxSize().padding(horizontal = 4.dp, vertical = 2.dp), verticalArrangement = Arrangement.Center) {
-                                                Text("${r.title} - ${types.ifBlank { "Class" }}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                                                
-                                                if (rooms.isNotBlank()) Text(rooms, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 3, softWrap = true, overflow = androidx.compose.ui.text.style.TextOverflow.Clip)
+                        Row(Modifier.weight(1f).then(if (needsDaySwipe) Modifier.horizontalScroll(dayScroll) else Modifier)) {
+                            orderedDays.forEach { day ->
+                                val classes = all.filter { it.day.equals(day, true) && it.startTime.toHourOrNull() == h }
+                                Box(Modifier.width(dayWidth).fillMaxHeight().background(if (day.equals(today, true) && isCurrentHour) timeHighlight.copy(alpha = 0.10f) else tableBg).border(if (day.equals(today, true) && isCurrentHour) 2.dp else 1.dp, if (day.equals(today, true) && isCurrentHour) timeHighlight else tableBorder).padding(1.dp)) {
+                                    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                        classes.groupBy { it.title.trim().uppercase(Locale.getDefault()) }.values.take(2).forEach { subjectClasses ->
+                                            val r = subjectClasses.first()
+                                            val types = subjectClasses.map { if (it.classType.equals("Lecture", true)) "Lec" else "Lab" }.distinct().joinToString(" + ")
+                                            val rooms = subjectClasses.map { it.room.trim() }.filter { it.isNotBlank() }.distinct().joinToString(" / ")
+                                            val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
+                                            Card(Modifier.fillMaxWidth().weight(1f, fill = false), colors = CardDefaults.cardColors(containerColor = bg, contentColor = readableContentColor(bg)), shape = RoundedCornerShape(6.dp)) {
+                                                Column(Modifier.fillMaxSize().padding(horizontal = 4.dp, vertical = 2.dp), verticalArrangement = Arrangement.Center) {
+                                                    Text("${r.title} - ${types.ifBlank { "Class" }}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                    if (rooms.isNotBlank()) Text(rooms, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 3, softWrap = true, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                }
                                             }
                                         }
                                     }
@@ -1230,13 +1225,6 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                             }
                         }
                     }
-                }
-
-                Row(Modifier.height(footerHeight)) {
-                    Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) {
-                        Text(formatHourRange(endHour, (endHour + 1).coerceAtMost(24)), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                    }
-                    scheduleDays.forEach { Box(Modifier.width(dayWidth).fillMaxHeight().background(tableBg).border(1.dp, tableBorder)) }
                 }
             }
         }
