@@ -936,7 +936,23 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit, editRequest: Int = 0) {
                             }
                         }
                         "stats" -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            StatCard("Classes", mergedSchedule.size.toString(), Modifier.weight(1f))
+                            val now = Calendar.getInstance()
+                            val currentDayIndex = now.get(Calendar.DAY_OF_WEEK) - Calendar.SUNDAY
+                            val currentMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+                            val weeklyClasses = schedule.groupBy { it.day.trim().lowercase(Locale.getDefault()) }
+                                .values
+                                .flatMap { mergeTodayClasses(it) }
+                            val completedThisWeek = weeklyClasses.count { r ->
+                                val dayIndex = listOf("sunday","monday","tuesday","wednesday","thursday","friday","saturday")
+                                    .indexOf(r.day.trim().lowercase(Locale.getDefault()))
+                                when {
+                                    dayIndex < 0 -> false
+                                    dayIndex < currentDayIndex -> true
+                                    dayIndex > currentDayIndex -> false
+                                    else -> (r.endTime.toMinutesOrNull() ?: Int.MAX_VALUE) <= currentMinutes
+                                }
+                            }
+                            StatCard("Classes", completedThisWeek.toString() + "/" + weeklyClasses.size, Modifier.weight(1f))
                             StatCard("Subjects", subjects.size.toString(), Modifier.weight(1f))
                             StatCard("Notes", tasks.count { !it.done }.toString(), Modifier.weight(1f))
                         }
@@ -1471,14 +1487,14 @@ private fun mergeTodayClasses(records: List<Record>): List<Record> {
         val previousEnd = previous?.endTime?.toHourOrNull()
         val start = r.startTime.toHourOrNull()
         val sameSubject = previous?.title?.trim()?.equals(r.title.trim(), ignoreCase = true) == true
-        val sameRoom = previous?.room?.trim()?.equals(r.room.trim(), ignoreCase = true) == true
         val sameType = previous?.classType?.trim()?.equals(r.classType.trim(), ignoreCase = true) == true
         val consecutive = previousEnd != null && start != null && previousEnd == start
 
-        if (previous != null && sameSubject && sameRoom && sameType && consecutive) {
+        if (previous != null && sameSubject && sameType && consecutive) {
             out[out.lastIndex] = previous.copy(
                 endTime = r.endTime,
-                classType = if (previous.classType.equals(r.classType, true)) previous.classType else "Lecture + Lab"
+                room = previous.room.ifBlank { r.room },
+                professor = previous.professor.ifBlank { r.professor }
             )
         } else {
             out += r
