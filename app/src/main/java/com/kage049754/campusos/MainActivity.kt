@@ -1276,9 +1276,8 @@ fun ScheduleHighlightColorDialog(store: LocalStore, done: () -> Unit) {
 fun String.toHourOrNull(): Int? = substringBefore(":").toIntOrNull()
 private fun formatHourRange(start: Int, end: Int) = "%02d:00\n%02d:00".format(start, end)
 private fun mergeTodayClasses(records: List<Record>): List<Record> {
-    // One homepage class may contain consecutive periods when the subject and room match.
-    // Lecture + Lab are intentionally combined when they are back-to-back.
-    // Any vacant period or room change starts a separate class.
+    // Consecutive periods merge only when subject, room, and class type all match.
+    // Lecture and Lab therefore remain separate even when subject/day/time are identical.
     val sorted = records.sortedWith(
         compareBy<Record>({ it.startTime.toHourOrNull() ?: 99 }, { it.endTime.toHourOrNull() ?: 99 })
     )
@@ -1402,7 +1401,6 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
     var room by remember { mutableStateOf("") }
     var lectureRoom by remember { mutableStateOf("") }
     var labRoom by remember { mutableStateOf("") }
-    var sameRoomForLectureLab by remember { mutableStateOf(true) }
     var professor by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var classType by remember { mutableStateOf("Lecture") }
@@ -1460,17 +1458,33 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                 }}
             }}
             Text(if(selectedSlots.isEmpty())"No time selected" else selectedSlots.size.toString()+" slot(s) selected",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+            val lectureSelectedAny = selectedSlots.any { it.endsWith("|Lecture") }
+            val labSelectedAny = selectedSlots.any { it.endsWith("|Lab") }
             Text("Rooms", fontWeight=FontWeight.SemiBold)
-            Text("Lecture and Lab can share one room. If they use different rooms, turn this off and enter each room separately.", color=MaterialTheme.colorScheme.onSurfaceVariant, style=MaterialTheme.typography.bodySmall)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Same room for Lecture + Lab")
-                Switch(checked=sameRoomForLectureLab, onCheckedChange={ sameRoomForLectureLab=it })
+            Text(
+                "The room field follows the selected class type. Lecture uses Lecture room; Lab uses Lab room.",
+                color=MaterialTheme.colorScheme.onSurfaceVariant,
+                style=MaterialTheme.typography.bodySmall
+            )
+            if (lectureSelectedAny) {
+                OutlinedTextField(
+                    lectureRoom,
+                    { lectureRoom = it },
+                    Modifier.fillMaxWidth(),
+                    label = { Text("Lecture room") },
+                    placeholder = { Text("Enter lecture room") },
+                    singleLine = true
+                )
             }
-            if (sameRoomForLectureLab) {
-                OutlinedTextField(room,{room=it;lectureRoom=it;labRoom=it},Modifier.fillMaxWidth(),label={Text("Room number")},singleLine=true)
-            } else {
-                OutlinedTextField(lectureRoom,{lectureRoom=it},Modifier.fillMaxWidth(),label={Text("Lecture room")},singleLine=true)
-                OutlinedTextField(labRoom,{labRoom=it},Modifier.fillMaxWidth(),label={Text("Lab room")},singleLine=true)
+            if (labSelectedAny) {
+                OutlinedTextField(
+                    labRoom,
+                    { labRoom = it },
+                    Modifier.fillMaxWidth(),
+                    label = { Text("Lab room") },
+                    placeholder = { Text("Enter lab room") },
+                    singleLine = true
+                )
             }
             OutlinedTextField(professor,{professor=it},Modifier.fillMaxWidth(),label={Text("Professor")})
             OutlinedTextField(notes,{notes=it},Modifier.fillMaxWidth(),label={Text("Notes")})
@@ -1479,11 +1493,6 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
         }
     },confirmButton={Button({
         if(subject.isNotBlank()&&selectedSlots.isNotEmpty()){
-            if (sameRoomForLectureLab) {
-                room = lectureRoom.ifBlank { labRoom }
-                lectureRoom = room
-                labRoom = room
-            }
             val normalizedSubject=subject.trim()
             val existing=store.get("schedule")
             val newKeys=selectedSlots.map { key ->
@@ -1496,7 +1505,7 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                 val idBase=maxOf(System.currentTimeMillis(),(existing.maxOfOrNull{it.id}?:0L)+1L)
                 val selected=newKeys.mapIndexed{index,slot->
                     val (day,h,type)=slot
-                    Record(id=idBase+index,title=normalizedSubject,subtitle=fullName.trim(),extra=notes.trim(),day=day,startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=(if (type.equals("Lecture", true)) lectureRoom else labRoom).trim().ifBlank { room.trim() },professor=professor.trim(),color=color,classType=type)
+                    Record(id=idBase+index,title=normalizedSubject,subtitle=fullName.trim(),extra=notes.trim(),day=day,startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=(if (type.equals("Lecture", true)) lectureRoom else labRoom).trim(),professor=professor.trim(),color=color,classType=type)
                 }
                 store.put("schedule",existing+selected)
                 selected.forEach{syncSubjectFromClass(store,it)}
