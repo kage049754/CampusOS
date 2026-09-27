@@ -1736,7 +1736,7 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
     var notes by remember { mutableStateOf("") }
     var classType by remember { mutableStateOf("Lecture") }
     var color by remember { mutableLongStateOf(0xFFE3F2FD) }
-    var selectedSlots by remember { mutableStateOf(setOf<String>()) }
+    var selectedSlots by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     val colors = listOf(0xFFE3F2FDL,0xFFE8F5E9L,0xFFFFF3E0L,0xFFF3E5F5L,0xFFFFEBEEL,0xFFE0F7FAL)
     val startHour = store.scheduleStartHour().coerceIn(0,23)
     val endHour = store.scheduleEndHour().coerceIn(startHour,23)
@@ -1748,10 +1748,10 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
             OutlinedTextField(subject,{subject=it},Modifier.fillMaxWidth(),label={Text("Subject code")},placeholder={Text("e.g. DCIT 25")},singleLine=true)
             OutlinedTextField(fullName,{fullName=it},Modifier.fillMaxWidth(),label={Text("Whole subject name")})
             Text("Class type",fontWeight=FontWeight.SemiBold)
-            Text("Lecture and Lab cannot be added to the same day/time cell. Existing classes cannot be overwritten; remove or change them from Edit / Delete Classes first.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+            Text("Choose Lecture, select its cells, then switch to Lab and select its cells. Add both for this subject and save once. Existing classes cannot be overwritten.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Lecture","Lab").forEach{option->FilterChip(selected=classType==option,onClick={classType=option},label={Text(option)})}}
             Text("Pick class time(s) and day(s)",fontWeight=FontWeight.SemiBold)
-            Text("Tap an empty cell to select it. Existing Lecture/Lab or another subject is locked and cannot be overwritten.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+            Text("Currently selecting: $classType. Tap empty cells to add/remove them for this type. Existing classes are locked.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal=2.dp)){Column{
                 Row{
                     Box(Modifier.width(48.dp).height(32.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text("Time",style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)}
@@ -1761,7 +1761,7 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                     Box(Modifier.width(48.dp).height(52.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Column(horizontalAlignment=Alignment.CenterHorizontally) { Text("%02d:00".format(h),style=MaterialTheme.typography.labelSmall); Text("%02d:00".format(h + 1),style=MaterialTheme.typography.labelSmall) }}
                     weekDays.forEach{d->
                         val currentKey="$d|$h"
-                        val selected=currentKey in selectedSlots
+                        val selectedType=selectedSlots[currentKey]
                         val cellRecords=existingSchedule.filter{it.day.equals(d,true)&&it.startTime.toMinutesOrNull()==h*60}
                         val sameSubjectRecord=cellRecords.firstOrNull{subject.isNotBlank()&&it.title.trim().equals(subject.trim(),true)}
                         val occupantText=cellRecords.groupBy{it.title.trim().uppercase(Locale.getDefault())}.values.take(2).joinToString(" • "){group->
@@ -1771,23 +1771,23 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                             buildString{append(first.title);append(" ");append(types);if(rooms.isNotBlank())append(" • ").append(rooms)}
                         }
                         Box(Modifier.width(86.dp).height(52.dp)
-                            .border(2.dp,if(selected)MaterialTheme.colorScheme.primary else if(cellRecords.isNotEmpty())MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant)
-                            .background(if(selected)MaterialTheme.colorScheme.primaryContainer else if(cellRecords.isNotEmpty())MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)
-                            .clickable{if(cellRecords.isEmpty()){selectedSlots=if(selected)selectedSlots-currentKey else selectedSlots+currentKey}},
+                            .border(2.dp,if(selectedType!=null)MaterialTheme.colorScheme.primary else if(cellRecords.isNotEmpty())MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant)
+                            .background(if(selectedType!=null)MaterialTheme.colorScheme.primaryContainer else if(cellRecords.isNotEmpty())MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)
+                            .clickable{if(cellRecords.isEmpty()){selectedSlots=if(selectedType==null)selectedSlots+(currentKey to classType) else if(selectedType.equals(classType,true))selectedSlots-currentKey else selectedSlots+(currentKey to classType)}},
                             contentAlignment=Alignment.Center){
                             Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
                                 if(cellRecords.isNotEmpty()) Text(occupantText,style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                 else Text("Empty",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                if(selected) Text("Selected $classType",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary,maxLines=1)
+                                if(selectedType!=null) Text("Selected $selectedType",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary,maxLines=1)
                                 else if(cellRecords.isNotEmpty()) Text("Occupied • locked",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1)
                             }
                         }
                     }
                 }}
             }}
-            Text(if(selectedSlots.isEmpty())"No time selected" else selectedSlots.size.toString()+" slot(s) selected • "+classType,color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
-            val lectureSelectedAny = selectedSlots.isNotEmpty() && classType.equals("Lecture", true)
-            val labSelectedAny = selectedSlots.isNotEmpty() && classType.equals("Lab", true)
+            Text(if(selectedSlots.isEmpty())"No time selected" else selectedSlots.entries.groupingBy{it.value}.eachCount().entries.joinToString(" • "){it.key+": "+it.value},color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+            val lectureSelectedAny = selectedSlots.values.any { it.equals("Lecture", true) }
+            val labSelectedAny = selectedSlots.values.any { it.equals("Lab", true) }
             Text("Rooms", fontWeight=FontWeight.SemiBold)
             Text(
                 "The room field follows the selected class type. Lecture uses Lecture room; Lab uses Lab room.",
@@ -1823,15 +1823,15 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
         if(subject.isNotBlank()&&selectedSlots.isNotEmpty()){
             val normalizedSubject=subject.trim()
             val existing=store.get("schedule")
-            val slots=selectedSlots.map { key ->
-                val p=key.split("|")
-                Pair(p.getOrNull(0)?:"",p.getOrNull(1)?.toIntOrNull()?:7)
+            val slots=selectedSlots.entries.map { entry ->
+                val p=entry.key.split("|")
+                Triple(p.getOrNull(0)?:"",p.getOrNull(1)?.toIntOrNull()?:7,entry.value)
             }
             if(slots.isNotEmpty()){
                 val idBase=maxOf(System.currentTimeMillis(),(existing.maxOfOrNull{it.id}?:0L)+1L)
                 val selected=slots.mapIndexed{index,slot->
-                    val (day,h)=slot
-                    Record(id=idBase+index,title=normalizedSubject,subtitle=fullName.trim(),extra=notes.trim(),day=day,startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=(if (classType.equals("Lecture", true)) lectureRoom else labRoom).trim(),professor=professor.trim(),color=color,classType=classType)
+                    val (day,h,type)=slot
+                    Record(id=idBase+index,title=normalizedSubject,subtitle=fullName.trim(),extra=notes.trim(),day=day,startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=(if (type.equals("Lecture", true)) lectureRoom else labRoom).trim(),professor=professor.trim(),color=color,classType=type)
                 }
                 val conflict = slots.any { (day,h) ->
                     existing.any { old -> old.day.equals(day,true) && old.startTime.toMinutesOrNull() == h * 60 }
