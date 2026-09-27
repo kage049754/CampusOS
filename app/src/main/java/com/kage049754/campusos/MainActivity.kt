@@ -1995,7 +1995,7 @@ fun InAppFileViewerPage(file: File, done: () -> Unit) {
 }
 
 @Composable
-private fun ViewerBackButton(done: () -> Unit) {
+private fun BoxScope.ViewerBackButton(done: () -> Unit) {
     Surface(
         modifier = Modifier
             .padding(start = 10.dp, top = 10.dp)
