@@ -913,7 +913,16 @@ fun ScheduleSettingsDialog(store:LocalStore,done:()->Unit){
     AlertDialog(onDismissRequest=done,title={Text("Class Schedule Settings")},text={Column(Modifier.heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(6.dp)){
         Text("Show only the days you have class",fontWeight=FontWeight.Bold);allDays.forEach{day->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Checkbox(chosen.contains(day),{chosen=if(day in chosen)chosen-day else chosen+day});Text(day)}}
         Text("Time range",fontWeight=FontWeight.Bold);Text("%02d:00 – %02d:00".format(start,end),style=MaterialTheme.typography.titleMedium)
-        Column(verticalArrangement=Arrangement.spacedBy(5.dp)) {\n            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(5.dp)) {\n                OutlinedButton({if(start>0)start--},Modifier.weight(1f)){Text("Start −")}\n                OutlinedButton({if(start<end-1)start++},Modifier.weight(1f)){Text("Start +")}\n            }\n            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(5.dp)) {\n                OutlinedButton({if(end>start+1)end--},Modifier.weight(1f)){Text("End −")}\n                OutlinedButton({if(end<24)end++},Modifier.weight(1f)){Text("End +")}\n            }\n        }
+        Column(verticalArrangement=Arrangement.spacedBy(5.dp)) {
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                OutlinedButton({if(start>0)start--},Modifier.weight(1f)){Text("Start −")}
+                OutlinedButton({if(start<end-1)start++},Modifier.weight(1f)){Text("Start +")}
+            }
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                OutlinedButton({if(end>start+1)end--},Modifier.weight(1f)){Text("End −")}
+                OutlinedButton({if(end<24)end++},Modifier.weight(1f)){Text("End +")}
+            }
+        }
     }},confirmButton={Button({if(chosen.isNotEmpty()){store.setScheduleDays(allDays.filter{it in chosen});store.setScheduleHours(start,end)};done()}){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})}
 @Composable
 fun HomeAppearanceDialog(store: LocalStore, theme: String, setTheme: (String) -> Unit, done: () -> Unit) {
