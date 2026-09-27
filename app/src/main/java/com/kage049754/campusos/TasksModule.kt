@@ -1,7 +1,6 @@
 package com.kage049754.campusos
 
 import android.app.DatePickerDialog
-import android.app.TimePickerDialog
 import android.content.Context
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -366,7 +365,6 @@ private fun SimpleTaskCard(
 private fun SimpleTaskEditor(store: LocalStore, existing: Record?, selectedDate: String, done: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var title by remember { mutableStateOf(existing?.title ?: "") }
-    var description by remember { mutableStateOf(existing?.subtitle ?: "") }
     var date by remember { mutableStateOf(existing?.dueDate?.takeIf { it.isNotBlank() } ?: selectedDate) }
     var dueTime by remember { mutableStateOf(existing?.dueTime?.takeIf { it.isNotBlank() } ?: "23:59") }
     var subjectId by remember { mutableLongStateOf(existing?.subjectId ?: 0L) }
@@ -376,62 +374,127 @@ private fun SimpleTaskEditor(store: LocalStore, existing: Record?, selectedDate:
         onDismissRequest = done,
         title = { Text(if (existing == null) "Add Task" else "Edit Task") },
         text = {
-            Column(Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text("Task / To-do") }, singleLine = true)
-                OutlinedTextField(description, { description = it }, Modifier.fillMaxWidth(), label = { Text("Description (optional)") }, minLines = 2)
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Text("Subject", fontWeight = FontWeight.SemiBold)
                 if (subjects.isEmpty()) {
-                    Text("No subjects yet. You can still save this task without a subject.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("No subjects available.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilterChip(subjectId == 0L, { subjectId = 0L }, label = { Text("None") })
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         subjects.forEach { subject ->
-                            FilterChip(subjectId == subject.id, { subjectId = subject.id }, label = { Text(subject.title) })
-                        }
-                    }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (existing == null) {
-                        Surface(
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(10.dp),
-                            tonalElevation = 1.dp
-                        ) {
-                            Text(
-                                "Date: " + dateLabel(date),
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp),
-                                style = MaterialTheme.typography.labelLarge
+                            FilterChip(
+                                selected = subjectId == subject.id,
+                                onClick = { subjectId = subject.id },
+                                label = { Text(subject.title) },
+                                modifier = Modifier.fillMaxWidth()
                             )
                         }
-                    } else {
-                        Button(onClick = {
-                            val c = Calendar.getInstance().apply { time = taskDateFormat().parse(date) ?: Date() }
-                            DatePickerDialog(context, { _, y, m, d -> date = "%04d-%02d-%02d".format(y, m + 1, d) }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show()
-                        }, Modifier.weight(1f)) { Text("Date") }
                     }
-                    Button(onClick = {
-                        val c = Calendar.getInstance()
-                        c.set(Calendar.HOUR_OF_DAY, dueTime.substringBefore(":").toIntOrNull() ?: 23)
-                        c.set(Calendar.MINUTE, dueTime.substringAfter(":").toIntOrNull() ?: 59)
-                        TimePickerDialog(context, { _, h, m -> dueTime = "%02d:%02d".format(h, m) }, c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE), true).show()
-                    }, Modifier.weight(1f)) { Text(dueTime) }
                 }
-                Text("Due: " + dateLabel(date), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    Modifier.fillMaxWidth(),
+                    label = { Text("Note") },
+                    placeholder = { Text("Type what you want to remember...") },
+                    minLines = 4,
+                    maxLines = 7
+                )
+
+                Text("Time", fontWeight = FontWeight.SemiBold)
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        showAlarmTimePicker(context, dueTime) { picked -> dueTime = picked }
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    tonalElevation = 2.dp
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Alarm, contentDescription = null)
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Alarm time", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                formatAlarmTime(dueTime),
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = "Pick time")
+                    }
+                }
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    tonalElevation = 1.dp
+                ) {
+                    Text(
+                        "Date: " + dateLabel(date),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
             }
         },
         confirmButton = {
             Button(onClick = {
                 if (title.isNotBlank()) {
                     val list = store.get("tasks")
-                    val record = existing?.copy(title = title.trim(), subtitle = description.trim(), subjectId = subjectId, dueDate = date, dueTime = dueTime)
-                        ?: Record(id = nextRecordId(store, "tasks"), title = title.trim(), subtitle = description.trim(), subjectId = subjectId, dueDate = date, dueTime = dueTime)
+                    val record = existing?.copy(
+                        title = title.trim(),
+                        subtitle = "",
+                        subjectId = subjectId,
+                        dueDate = date,
+                        dueTime = dueTime
+                    ) ?: Record(
+                        id = nextRecordId(store, "tasks"),
+                        title = title.trim(),
+                        subtitle = "",
+                        subjectId = subjectId,
+                        dueDate = date,
+                        dueTime = dueTime
+                    )
                     store.put("tasks", if (existing == null) list + record else list.map { if (it.id == existing.id) record else it })
                     done()
                 }
-            }) { Text("Save Task") }
+            }) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = done) { Text("Cancel") } }
     )
+}
+
+private fun formatAlarmTime(value: String): String {
+    val h = value.substringBefore(":").toIntOrNull() ?: 23
+    val m = value.substringAfter(":").toIntOrNull() ?: 59
+    val am = h < 12
+    val hour = when {
+        h == 0 -> 12
+        h > 12 -> h - 12
+        else -> h
+    }
+    return "%d:%02d %s".format(hour, m, if (am) "AM" else "PM")
+}
+
+private fun showAlarmTimePicker(context: Context, current: String, onPicked: (String) -> Unit) {
+    val initial = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, current.substringBefore(":").toIntOrNull()?.coerceIn(0, 23) ?: 23)
+        set(Calendar.MINUTE, current.substringAfter(":").toIntOrNull()?.coerceIn(0, 59) ?: 59)
+    }
+    android.app.TimePickerDialog(
+        context,
+        { _, h, m -> onPicked("%02d:%02d".format(h, m)) },
+        initial.get(Calendar.HOUR_OF_DAY),
+        initial.get(Calendar.MINUTE),
+        false
+    ).show()
 }
 
 @Composable
