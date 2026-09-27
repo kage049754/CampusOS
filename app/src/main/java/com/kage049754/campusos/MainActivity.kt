@@ -1862,101 +1862,172 @@ fun InAppFileViewerPage(file: File, done: () -> Unit) {
     val activity = context as? Activity
     var page by rememberSaveable(file.absolutePath) { mutableIntStateOf(0) }
     var slide by rememberSaveable(file.absolutePath) { mutableIntStateOf(0) }
-    var fullscreen by rememberSaveable(file.absolutePath) { mutableStateOf(true) }
-    var landscape by rememberSaveable(file.absolutePath) { mutableStateOf(false) }
     val ext = fileExtension(file)
-    DisposableEffect(file.absolutePath) {
-        onDispose {
-            activity?.window?.decorView?.systemUiVisibility = 0
-            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        }
-    }
-    fun toggleFullscreen() {
-        fullscreen = !fullscreen
-        activity?.window?.decorView?.systemUiVisibility = if (fullscreen)
-            android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-        else 0
-    }
-    fun toggleOrientation() {
-        landscape = !landscape
-        activity?.requestedOrientation = if (landscape) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-    }
+
     LaunchedEffect(file.absolutePath) {
-        val metrics = context.resources.displayMetrics
-        activity?.requestedOrientation = if (metrics.widthPixels > metrics.heightPixels) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        activity?.window?.decorView?.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR
+        activity?.window?.decorView?.systemUiVisibility =
+            android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or
+            android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+            android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
     }
+
     DisposableEffect(file.absolutePath) {
         onDispose {
             activity?.window?.decorView?.systemUiVisibility = 0
             activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
-    Column(Modifier.fillMaxSize()) {
-        if (!fullscreen) {
-            TopAppBar(
-                title = { Column {
-                    Text(file.name, maxLines = 2, fontWeight = FontWeight.Bold)
-                    Text(when (ext) { "pdf" -> "PDF • Swipe left/right to change page"; "pptx","ppt" -> "Slides • Swipe left/right to change"; "docx" -> "Word • A4 reading layout"; else -> "Reading view" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }},
-                navigationIcon = { IconButton(onClick = done) { Icon(Icons.Default.ArrowBack, "Back") } },
-                actions = {
-                    IconButton(onClick = { toggleOrientation() }) { Icon(if (landscape) Icons.Default.ScreenLockPortrait else Icons.Default.ScreenLockLandscape, "Portrait or landscape") }
-                    IconButton(onClick = { toggleFullscreen() }) { Icon(Icons.Default.Fullscreen, "Full screen") }
-                }
-            )
-        }
+
+    Box(Modifier.fillMaxSize()) {
         when {
             ext == "pdf" -> {
-                val pageCount = remember(file) { runCatching { ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { d -> PdfRenderer(d).use { it.pageCount } } }.getOrDefault(0) }
+                val pageCount = remember(file) {
+                    runCatching {
+                        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { d ->
+                            PdfRenderer(d).use { it.pageCount }
+                        }
+                    }.getOrDefault(0)
+                }
                 if (pageCount > 0) {
                     val safePage = page.coerceIn(0, pageCount - 1)
-                    Column(Modifier.fillMaxSize()) {
-                        Box(Modifier.fillMaxWidth().weight(1f).pointerInput(page, pageCount) {
+                    Box(
+                        Modifier.fillMaxSize().pointerInput(page, pageCount) {
                             var dragTotal = 0f
-                            detectHorizontalDragGestures(onHorizontalDrag = { _, amount -> dragTotal += amount }, onDragEnd = {
-                                if (dragTotal < -70f && page < pageCount - 1) page++ else if (dragTotal > 70f && page > 0) page--
-                                dragTotal = 0f
-                            }, onDragCancel = { dragTotal = 0f })
-                        }, contentAlignment = Alignment.Center) {
-                            renderPdfPage(file, safePage)?.let { bitmap -> Image(bitmap.asImageBitmap(), file.name, Modifier.fillMaxSize().padding(if (fullscreen) 0.dp else 6.dp), contentScale = ContentScale.Fit) } ?: EmptyCard("Unable to render this PDF.")
-                        }
-                        Surface(tonalElevation = 3.dp) {
-                            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("Page ${safePage + 1} / $pageCount", fontWeight = FontWeight.SemiBold)
-                                Row { IconButton({ if (page > 0) page-- }, enabled = page > 0) { Icon(Icons.Default.ChevronLeft, "Previous page") }; IconButton({ if (page < pageCount - 1) page++ }, enabled = page < pageCount - 1) { Icon(Icons.Default.ChevronRight, "Next page") }; if (fullscreen) IconButton({ toggleFullscreen() }) { Icon(Icons.Default.FullscreenExit, "Exit full screen") } }
-                            }
-                        }
+                            detectHorizontalDragGestures(
+                                onHorizontalDrag = { _, amount -> dragTotal += amount },
+                                onDragEnd = {
+                                    if (dragTotal < -70f && page < pageCount - 1) page++
+                                    else if (dragTotal > 70f && page > 0) page--
+                                    dragTotal = 0f
+                                },
+                                onDragCancel = { dragTotal = 0f }
+                            )
+                        },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        renderPdfPage(file, safePage)?.let { bitmap ->
+                            Image(
+                                bitmap.asImageBitmap(),
+                                file.name,
+                                Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit
+                            )
+                        } ?: EmptyCard("Unable to render this PDF.")
                     }
-                } else EmptyCard("Unable to open this PDF.")
+                    ViewerBackButton(done)
+                    ViewerPageIndicator(safePage + 1, pageCount)
+                } else {
+                    EmptyCard("Unable to open this PDF.")
+                    ViewerBackButton(done)
+                }
             }
             ext == "pptx" || ext == "ppt" -> {
                 val slides = remember(file) { readOfficeSlides(file) }
                 if (slides.isNotEmpty()) {
                     val safeSlide = slide.coerceIn(0, slides.lastIndex)
-                    Column(Modifier.fillMaxSize()) {
-                        Box(Modifier.fillMaxWidth().weight(1f).padding(if (fullscreen) 0.dp else 10.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(if (fullscreen) 0.dp else 16.dp)).pointerInput(slide, slides.size) {
+                    Box(
+                        Modifier.fillMaxSize().pointerInput(slide, slides.size) {
                             var dragTotal = 0f
-                            detectHorizontalDragGestures(onHorizontalDrag = { _, amount -> dragTotal += amount }, onDragEnd = {
-                                if (dragTotal < -70f && slide < slides.lastIndex) slide++ else if (dragTotal > 70f && slide > 0) slide--
-                                dragTotal = 0f
-                            }, onDragCancel = { dragTotal = 0f })
-                        }, contentAlignment = Alignment.Center) { Text(slides[safeSlide].ifBlank { "Blank slide" }, Modifier.padding(24.dp), style = MaterialTheme.typography.titleMedium) }
-                        Surface(tonalElevation = 3.dp) { Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Slide ${safeSlide + 1} / ${slides.size}", fontWeight = FontWeight.SemiBold); Row { IconButton({ if (slide > 0) slide-- }, enabled = slide > 0) { Icon(Icons.Default.ChevronLeft, "Previous slide") }; IconButton({ if (slide < slides.lastIndex) slide++ }, enabled = slide < slides.lastIndex) { Icon(Icons.Default.ChevronRight, "Next slide") } } } }
+                            detectHorizontalDragGestures(
+                                onHorizontalDrag = { _, amount -> dragTotal += amount },
+                                onDragEnd = {
+                                    if (dragTotal < -70f && slide < slides.lastIndex) slide++
+                                    else if (dragTotal > 70f && slide > 0) slide--
+                                    dragTotal = 0f
+                                },
+                                onDragCancel = { dragTotal = 0f }
+                            )
+                        },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            slides[safeSlide].ifBlank { "Blank slide" },
+                            Modifier.padding(24.dp),
+                            style = MaterialTheme.typography.titleMedium
+                        )
                     }
-                } else EmptyCard("Unable to read this PowerPoint offline.")
+                    ViewerBackButton(done)
+                    ViewerPageIndicator(safeSlide + 1, slides.size)
+                } else {
+                    EmptyCard("Unable to read this PowerPoint offline.")
+                    ViewerBackButton(done)
+                }
             }
             ext == "docx" -> {
-                val text = remember(file) { readOfficeText(file) ?: "No readable text was found in this Word document." }
-                LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, contentPadding = PaddingValues(vertical = 16.dp)) {
-                    item { Card(Modifier.fillMaxWidth().widthIn(max = 794.dp), shape = RoundedCornerShape(6.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) { Column(Modifier.padding(horizontal = 36.dp, vertical = 42.dp)) { Text("A4 PRINT LAYOUT", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold); HorizontalDivider(Modifier.padding(vertical = 12.dp)); Text(text, style = MaterialTheme.typography.bodyLarge, lineHeight = 25.sp) } } }
+                val text = remember(file) {
+                    readOfficeText(file) ?: "No readable text was found in this Word document."
                 }
+                LazyColumn(
+                    Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    contentPadding = PaddingValues(vertical = 16.dp)
+                ) {
+                    item {
+                        Card(
+                            Modifier.fillMaxWidth().widthIn(max = 794.dp),
+                            shape = RoundedCornerShape(6.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(Modifier.padding(horizontal = 36.dp, vertical = 42.dp)) {
+                                Text("A4 PRINT LAYOUT", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                HorizontalDivider(Modifier.padding(vertical = 12.dp))
+                                Text(text, style = MaterialTheme.typography.bodyLarge, lineHeight = 25.sp)
+                            }
+                        }
+                    }
+                }
+                ViewerBackButton(done)
             }
             else -> {
                 val text = remember(file) { readDisplayText(file) }
-                LazyColumn(Modifier.fillMaxSize().padding(20.dp)) { item { Card(Modifier.fillMaxWidth()) { Text(text, Modifier.padding(20.dp), style = MaterialTheme.typography.bodyLarge, lineHeight = 25.sp) } } }
+                LazyColumn(Modifier.fillMaxSize().padding(20.dp)) {
+                    item {
+                        Card(Modifier.fillMaxWidth()) {
+                            Text(text, Modifier.padding(20.dp), style = MaterialTheme.typography.bodyLarge, lineHeight = 25.sp)
+                        }
+                    }
+                }
+                ViewerBackButton(done)
             }
         }
+    }
+}
+
+@Composable
+private fun ViewerBackButton(done: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .padding(start = 10.dp, top = 10.dp)
+            .size(42.dp)
+            .align(Alignment.TopStart)
+            .clickable(onClick = done),
+        shape = RoundedCornerShape(50),
+        color = Color.Black.copy(alpha = 0.28f),
+        contentColor = Color.White
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.ViewerPageIndicator(current: Int, total: Int) {
+    Surface(
+        modifier = Modifier
+            .align(Alignment.TopCenter)
+            .padding(top = 10.dp),
+        shape = RoundedCornerShape(50),
+        color = Color.Black.copy(alpha = 0.28f),
+        contentColor = Color.White
+    ) {
+        Text(
+            "$current / $total",
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
 
