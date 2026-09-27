@@ -1273,9 +1273,10 @@ private fun mergeTodayClasses(records: List<Record>): List<Record> {
         val start = r.startTime.toHourOrNull()
         val sameSubject = previous?.title?.trim()?.equals(r.title.trim(), ignoreCase = true) == true
         val sameRoom = previous?.room?.trim()?.equals(r.room.trim(), ignoreCase = true) == true
+        val sameType = previous?.classType?.trim()?.equals(r.classType.trim(), ignoreCase = true) == true
         val consecutive = previousEnd != null && start != null && previousEnd == start
 
-        if (previous != null && sameSubject && sameRoom && consecutive) {
+        if (previous != null && sameSubject && sameRoom && sameType && consecutive) {
             out[out.lastIndex] = previous.copy(
                 endTime = r.endTime,
                 classType = if (previous.classType.equals(r.classType, true)) previous.classType else "Lecture + Lab"
@@ -2329,7 +2330,7 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
                     )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Started at ${r.startTime}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("Ends in \$remaining min", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        Text("Ends in $remaining min", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                     }
                     Text(
                         "Duration: ${formatClassDuration(duration)}",
