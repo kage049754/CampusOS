@@ -997,6 +997,26 @@ fun HomeTileSettingsDialog(
         confirmButton = { TextButton(onClick = done) { Text("Done") } }
     )
 }
+private fun String.toMinutesOrNull(): Int? {
+    val parts = trim().split(":")
+    if (parts.size != 2) return null
+    val hour = parts[0].toIntOrNull() ?: return null
+    val minute = parts[1].toIntOrNull() ?: return null
+    if (hour !in 0..23 || minute !in 0..59) return null
+    return hour * 60 + minute
+}
+
+private fun formatClassDuration(totalMinutes: Int): String {
+    val minutes = totalMinutes.coerceAtLeast(0)
+    val hours = minutes / 60
+    val remainder = minutes % 60
+    return when {
+        hours > 0 && remainder > 0 -> "${hours}h ${remainder}m"
+        hours > 0 -> "${hours}h"
+        else -> "${remainder}m"
+    }
+}
+
 private fun formatClassCountdown(totalMinutes: Int): String {
     val minutes = totalMinutes.coerceAtLeast(0)
     val hours = minutes / 60
