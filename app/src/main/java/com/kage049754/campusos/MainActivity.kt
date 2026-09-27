@@ -337,7 +337,7 @@ class MainActivity : ComponentActivity() {
 }
 
 enum class Screen(val label: String) {
-    HOME("Home"), SCHEDULE("Schedule"), TASKS("Tasks"), ACADEMICS("Academics"),
+    HOME("Home"), SCHEDULE("Schedule"), TASKS("Notes"), ACADEMICS("Academics"),
     FILES("Files"), SETTINGS("Settings")
 }
 
@@ -538,7 +538,7 @@ fun HomeSettingsDialog(onModule:(String)->Unit,onAppearance:()->Unit,done:()->Un
     AlertDialog(onDismissRequest=done,title={Text("CampusOS Settings")},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
         Text("Choose a module",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
         Text("Open the dedicated settings for each part of CampusOS.",color=MaterialTheme.colorScheme.onSurfaceVariant)
-        listOf("Homepage" to Icons.Default.Home,"Schedule" to Icons.Default.CalendarMonth,"Tasks" to Icons.Default.CheckCircle,"Academics" to Icons.Default.School).forEach{(name,icon)->OutlinedButton({onModule(name)},Modifier.fillMaxWidth()){Icon(icon,null);Spacer(Modifier.width(8.dp));Text(name)}}
+        listOf("Homepage" to Icons.Default.Home,"Schedule" to Icons.Default.CalendarMonth,"Notes" to Icons.Default.CheckCircle,"Academics" to Icons.Default.School).forEach{(name,icon)->OutlinedButton({onModule(name)},Modifier.fillMaxWidth()){Icon(icon,null);Spacer(Modifier.width(8.dp));Text(name)}}
         HorizontalDivider()
         OutlinedButton(onAppearance,Modifier.fillMaxWidth()){Icon(Icons.Default.Palette,null);Spacer(Modifier.width(8.dp));Text("Appearance & Design")}
     }},confirmButton={TextButton(done){Text("Close")}})
@@ -560,7 +560,7 @@ fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleM
                 OutlinedButton(profile,Modifier.fillMaxWidth()){Icon(Icons.Default.Person,null);Spacer(Modifier.width(8.dp));Text("Profile & homepage information")}
             }
             "Schedule"->{Text("Schedule controls",fontWeight=FontWeight.Bold);OutlinedButton(addClass,Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Spacer(Modifier.width(8.dp));Text("Add Class")};OutlinedButton(scheduleManager,Modifier.fillMaxWidth()){Icon(Icons.Default.EditCalendar,null);Spacer(Modifier.width(8.dp));Text("Edit / Delete Classes")};OutlinedButton(scheduleSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.CalendarMonth,null);Spacer(Modifier.width(8.dp));Text("Class Schedule Settings")};OutlinedButton(tableSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.TableView,null);Spacer(Modifier.width(8.dp));Text("Schedule Table Settings")}}
-            "Tasks"->{Text("Task controls",fontWeight=FontWeight.Bold);Text("Simple calendar and to-do tasks stored offline.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openTasks,Modifier.fillMaxWidth()){Icon(Icons.Default.CheckCircle,null);Spacer(Modifier.width(8.dp));Text("Open Tasks")};OutlinedButton({ showTaskSettings = true },Modifier.fillMaxWidth()){Icon(Icons.Default.Settings,null);Spacer(Modifier.width(8.dp));Text("Task Settings")}}
+            "Tasks"->{Text("Note controls",fontWeight=FontWeight.Bold);Text("Simple calendar and notes stored offline.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openTasks,Modifier.fillMaxWidth()){Icon(Icons.Default.CheckCircle,null);Spacer(Modifier.width(8.dp));Text("Open Notes")};OutlinedButton({ showTaskSettings = true },Modifier.fillMaxWidth()){Icon(Icons.Default.Settings,null);Spacer(Modifier.width(8.dp));Text("Notes Settings")}}
             "Academics"->{Text("Academics controls",fontWeight=FontWeight.Bold);Text("Subjects, Notepad, and Lecture Files are stored offline. Use the Academics screen to manage them.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openAcademics,Modifier.fillMaxWidth()){Icon(Icons.Default.School,null);Spacer(Modifier.width(8.dp));Text("Open Academics")}}
         }
     }},confirmButton={TextButton(close){Text("Close")}})
@@ -789,7 +789,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit, editRequest: Int = 0) {
                         "stats" -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             StatCard("Classes", mergedSchedule.size.toString(), Modifier.weight(1f))
                             StatCard("Subjects", subjects.size.toString(), Modifier.weight(1f))
-                            StatCard("Tasks", tasks.count { !it.done }.toString(), Modifier.weight(1f))
+                            StatCard("Notes", tasks.count { !it.done }.toString(), Modifier.weight(1f))
                         }
                         "classes" -> HomeClassesTile(todaySchedule)
                         "pinned" -> HomePinnedTile(pinnedTasks)
@@ -812,8 +812,8 @@ fun HomeTileSettingsDialog(
         "profile" to "Profile / Welcome",
         "stats" to "Statistics",
         "classes" to "Today's Classes",
-        "pinned" to "Pinned Tasks",
-        "tasks" to "Tasks to Do",
+        "pinned" to "Pinned Notes",
+        "tasks" to "Notes",
     )
     AlertDialog(
         onDismissRequest = done,
@@ -1717,7 +1717,7 @@ fun TaskDateDialog(
                 ) {
                     Icon(Icons.Default.Add, null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Add task to this date")
+                    Text("Add note to this date")
                 }
             }
         }
@@ -1725,7 +1725,7 @@ fun TaskDateDialog(
 
     if (showAdd) {
         AddRecordDialog(
-            label = "Task",
+            label = "Note",
             key = "tasks",
             store = store,
             done = {
@@ -2351,7 +2351,7 @@ private fun formatSize(size: Long) = when {
 
 @Composable
 fun ModuleBackupDialog(title:String, selected:Set<String>, onSelected:(Set<String>)->Unit, done:()->Unit) {
-    val modules=listOf("homepage" to "Homepage","schedule" to "Schedule","tasks" to "Tasks","academics" to "Academics / Lessons")
+    val modules=listOf("homepage" to "Homepage","schedule" to "Schedule","tasks" to "Notes","academics" to "Academics / Lessons")
     AlertDialog(onDismissRequest=done,title={Text(title)},text={Column(verticalArrangement=Arrangement.spacedBy(4.dp)){
         Text("Check each module you want to transfer.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         modules.forEach{(id,label)->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Checkbox(id in selected,{onSelected(if(id in selected)selected-id else selected+id)});Text(label)}}
@@ -2386,7 +2386,7 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Notifications", fontWeight = FontWeight.Bold)
-                    Text("Get reminders before your next class and upcoming task deadlines.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Get reminders before your next class and upcoming notes.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text(if (notificationsOn && CampusReminders.notificationsEnabled(context)) "Enabled" else "Off")
                         Switch(
@@ -2444,12 +2444,12 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
                 }
             }
         }
-        item { Text("Tasks", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+        item { Text("Notes", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Assignments & To-do", fontWeight = FontWeight.Bold)
-                    Text("Manage tasks and deadlines from the Tasks screen.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Notes & Reminders", fontWeight = FontWeight.Bold)
+                    Text("Manage notes and reminders from the Notes screen.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
