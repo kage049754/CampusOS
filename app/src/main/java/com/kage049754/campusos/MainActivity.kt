@@ -1397,7 +1397,7 @@ fun EditScheduleRecordDialog(record: Record, store: LocalStore, done: () -> Unit
                         }
                         hours.forEach { h ->
                             Row {
-                                Box(Modifier.width(48.dp).height(52.dp).border(1.dp, MaterialTheme.colorScheme.outline), contentAlignment = Alignment.Center) { Text("%02d:00".format(h), style = MaterialTheme.typography.labelSmall) }
+                                Box(Modifier.width(48.dp).height(52.dp).border(1.dp, MaterialTheme.colorScheme.outline), contentAlignment = Alignment.Center) { Text(formatHourRange(h, h + 1), style = MaterialTheme.typography.labelSmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center, lineHeight = 12.sp) }
                                 days.forEach { d ->
                                     val key = "$d|$h"
                                     val selected = key == selectedSlot
@@ -1627,7 +1627,7 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                     weekDays.forEach{d->Box(Modifier.width(86.dp).height(32.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text(d.take(3),style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)}}
                 }
                 hours.forEach{h->Row{
-                    Box(Modifier.width(48.dp).height(52.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text("%02d:00".format(h),style=MaterialTheme.typography.labelSmall)}
+                    Box(Modifier.width(48.dp).height(52.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text(formatHourRange(h, h + 1),style=MaterialTheme.typography.labelSmall,textAlign=androidx.compose.ui.text.style.TextAlign.Center,lineHeight=12.sp)}
                     weekDays.forEach{d->
                         val currentKey="$d|$h|$classType"
                         val selected=currentKey in selectedSlots
