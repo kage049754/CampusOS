@@ -235,11 +235,12 @@ class CampusScheduleWidgetProvider : android.appwidget.AppWidgetProvider() {
         fun update(context: Context, manager: android.appwidget.AppWidgetManager, id: Int) {
             val v = android.widget.RemoteViews(context.packageName, R.layout.widget_schedule)
             val day = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date())
-            val rows = LocalStore(context).get("schedule")
-                .filter { it.day.equals(day, true) }
-                .sortedBy { it.startTime }
+            val rows = mergeAdjacentWidgetClasses(
+                LocalStore(context).get("schedule")
+                    .filter { it.day.equals(day, true) }
+            )
                 .take(5)
-                .joinToString("\n") { it.startTime + "  " + it.title + " (" + it.classType + ")" }
+                .joinToString("\n") { it.startTime + "–" + it.endTime + "  " + it.title + " (" + it.classType + ")" }
             v.setTextViewText(R.id.widget_title, "Today's Class Schedule")
             v.setTextViewText(R.id.widget_main, if (rows.isBlank()) "No classes today" else rows)
             v.setTextViewText(R.id.widget_secondary, day)
@@ -261,6 +262,42 @@ class CampusTaskWidgetProvider : android.appwidget.AppWidgetProvider() {
             v.setOnClickPendingIntent(R.id.widget_root, appOpenPendingIntent(context)); manager.updateAppWidget(id, v)
         }
     }
+}
+
+private fun widgetMinutes(value: String): Int? {
+    val parts = value.trim().split(":")
+    if (parts.size != 2) return null
+    val hour = parts[0].toIntOrNull() ?: return null
+    val minute = parts[1].toIntOrNull() ?: return null
+    if (hour !in 0..23 || minute !in 0..59) return null
+    return hour * 60 + minute
+}
+
+private fun mergeAdjacentWidgetClasses(records: List<Record>): List<Record> {
+    val sorted = records.sortedWith(
+        compareBy<Record>(
+            { widgetMinutes(it.startTime) ?: Int.MAX_VALUE },
+            { widgetMinutes(it.endTime) ?: Int.MAX_VALUE }
+        )
+    )
+    val out = mutableListOf<Record>()
+    for (r in sorted) {
+        val previous = out.lastOrNull()
+        val previousEnd = previous?.let { widgetMinutes(it.endTime) }
+        val start = widgetMinutes(r.startTime)
+        val sameSubject = previous?.title?.trim()?.equals(r.title.trim(), true) == true
+        val sameType = previous?.classType?.trim()?.equals(r.classType.trim(), true) == true
+        if (previous != null && previousEnd != null && start != null && previousEnd == start && sameSubject && sameType) {
+            out[out.lastIndex] = previous.copy(
+                endTime = r.endTime,
+                room = previous.room.ifBlank { r.room },
+                professor = previous.professor.ifBlank { r.professor }
+            )
+        } else {
+            out += r
+        }
+    }
+    return out
 }
 
 private fun nextClassText(store: LocalStore): String {
