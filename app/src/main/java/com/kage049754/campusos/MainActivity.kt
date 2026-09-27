@@ -284,8 +284,28 @@ class LocalStore(context: Context) {
     fun scheduleEndHour() = prefs.getInt("schedule_end_hour", 21)
     fun setScheduleHours(start: Int, end: Int) { prefs.edit().putInt("schedule_start_hour", start).putInt("schedule_end_hour", end).apply(); revision++; CampusReminders.reschedule(appContext); CampusWidgets.updateAll(appContext) }
     fun backupJson(selected: Set<String> = setOf("homepage","schedule","tasks","academics")): String {
-        val root = JSONObject()
-        if ("schedule" in selected) root.put("schedule", prefs.getString("schedule", "[]"))
+        val root = JSONObject().apply {
+            put("format", "CampusOS Backup")
+            put("version", 2)
+            put("createdAt", System.currentTimeMillis())
+            put("modules", JSONArray(selected.toList().sorted()))
+        }
+        if ("schedule" in selected) {
+            root.put("schedule", prefs.getString("schedule", "[]"))
+            root.put("scheduleDays", prefs.getString("schedule_days", "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday"))
+            root.put("scheduleDaysConfigured", prefs.getBoolean("schedule_days_configured", false))
+            root.put("scheduleStartHour", scheduleStartHour())
+            root.put("scheduleEndHour", scheduleEndHour())
+            root.put("scheduleDayHighlight", scheduleDayHighlight())
+            root.put("scheduleTimeHighlight", scheduleTimeHighlight())
+            root.put("scheduleTableBackground", scheduleTableBackground())
+            root.put("scheduleTableBorder", scheduleTableBorder())
+            root.put("scheduleTableHorizontalScroll", scheduleTableHorizontalScroll())
+            root.put("scheduleTableVerticalScroll", scheduleTableVerticalScroll())
+            root.put("scheduleTableFontSize", scheduleTableFontSize())
+            root.put("scheduleTableDayWidth", scheduleTableDayWidth())
+            root.put("scheduleTableRowHeight", scheduleTableRowHeight())
+        }
         if ("tasks" in selected) root.put("tasks", prefs.getString("tasks", "[]"))
         if ("academics" in selected) {
             root.put("subjects", prefs.getString("subjects", "[]"))
@@ -293,20 +313,40 @@ class LocalStore(context: Context) {
             prefs.all.filterKeys { it.startsWith("subject_notes_") }.forEach { (k,v) -> if (v is String) notes.put(k.removePrefix("subject_notes_"), v) }
             root.put("subjectNotes", notes)
             val files = JSONArray(); val dir = File(appContext.filesDir, "subject_files")
-            dir.walkTopDown().filter { it.isFile }.forEach { f ->
-                files.put(JSONObject().apply { put("path", f.relativeTo(dir).path); put("data", Base64.encodeToString(f.readBytes(), Base64.NO_WRAP)) })
+            dir.walkTopDown().filter { it.isFile }.forEach { file ->
+                files.put(JSONObject().apply { put("path", file.relativeTo(dir).path); put("data", Base64.encodeToString(file.readBytes(), Base64.NO_WRAP)) })
             }
             root.put("subjectFiles", files)
         }
         if ("homepage" in selected) {
             root.put("theme", theme()); root.put("lock", lockEnabled())
             root.put("profileName", profileName()); root.put("profileStudentId", profileStudentId()); root.put("profileSection", profileSection())
+            root.put("homeLayoutOrder", prefs.getString("home_layout_order", ""))
+            root.put("homeHiddenTiles", prefs.getString("home_hidden_tiles", ""))
         }
         return root.toString(2)
     }
+
     fun restoreJson(json: String, selected: Set<String> = setOf("homepage","schedule","tasks","academics")) {
-        val root = JSONObject(json); val e = prefs.edit()
-        if ("schedule" in selected && root.has("schedule")) e.putString("schedule", root.getString("schedule"))
+        val root = JSONObject(json)
+        require(root.optString("format") == "CampusOS Backup") { "This is not a valid CampusOS backup file." }
+        val e = prefs.edit()
+        if ("schedule" in selected && root.has("schedule")) {
+            e.putString("schedule", root.getString("schedule"))
+            if (root.has("scheduleDays")) e.putString("schedule_days", root.getString("scheduleDays"))
+            if (root.has("scheduleDaysConfigured")) e.putBoolean("schedule_days_configured", root.getBoolean("scheduleDaysConfigured"))
+            if (root.has("scheduleStartHour")) e.putInt("schedule_start_hour", root.getInt("scheduleStartHour"))
+            if (root.has("scheduleEndHour")) e.putInt("schedule_end_hour", root.getInt("scheduleEndHour"))
+            if (root.has("scheduleDayHighlight")) e.putLong("schedule_day_highlight", root.getLong("scheduleDayHighlight"))
+            if (root.has("scheduleTimeHighlight")) e.putLong("schedule_time_highlight", root.getLong("scheduleTimeHighlight"))
+            if (root.has("scheduleTableBackground")) e.putLong("schedule_table_background", root.getLong("scheduleTableBackground"))
+            if (root.has("scheduleTableBorder")) e.putLong("schedule_table_border", root.getLong("scheduleTableBorder"))
+            if (root.has("scheduleTableHorizontalScroll")) e.putBoolean("schedule_table_horizontal_scroll", root.getBoolean("scheduleTableHorizontalScroll"))
+            if (root.has("scheduleTableVerticalScroll")) e.putBoolean("schedule_table_vertical_scroll", root.getBoolean("scheduleTableVerticalScroll"))
+            if (root.has("scheduleTableFontSize")) e.putFloat("schedule_table_font_size", root.getDouble("scheduleTableFontSize").toFloat())
+            if (root.has("scheduleTableDayWidth")) e.putFloat("schedule_table_day_width", root.getDouble("scheduleTableDayWidth").toFloat())
+            if (root.has("scheduleTableRowHeight")) e.putFloat("schedule_table_row_height", root.getDouble("scheduleTableRowHeight").toFloat())
+        }
         if ("tasks" in selected && root.has("tasks")) e.putString("tasks", root.getString("tasks"))
         if ("academics" in selected) {
             if (root.has("subjects")) e.putString("subjects", root.getString("subjects"))
@@ -318,10 +358,19 @@ class LocalStore(context: Context) {
             if (root.has("profileName")) e.putString("profile_name", root.getString("profileName"))
             if (root.has("profileStudentId")) e.putString("profile_student_id", root.getString("profileStudentId"))
             if (root.has("profileSection")) e.putString("profile_section", root.getString("profileSection"))
+            if (root.has("homeLayoutOrder")) e.putString("home_layout_order", root.getString("homeLayoutOrder"))
+            if (root.has("homeHiddenTiles")) e.putString("home_hidden_tiles", root.getString("homeHiddenTiles"))
         }
         if ("academics" in selected && root.has("subjectFiles")) {
-            val dir = File(appContext.filesDir, "subject_files"); dir.mkdirs(); val files = root.optJSONArray("subjectFiles") ?: JSONArray()
-            for (i in 0 until files.length()) runCatching { val o=files.getJSONObject(i); val target=File(dir,o.getString("path")); target.parentFile?.mkdirs(); target.writeBytes(Base64.decode(o.getString("data"),Base64.DEFAULT)) }
+            val dir = File(appContext.filesDir, "subject_files"); dir.mkdirs()
+            val files = root.optJSONArray("subjectFiles") ?: JSONArray()
+            for (i in 0 until files.length()) runCatching {
+                val o = files.getJSONObject(i)
+                val relative = o.getString("path").replace("\\", "/").removePrefix("/").replace("..", "_")
+                val target = File(dir, relative)
+                target.parentFile?.mkdirs()
+                target.writeBytes(Base64.decode(o.getString("data"), Base64.DEFAULT))
+            }
         }
         e.apply(); revision++; CampusReminders.reschedule(appContext); CampusWidgets.updateAll(appContext)
     }
@@ -2383,10 +2432,22 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
             CampusReminders.reschedule(context)
         }
     }
-    var backupMode by remember { mutableStateOf(false) }; var restoreMode by remember { mutableStateOf(false) }
-    var selectedModules by remember { mutableStateOf(setOf("schedule","academics")) }
-    val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri -> uri ?: return@rememberLauncherForActivityResult; context.contentResolver.openOutputStream(uri)?.use { it.write(store.backupJson(selectedModules).toByteArray()) } }
-    val restore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri ?: return@rememberLauncherForActivityResult; runCatching { context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { store.restoreJson(it.readText(), selectedModules) } } }
+    var backupMode by remember { mutableStateOf(false) }
+    var restoreMode by remember { mutableStateOf(false) }
+    var selectedModules by remember { mutableStateOf(setOf("homepage","schedule","tasks","academics")) }
+    var restoreError by remember { mutableStateOf("") }
+    val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { it.write(store.backupJson(selectedModules).toByteArray()) }
+        }
+    }
+    val restore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { store.restoreJson(it.readText(), selectedModules) }
+        }.onFailure { restoreError = it.message ?: "Unable to recover this backup file." }
+    }
 
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
@@ -2500,12 +2561,17 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("Backup & restore", fontWeight = FontWeight.Bold)
-                    Text("Export local data to JSON or restore it later.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Backup & Recovery", fontWeight = FontWeight.Bold)
+                    Text("Save a backup file or recover only the CampusOS modules you choose.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 10.dp)) {
-                        Button({ backupMode=true }) { Text("Backup") }
-                        OutlinedButton({ restoreMode=true }) { Text("Restore") }
+                        Button({ selectedModules = setOf("homepage","schedule","tasks","academics"); backupMode=true }) {
+                            Icon(Icons.Default.Backup, null); Spacer(Modifier.width(6.dp)); Text("Backup file")
+                        }
+                        OutlinedButton({ selectedModules = setOf("homepage","schedule","tasks","academics"); restoreError = ""; restoreMode=true }) {
+                            Icon(Icons.Default.Restore, null); Spacer(Modifier.width(6.dp)); Text("Recover")
+                        }
                     }
+                    Text("You can back up or recover Homepage, Schedule, Notes, or Academics/Lessons separately.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -2514,8 +2580,22 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
         item { Text("Transfer tip: select Schedule to share your timetable, or Academics / Lessons to share subjects, notes, and lecture files.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 
-    if (backupMode) ModuleBackupDialog("Choose modules to backup", selectedModules, { selectedModules=it }) { backupMode=false; if(selectedModules.isNotEmpty()) backup.launch("CampusOS-selected-backup.json") }
-    if (restoreMode) ModuleBackupDialog("Choose modules to restore", selectedModules, { selectedModules=it }) { restoreMode=false; if(selectedModules.isNotEmpty()) restore.launch(arrayOf("application/json","text/plain")) }
+    if (backupMode) ModuleBackupDialog("Choose modules to backup", selectedModules, { selectedModules=it }) {
+        backupMode=false
+        if(selectedModules.isNotEmpty()) backup.launch("CampusOS-backup.json")
+    }
+    if (restoreMode) ModuleBackupDialog("Choose modules to recover", selectedModules, { selectedModules=it }) {
+        restoreMode=false
+        if(selectedModules.isNotEmpty()) restore.launch(arrayOf("application/json","text/plain"))
+    }
+    if (restoreError.isNotBlank()) {
+        AlertDialog(
+            onDismissRequest = { restoreError = "" },
+            title = { Text("Recovery failed") },
+            text = { Text(restoreError) },
+            confirmButton = { TextButton(onClick = { restoreError = "" }) { Text("OK") } }
+        )
+    }
     if (showTableSettings) {
         ScheduleTableSettingsDialog(store) { showTableSettings = false }
     }
