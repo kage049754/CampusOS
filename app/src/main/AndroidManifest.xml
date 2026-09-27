@@ -20,6 +20,7 @@
             </intent-filter>
         </activity>
         <receiver android:name=".CampusReminderReceiver" android:exported="false"/>
+        <receiver android:name=".CampusWidgetTickReceiver" android:exported="false"/>
         <receiver android:name=".CampusBootReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
