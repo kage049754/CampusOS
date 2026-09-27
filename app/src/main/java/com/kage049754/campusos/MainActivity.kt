@@ -1619,21 +1619,22 @@ fun ScheduleHighlightColorDialog(store: LocalStore, done: () -> Unit) {
 fun String.toHourOrNull(): Int? = substringBefore(":").toIntOrNull()
 private fun formatHourRange(start: Int, end: Int) = "%02d:00\n%02d:00".format(start, end)
 private fun mergeTodayClasses(records: List<Record>): List<Record> {
-    // Consecutive periods merge only when subject, room, and class type all match.
-    // Lecture and Lab therefore remain separate even when subject/day/time are identical.
+    // Merge adjacent time slots for the same subject and class type.
+    // Example: 07:00–08:00 + 08:00–09:00 becomes one 07:00–09:00 class.
     val sorted = records.sortedWith(
-        compareBy<Record>({ it.startTime.toHourOrNull() ?: 99 }, { it.endTime.toHourOrNull() ?: 99 })
+        compareBy<Record>(
+            { it.startTime.toMinutesOrNull() ?: Int.MAX_VALUE },
+            { it.endTime.toMinutesOrNull() ?: Int.MAX_VALUE }
+        )
     )
     val out = mutableListOf<Record>()
-
     for (r in sorted) {
         val previous = out.lastOrNull()
-        val previousEnd = previous?.endTime?.toHourOrNull()
-        val start = r.startTime.toHourOrNull()
+        val previousEnd = previous?.endTime?.toMinutesOrNull()
+        val start = r.startTime.toMinutesOrNull()
         val sameSubject = previous?.title?.trim()?.equals(r.title.trim(), ignoreCase = true) == true
         val sameType = previous?.classType?.trim()?.equals(r.classType.trim(), ignoreCase = true) == true
         val consecutive = previousEnd != null && start != null && previousEnd == start
-
         if (previous != null && sameSubject && sameType && consecutive) {
             out[out.lastIndex] = previous.copy(
                 endTime = r.endTime,
@@ -1646,7 +1647,6 @@ private fun mergeTodayClasses(records: List<Record>): List<Record> {
     }
     return out
 }
-
 private fun deleteScheduleAndSync(store: LocalStore, classRecord: Record) {
     store.delete("schedule", classRecord.id)
     val remaining = store.get("schedule").any { it.title.equals(classRecord.title, true) }
@@ -2960,12 +2960,18 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
             }.sortedWith(
                 compareBy<Record> {
                     val end = it.endTime.toMinutesOrNull() ?: Int.MAX_VALUE
+                    // Completed classes are always placed after current/upcoming classes.
                     if (currentMinutes >= end) 1 else 0
                 }.thenBy { it.startTime.toMinutesOrNull() ?: Int.MAX_VALUE }
             )
             remaining.take(6).forEach{r->
                 val st=r.startTime.toMinutesOrNull();val en=r.endTime.toMinutesOrNull()
-                val status=when{st!=null&&en!=null&&currentMinutes>=en->"✓ Completed";st!=null->"Starts in ${formatClassCountdown((st-currentMinutes).coerceAtLeast(0))}";else->null}
+                val completed = st != null && en != null && currentMinutes >= en
+                val status=when {
+                    completed -> "✓ Completed"
+                    st != null -> "Starts in " + formatClassCountdown((st-currentMinutes).coerceAtLeast(0))
+                    else -> null
+                }
                 HomeTodayClassCard(r,status)
             }
         }
