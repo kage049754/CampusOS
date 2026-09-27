@@ -1322,6 +1322,7 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
     var classType by remember { mutableStateOf("Lecture") }
     var color by remember { mutableLongStateOf(0xFFE3F2FD) }
     var selectedSlots by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var removedSlots by remember { mutableStateOf<Set<String>>(emptySet()) }
     var refresh by remember { mutableIntStateOf(0) }
 
     val colors = listOf(0xFFE3F2FDL,0xFFE8F5E9L,0xFFFFF3E0L,0xFFF3E5F5L,0xFFFFEBEEL,0xFFE0F7FAL)
@@ -1355,6 +1356,7 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
                                         val hour = r.startTime.toMinutesOrNull()?.div(60) ?: 0
                                         r.day + "|" + hour to if (r.classType.equals("Lab", true)) "Lab" else "Lecture"
                                     }
+                                    removedSlots = emptySet()
                                     records.firstOrNull()?.let { first ->
                                         fullName = first.subtitle
                                         professor = first.professor
@@ -1379,7 +1381,7 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
                     }
                 }
                 Text("Pick class time(s) and day(s)", fontWeight = FontWeight.SemiBold)
-                Text("Tap an existing cell for this subject to remove that schedule. Tap an empty cell to add the selected type. Other subjects are locked and cannot be overwritten.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Text("Choose Lecture or Lab, then add/remove both types in this same screen. Tap this subject's cell to remove it, then tap the same cell again after choosing the new type. Other subjects are locked and cannot be overwritten.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 2.dp)) {
                     Column {
                         Row {
@@ -1407,9 +1409,19 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
                                             .background(if (selectedType != null) MaterialTheme.colorScheme.primaryContainer else if (sameSubject != null) MaterialTheme.colorScheme.secondaryContainer else if (otherSubject != null) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)
                                             .clickable {
                                                 when {
-                                                    sameSubject != null -> selectedSlots = selectedSlots - key
-                                                    cellRecords.isEmpty() -> selectedSlots = selectedSlots + (key to classType)
-                                                    else -> Unit
+                                                    otherSubject != null && cellRecords.isNotEmpty() -> Unit
+                                                    selectedType != null -> {
+                                                        selectedSlots = selectedSlots - key
+                                                        removedSlots = removedSlots + key
+                                                    }
+                                                    sameSubject != null && key !in removedSlots -> {
+                                                        selectedSlots = selectedSlots - key
+                                                        removedSlots = removedSlots + key
+                                                    }
+                                                    else -> {
+                                                        selectedSlots = selectedSlots + (key to classType)
+                                                        removedSlots = removedSlots - key
+                                                    }
                                                 }
                                             },
                                         contentAlignment = Alignment.Center
