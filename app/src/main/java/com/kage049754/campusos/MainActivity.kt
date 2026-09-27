@@ -2757,18 +2757,7 @@ fun PatternUnlockScreen(store: LocalStore, unlock: () -> Unit) {
     }
 }
 
-@Composable
-fun PatternGrid(selected: List<Int>, onPoint:(Int)->Unit, clear:()->Unit) {
-    Column(horizontalAlignment=Alignment.CenterHorizontally) {
-        for (row in 0..2) Row {
-            for (col in 0..2) {
-                val n=row*3+1+col
-                OutlinedButton({onPoint(n)}, Modifier.size(64.dp).padding(4.dp), contentPadding=PaddingValues(0.dp)) { Text(if(selected.contains(n)) "●" else "○", fontSize=22.sp) }
-            }
-        }
-        TextButton(clear) { Text("Clear") }
-    }
-}
+
 @Composable fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
     Card(modifier) { Column(Modifier.padding(14.dp)) { Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
 }
