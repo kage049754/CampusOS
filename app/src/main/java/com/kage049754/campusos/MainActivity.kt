@@ -20,10 +20,6 @@ import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -54,8 +50,6 @@ import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import java.io.File
 import java.util.zip.ZipFile
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 import javax.xml.parsers.DocumentBuilderFactory
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -1835,116 +1829,53 @@ fun SubjectLectureFilesPage(subject: Record, openFile: (String) -> Unit, done: (
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-
-private data class PdfStroke(val points: List<Offset>)
-private data class PdfTextMarkup(val x: Float, val y: Float, val text: String)
-
-private fun xmlEscapeText(value: String): String = value
-    .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    .replace("\"", "&quot;").replace("'", "&apos;")
-
-private fun saveDocxEditedText(source: File, editedText: String): File? = runCatching {
-    val out = File(source.parentFile, source.nameWithoutExtension + "_edited.docx")
-    val tmp = File(source.parentFile, source.nameWithoutExtension + "_edited.tmp")
-    ZipFile(source).use { zip ->
-        ZipOutputStream(tmp.outputStream()).use { zos ->
-            val originalXml = zip.getEntry("word/document.xml")?.let { e -> zip.getInputStream(e).bufferedReader().readText() } ?: error("Missing Word document XML")
-            val bodyRegex = Regex("(?s)<w:body[^>]*>.*?</w:body>")
-            val sect = Regex("(?s)<w:sectPr[^>]*>.*?</w:sectPr>").find(originalXml)?.value ?: "<w:sectPr/>"
-            val paragraphs = editedText.split("\n").joinToString("") { line ->
-                "<w:p><w:r><w:t xml:space=\"preserve\">\${xmlEscapeText(line)}</w:t></w:r></w:p>"
-            }
-            val documentXml = originalXml.replace(bodyRegex, "<w:body>$paragraphs$sect</w:body>")
-            zip.entries().asSequence().forEach { entry ->
-                val data = if (entry.name == "word/document.xml") documentXml.toByteArray(Charsets.UTF_8) else zip.getInputStream(entry).use { it.readBytes() }
-                zos.putNextEntry(ZipEntry(entry.name)); zos.write(data); zos.closeEntry()
-            }
-        }
-    }
-    if (out.exists()) out.delete()
-    check(tmp.renameTo(out)) { "Unable to finalize edited DOCX" }
-    out
-}.getOrNull()
-
-private fun savePdfWithMarkups(source: File, strokes: Map<Int, List<PdfStroke>>, texts: Map<Int, List<PdfTextMarkup>>): File? = runCatching {
-    val out = File(source.parentFile, source.nameWithoutExtension + "_edited.pdf")
-    val document = android.graphics.pdf.PdfDocument()
-    val descriptor = ParcelFileDescriptor.open(source, ParcelFileDescriptor.MODE_READ_ONLY)
-    PdfRenderer(descriptor).use { renderer ->
-        for (index in 0 until renderer.pageCount) {
-            renderer.openPage(index).use { page ->
-                val width=page.width*2; val height=page.height*2
-                val bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888); bitmap.eraseColor(android.graphics.Color.WHITE)
-                page.render(bitmap,null,null,PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
-                val canvas=android.graphics.Canvas(bitmap)
-                val pen=android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply{color=android.graphics.Color.rgb(30,90,220);style=android.graphics.Paint.Style.STROKE;strokeWidth=6f;strokeCap=android.graphics.Paint.Cap.ROUND;strokeJoin=android.graphics.Paint.Join.ROUND}
-                strokes[index].orEmpty().forEach{stroke->if(stroke.points.size>=2){val p=android.graphics.Path();stroke.points.forEachIndexed{i,point->val x=point.x*width;val y=point.y*height;if(i==0)p.moveTo(x,y)else p.lineTo(x,y)};canvas.drawPath(p,pen)}}
-                val textPaint=android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply{color=android.graphics.Color.rgb(30,90,220);textSize=42f}
-                texts[index].orEmpty().forEach{mark->canvas.drawText(mark.text,mark.x*width,mark.y*height,textPaint)}
-                val info=android.graphics.pdf.PdfDocument.PageInfo.Builder(width,height,index+1).create()
-                val outPage=document.startPage(info);outPage.canvas.drawBitmap(bitmap,0f,0f,null);document.finishPage(outPage);bitmap.recycle()
-            }
-        }
-    }
-    descriptor.close();out.outputStream().use{document.writeTo(it)};document.close();out
-}.getOrNull()
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InAppFileViewerPage(file: File, done: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val activity = context as? Activity
     var page by rememberSaveable(file.absolutePath) { mutableIntStateOf(0) }
     var slide by rememberSaveable(file.absolutePath) { mutableIntStateOf(0) }
-    var fullscreen by rememberSaveable(file.absolutePath) { mutableStateOf(false) }
+    var fullscreen by rememberSaveable(file.absolutePath) { mutableStateOf(true) }
     var landscape by rememberSaveable(file.absolutePath) { mutableStateOf(false) }
-    var editing by rememberSaveable(file.absolutePath) { mutableStateOf(false) }
-    var docText by remember(file.absolutePath) { mutableStateOf(readOfficeText(file) ?: "") }
-    var editDialogText by remember { mutableStateOf("") }
-    var showAddText by remember { mutableStateOf(false) }
-    var pendingTextPosition by remember { mutableStateOf(Offset(0.5f, 0.5f)) }
-    val pdfStrokes = remember(file.absolutePath) { mutableStateMapOf<Int, MutableList<PdfStroke>>() }
-    val pdfTexts = remember(file.absolutePath) { mutableStateMapOf<Int, MutableList<PdfTextMarkup>>() }
     val ext = fileExtension(file)
-    DisposableEffect(file.absolutePath) { onDispose {
-        activity?.window?.decorView?.systemUiVisibility = 0
-        activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-    }}
+    DisposableEffect(file.absolutePath) {
+        onDispose {
+            activity?.window?.decorView?.systemUiVisibility = 0
+            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
     fun toggleFullscreen() {
         fullscreen = !fullscreen
         activity?.window?.decorView?.systemUiVisibility = if (fullscreen)
-            android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY else 0
+            android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        else 0
     }
     fun toggleOrientation() {
         landscape = !landscape
         activity?.requestedOrientation = if (landscape) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
     }
-    fun saveCurrentEdit() {
-        when (ext) { "pdf" -> savePdfWithMarkups(file, pdfStrokes, pdfTexts); "docx" -> saveDocxEditedText(file, docText); else -> null }
+    LaunchedEffect(file.absolutePath) {
+        val metrics = context.resources.displayMetrics
+        activity?.requestedOrientation = if (metrics.widthPixels > metrics.heightPixels) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        activity?.window?.decorView?.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
     }
-    if (showAddText) {
-        AlertDialog(
-            onDismissRequest = { showAddText = false },
-            title = { Text("Add text") },
-            text = { OutlinedTextField(value = editDialogText, onValueChange = { editDialogText = it }, singleLine = false, label = { Text("Text") }, modifier = Modifier.fillMaxWidth()) },
-            confirmButton = { TextButton(onClick = {
-                if (editDialogText.isNotBlank()) pdfTexts.getOrPut(page) { mutableListOf() }.add(PdfTextMarkup(pendingTextPosition.x, pendingTextPosition.y, editDialogText.trim()))
-                editDialogText = ""; showAddText = false
-            }) { Text("Add") }},
-            dismissButton = { TextButton(onClick = { editDialogText = ""; showAddText = false }) { Text("Cancel") }}
-        )
+    DisposableEffect(file.absolutePath) {
+        onDispose {
+            activity?.window?.decorView?.systemUiVisibility = 0
+            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
     }
     Column(Modifier.fillMaxSize()) {
         if (!fullscreen) {
             TopAppBar(
-                title = { Column(Modifier.weight(1f)) {
-                    Text(file.name, maxLines = 1, fontWeight = FontWeight.Bold)
-                    Text(when (ext) { "pdf" -> "PDF"; "pptx","ppt" -> "PowerPoint"; "docx" -> "Word • A4 reading layout"; else -> "Reading view" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                title = { Column {
+                    Text(file.name, maxLines = 2, fontWeight = FontWeight.Bold)
+                    Text(when (ext) { "pdf" -> "PDF • Swipe left/right to change page"; "pptx","ppt" -> "Slides • Swipe left/right to change"; "docx" -> "Word • A4 reading layout"; else -> "Reading view" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }},
-                navigationIcon = { IconButton(onClick = done) { Icon(Icons.Default.ArrowBack, "Back") }},
+                navigationIcon = { IconButton(onClick = done) { Icon(Icons.Default.ArrowBack, "Back") } },
                 actions = {
-                    if (ext == "pdf" || ext == "docx") IconButton(onClick = { editing = !editing }) { Icon(if (editing) Icons.Default.EditOff else Icons.Default.Edit, if (editing) "Exit edit mode" else "Edit") }
-                    IconButton(onClick = { toggleFullscreen() }) { Icon(if (fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, if (fullscreen) "Exit full screen" else "Full screen") }
                     IconButton(onClick = { toggleOrientation() }) { Icon(if (landscape) Icons.Default.ScreenLockPortrait else Icons.Default.ScreenLockLandscape, "Portrait or landscape") }
+                    IconButton(onClick = { toggleFullscreen() }) { Icon(Icons.Default.Fullscreen, "Full screen") }
                 }
             )
         }
@@ -1954,57 +1885,50 @@ fun InAppFileViewerPage(file: File, done: () -> Unit) {
                 if (pageCount > 0) {
                     val safePage = page.coerceIn(0, pageCount - 1)
                     Column(Modifier.fillMaxSize()) {
-                        if (!fullscreen) Text("Page ${safePage + 1} / \$pageCount", style=MaterialTheme.typography.labelSmall, color=MaterialTheme.colorScheme.onSurfaceVariant, modifier=Modifier.align(Alignment.CenterHorizontally).padding(vertical=3.dp))
-                        Box(Modifier.fillMaxWidth().weight(1f).pointerInput(page,pageCount,editing){
-                            var dragTotal=0f
-                            detectHorizontalDragGestures(onHorizontalDrag={_,amount->if(!editing)dragTotal+=amount},onDragEnd={if(!editing){if(dragTotal< -70f&&page<pageCount-1)page++ else if(dragTotal>70f&&page>0)page--};dragTotal=0f},onDragCancel={dragTotal=0f})
-                        },contentAlignment=Alignment.Center){
-                            renderPdfPage(file,safePage)?.let{bitmap->Image(bitmap.asImageBitmap(),file.name,Modifier.fillMaxSize().padding(if(fullscreen)0.dp else 6.dp),contentScale=ContentScale.Fit)}?:EmptyCard("Unable to render this PDF.")
-                            if(editing){
-                                androidx.compose.foundation.Canvas(Modifier.fillMaxSize().padding(if(fullscreen)0.dp else 6.dp).pointerInput(safePage){
-                                    detectDragGesturesAfterLongPress(
-                                        onDragStart={offset->pdfStrokes.getOrPut(safePage){mutableListOf()}.add(PdfStroke(listOf(offset)))},
-                                        onDrag={change,_->change.consume();pdfStrokes[safePage]?.let{list->val last=list.last();list[list.lastIndex]=PdfStroke(last.points+change.position)}},
-                                        onDragEnd={},onDragCancel={}
-                                    )
-                                }.clickable{pendingTextPosition=Offset(0.5f,0.5f);showAddText=true}){
-                                    pdfStrokes[safePage].orEmpty().forEach{stroke->val path=Path();stroke.points.forEachIndexed{i,p->if(i==0)path.moveTo(p.x,p.y)else path.lineTo(p.x,p.y)};drawPath(path,Color(0xFF1E5AD8),style=Stroke(width=4.dp.toPx(),cap=StrokeCap.Round))}
-                                    
-                                }
-                            }
-                            pdfTexts[safePage].orEmpty().forEach { mark ->
-                                Text(mark.text, color = Color(0xFF1E5AD8), fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.Center))
+                        Box(Modifier.fillMaxWidth().weight(1f).pointerInput(page, pageCount) {
+                            var dragTotal = 0f
+                            detectHorizontalDragGestures(onHorizontalDrag = { _, amount -> dragTotal += amount }, onDragEnd = {
+                                if (dragTotal < -70f && page < pageCount - 1) page++ else if (dragTotal > 70f && page > 0) page--
+                                dragTotal = 0f
+                            }, onDragCancel = { dragTotal = 0f })
+                        }, contentAlignment = Alignment.Center) {
+                            renderPdfPage(file, safePage)?.let { bitmap -> Image(bitmap.asImageBitmap(), file.name, Modifier.fillMaxSize().padding(if (fullscreen) 0.dp else 6.dp), contentScale = ContentScale.Fit) } ?: EmptyCard("Unable to render this PDF.")
+                        }
+                        Surface(tonalElevation = 3.dp) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("Page ${safePage + 1} / $pageCount", fontWeight = FontWeight.SemiBold)
+                                Row { IconButton({ if (page > 0) page-- }, enabled = page > 0) { Icon(Icons.Default.ChevronLeft, "Previous page") }; IconButton({ if (page < pageCount - 1) page++ }, enabled = page < pageCount - 1) { Icon(Icons.Default.ChevronRight, "Next page") }; if (fullscreen) IconButton({ toggleFullscreen() }) { Icon(Icons.Default.FullscreenExit, "Exit full screen") } }
                             }
                         }
                     }
                 } else EmptyCard("Unable to open this PDF.")
             }
             ext == "pptx" || ext == "ppt" -> {
-                val slides=remember(file){readOfficeSlides(file)}
-                if(slides.isNotEmpty()){
-                    val safeSlide=slide.coerceIn(0,slides.lastIndex)
-                    Column(Modifier.fillMaxSize()){
-                        if(!fullscreen)Text("Slide ${safeSlide + 1} / ${slides.size}",style=MaterialTheme.typography.labelSmall,modifier=Modifier.align(Alignment.CenterHorizontally).padding(3.dp))
-                        Box(Modifier.fillMaxWidth().weight(1f).padding(if(fullscreen)0.dp else 10.dp).background(MaterialTheme.colorScheme.surfaceVariant,RoundedCornerShape(if(fullscreen)0.dp else 16.dp)).pointerInput(slide,slides.size){
-                            var dragTotal=0f
-                            detectHorizontalDragGestures(onHorizontalDrag={_,amount->dragTotal+=amount},onDragEnd={if(dragTotal< -70f&&slide<slides.lastIndex)slide++ else if(dragTotal>70f&&slide>0)slide--;dragTotal=0f},onDragCancel={dragTotal=0f})
-                        },contentAlignment=Alignment.Center){Text(slides[safeSlide].ifBlank{"Blank slide"},Modifier.padding(24.dp),style=MaterialTheme.typography.titleMedium)}
+                val slides = remember(file) { readOfficeSlides(file) }
+                if (slides.isNotEmpty()) {
+                    val safeSlide = slide.coerceIn(0, slides.lastIndex)
+                    Column(Modifier.fillMaxSize()) {
+                        Box(Modifier.fillMaxWidth().weight(1f).padding(if (fullscreen) 0.dp else 10.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(if (fullscreen) 0.dp else 16.dp)).pointerInput(slide, slides.size) {
+                            var dragTotal = 0f
+                            detectHorizontalDragGestures(onHorizontalDrag = { _, amount -> dragTotal += amount }, onDragEnd = {
+                                if (dragTotal < -70f && slide < slides.lastIndex) slide++ else if (dragTotal > 70f && slide > 0) slide--
+                                dragTotal = 0f
+                            }, onDragCancel = { dragTotal = 0f })
+                        }, contentAlignment = Alignment.Center) { Text(slides[safeSlide].ifBlank { "Blank slide" }, Modifier.padding(24.dp), style = MaterialTheme.typography.titleMedium) }
+                        Surface(tonalElevation = 3.dp) { Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Slide ${safeSlide + 1} / ${slides.size}", fontWeight = FontWeight.SemiBold); Row { IconButton({ if (slide > 0) slide-- }, enabled = slide > 0) { Icon(Icons.Default.ChevronLeft, "Previous slide") }; IconButton({ if (slide < slides.lastIndex) slide++ }, enabled = slide < slides.lastIndex) { Icon(Icons.Default.ChevronRight, "Next slide") } } } }
                     }
-                }else EmptyCard("Unable to read this PowerPoint offline.")
+                } else EmptyCard("Unable to read this PowerPoint offline.")
             }
             ext == "docx" -> {
-                if(editing){
-                    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant).padding(12.dp),horizontalAlignment=Alignment.CenterHorizontally){
-                        OutlinedTextField(value=docText,onValueChange={docText=it},modifier=Modifier.fillMaxWidth().weight(1f).widthIn(max=794.dp),textStyle=MaterialTheme.typography.bodyLarge.copy(lineHeight=25.sp),label={Text("Edit document text")})
-                        Row(Modifier.fillMaxWidth().widthIn(max=794.dp),horizontalArrangement=Arrangement.End){TextButton(onClick={saveCurrentEdit()}){Text("Save as DOCX")}}
-                    }
-                }else{
-                    LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal=12.dp),horizontalAlignment=Alignment.CenterHorizontally,contentPadding=PaddingValues(vertical=16.dp)){
-                        item{Card(Modifier.fillMaxWidth().widthIn(max=794.dp),shape=RoundedCornerShape(6.dp),elevation=CardDefaults.cardElevation(defaultElevation=2.dp)){Column(Modifier.padding(horizontal=36.dp,vertical=42.dp)){Text("A4 PRINT LAYOUT",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold);HorizontalDivider(Modifier.padding(vertical=12.dp));Text(docText,style=MaterialTheme.typography.bodyLarge,lineHeight=25.sp)}}}
-                    }
+                val text = remember(file) { readOfficeText(file) ?: "No readable text was found in this Word document." }
+                LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, contentPadding = PaddingValues(vertical = 16.dp)) {
+                    item { Card(Modifier.fillMaxWidth().widthIn(max = 794.dp), shape = RoundedCornerShape(6.dp), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) { Column(Modifier.padding(horizontal = 36.dp, vertical = 42.dp)) { Text("A4 PRINT LAYOUT", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold); HorizontalDivider(Modifier.padding(vertical = 12.dp)); Text(text, style = MaterialTheme.typography.bodyLarge, lineHeight = 25.sp) } } }
                 }
             }
-            else->{val text=remember(file){readDisplayText(file)};LazyColumn(Modifier.fillMaxSize().padding(20.dp)){item{Card(Modifier.fillMaxWidth()){Text(text,Modifier.padding(20.dp),style=MaterialTheme.typography.bodyLarge,lineHeight=25.sp)}}}}
+            else -> {
+                val text = remember(file) { readDisplayText(file) }
+                LazyColumn(Modifier.fillMaxSize().padding(20.dp)) { item { Card(Modifier.fillMaxWidth()) { Text(text, Modifier.padding(20.dp), style = MaterialTheme.typography.bodyLarge, lineHeight = 25.sp) } } }
+            }
         }
     }
 }
