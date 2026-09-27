@@ -222,7 +222,7 @@ private fun TaskDateWindow(
                         }
                     }
                 }
-                Button(onClick = onAdd, modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = { showEditor = true }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.Add, null)
                     Spacer(Modifier.width(8.dp))
                     Text("Add task to this date")
