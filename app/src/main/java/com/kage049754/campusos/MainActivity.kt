@@ -1257,20 +1257,29 @@ fun ScheduleHighlightColorDialog(store: LocalStore, done: () -> Unit) {
 }
 
 fun String.toHourOrNull(): Int? = substringBefore(":").toIntOrNull()
-private fun formatHourRange(start: Int, end: Int) = "%02d:00-%02d:00".format(start, end)
+private fun formatHourRange(start: Int, end: Int) = "%02d:00\n%02d:00".format(start, end)
 private fun mergeTodayClasses(records: List<Record>): List<Record> {
-    // Same subject + consecutive time on the same day = one class.
-    // Any vacant/gap period starts a separate class, even for the same subject.
-    val sorted = records.sortedBy { it.startTime.toHourOrNull() ?: 99 }
+    // One homepage class may contain consecutive periods when the subject and room match.
+    // Lecture + Lab are intentionally combined when they are back-to-back.
+    // Any vacant period or room change starts a separate class.
+    val sorted = records.sortedWith(
+        compareBy<Record>({ it.startTime.toHourOrNull() ?: 99 }, { it.endTime.toHourOrNull() ?: 99 })
+    )
     val out = mutableListOf<Record>()
+
     for (r in sorted) {
         val previous = out.lastOrNull()
         val previousEnd = previous?.endTime?.toHourOrNull()
         val start = r.startTime.toHourOrNull()
         val sameSubject = previous?.title?.trim()?.equals(r.title.trim(), ignoreCase = true) == true
+        val sameRoom = previous?.room?.trim()?.equals(r.room.trim(), ignoreCase = true) == true
         val consecutive = previousEnd != null && start != null && previousEnd == start
-        if (previous != null && sameSubject && consecutive) {
-            out[out.lastIndex] = previous.copy(endTime = r.endTime)
+
+        if (previous != null && sameSubject && sameRoom && consecutive) {
+            out[out.lastIndex] = previous.copy(
+                endTime = r.endTime,
+                classType = if (previous.classType.equals(r.classType, true)) previous.classType else "Lecture + Lab"
+            )
         } else {
             out += r
         }
@@ -2300,19 +2309,19 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
                     }
                     Text(r.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     if (r.room.isNotBlank()) {
-                        Text("Room \${r.room}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Room ${r.room}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     }
-                    Text("\${r.startTime}–\${r.endTime}", style = MaterialTheme.typography.bodyMedium)
+                    Text("${r.startTime}–${r.endTime}", style = MaterialTheme.typography.bodyMedium)
                     LinearProgressIndicator(
                         progress = { progress },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Started at \${r.startTime}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Started at ${r.startTime}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("Ends in \$remaining min", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                     }
                     Text(
-                        "Duration: \${formatClassDuration(duration)}",
+                        "Duration: ${formatClassDuration(duration)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -2343,15 +2352,15 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.NotificationsActive, "Upcoming class reminder", Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("UPCOMING • Starts in \${formatClassCountdown(mins)}", fontWeight = FontWeight.Bold)
+                            Text("UPCOMING • Starts in ${formatClassCountdown(mins)}", fontWeight = FontWeight.Bold)
                         }
                         Text(r.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("\${r.startTime}–\${r.endTime}", style = MaterialTheme.typography.bodyMedium)
+                        Text("${r.startTime}–${r.endTime}", style = MaterialTheme.typography.bodyMedium)
                         if (r.room.isNotBlank()) {
-                            Text("Room \${r.room}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                            Text("Room ${r.room}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                         }
                         Text(
-                            "Duration: \${formatClassDuration((r.endTime.toMinutesOrNull() ?: start) - start)}",
+                            "Duration: ${formatClassDuration((r.endTime.toMinutesOrNull() ?: start) - start)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -2409,14 +2418,14 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
                             Text(status, color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
                         }
                     }
-                    Text("\${r.startTime}–\${r.endTime}", style = MaterialTheme.typography.bodyMedium)
-                    if (r.room.isNotBlank()) Text("Room \${r.room}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                    Text("${r.startTime}–${r.endTime}", style = MaterialTheme.typography.bodyMedium)
+                    if (r.room.isNotBlank()) Text("Room ${r.room}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                     val durationMinutes = if (start != null && end != null) (end - start).coerceAtLeast(0) else 0
                     if (start != null && end != null) {
                         Text(
-                            if (isCurrent) "Started at \${r.startTime} • Duration: \${formatClassDuration(durationMinutes)}"
-                            else if (currentMinutes >= end) "Ended at \${r.endTime} • Duration: \${formatClassDuration(durationMinutes)}"
-                            else "Starts at \${r.startTime} • Duration: \${formatClassDuration(durationMinutes)}",
+                            if (isCurrent) "Started at ${r.startTime} • Duration: ${formatClassDuration(durationMinutes)}"
+                            else if (currentMinutes >= end) "Ended at ${r.endTime} • Duration: ${formatClassDuration(durationMinutes)}"
+                            else "Starts at ${r.startTime} • Duration: ${formatClassDuration(durationMinutes)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
