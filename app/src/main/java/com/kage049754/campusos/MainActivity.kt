@@ -2914,7 +2914,8 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
     LaunchedEffect(Unit) { while (true) { nowMillis=System.currentTimeMillis(); kotlinx.coroutines.delay(30_000) } }
     val now=Calendar.getInstance().apply{timeInMillis=nowMillis}
     val currentMinutes=now.get(Calendar.HOUR_OF_DAY)*60+now.get(Calendar.MINUTE)
-    val parsed=todaySchedule.mapNotNull{r->val st=r.startTime.toMinutesOrNull();val en=r.endTime.toMinutesOrNull();if(st!=null&&en!=null&&en>st) Triple(r,st,en) else null}.sortedBy{it.second}
+    val mergedTodaySchedule=mergeTodayClasses(todaySchedule)
+    val parsed=mergedTodaySchedule.mapNotNull{r->val st=r.startTime.toMinutesOrNull();val en=r.endTime.toMinutesOrNull();if(st!=null&&en!=null&&en>st) Triple(r,st,en) else null}.sortedBy{it.second}
     val current=parsed.firstOrNull{(_,st,en)->currentMinutes>=st&&currentMinutes<en}
     val next=parsed.firstOrNull{(_,st,_)->st>currentMinutes}
     Column(Modifier.fillMaxWidth()){
@@ -2931,7 +2932,10 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
                     if(r.room.isNotBlank())Text("Room ${r.room}",fontWeight=FontWeight.SemiBold)
                     Text("Duration: ${formatClassDuration(duration)}",style=MaterialTheme.typography.bodySmall)
                     LinearProgressIndicator(progress={(elapsed.toFloat()/duration).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth())
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text("Started at ${r.startTime}",style=MaterialTheme.typography.bodySmall);Text("Ends in ${(en-currentMinutes).coerceAtLeast(0)} min",fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.bodySmall)}
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){
+                        Text("Started " + formatClassCountdown(elapsed) + " ago",style=MaterialTheme.typography.bodySmall)
+                        Text((en-currentMinutes).coerceAtLeast(0).toString() + " min remaining",fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -2945,7 +2949,8 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
                     Text(if(r.classType.equals("Lab",true))"Lab" else "Lecture",fontWeight=FontWeight.SemiBold)
                     Text("${r.startTime}–${r.endTime}")
                     if(r.room.isNotBlank())Text("Room ${r.room}",fontWeight=FontWeight.SemiBold)
-                    Text("Duration: ${formatClassDuration((en-st).coerceAtLeast(0))}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Duration: " + formatClassDuration((en-st).coerceAtLeast(0)),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    LinearProgressIndicator(progress={0f},modifier=Modifier.fillMaxWidth())
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -2955,7 +2960,7 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
                 current?.first?.title?.trim()?.uppercase(Locale.getDefault()),
                 next?.first?.title?.trim()?.uppercase(Locale.getDefault())
             )
-            val remaining=todaySchedule.filterNot {
+            val remaining=mergedTodaySchedule.filterNot {
                 it.title.trim().uppercase(Locale.getDefault()) in featuredSubjects
             }.sortedWith(
                 compareBy<Record> {
