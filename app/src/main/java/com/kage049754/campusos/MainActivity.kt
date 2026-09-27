@@ -624,7 +624,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     val pendingTasks = remember(tasks) { tasks.filter { !it.done }.sortedWith(compareBy({ it.dueDate }, { it.dueTime })).take(5) }
     val pinnedTasks = remember(tasks) { tasks.filter { !it.done && taskPinned(it) }.sortedWith(compareBy({ it.dueDate }, { it.dueTime })).take(5) }
     val photo = remember(photoPath, revision) { if (photoPath.isNotBlank()) runCatching { BitmapFactory.decodeFile(photoPath) }.getOrNull() else null }
-    val defaultOrder = listOf("profile", "stats", "classes", "pinned", "tasks", "quick")
+    val defaultOrder = listOf("profile", "stats", "classes", "pinned", "tasks")
     val savedOrder = store.homeLayoutOrder()
     var tileOrder by remember(revision) { mutableStateOf((savedOrder + defaultOrder).distinct().filter { it in defaultOrder }) }
     var editMode by remember { mutableStateOf(false) }
@@ -752,14 +752,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                         "classes" -> HomeClassesTile(todaySchedule)
                         "pinned" -> HomePinnedTile(pinnedTasks)
                         "tasks" -> HomeTasksTile(pendingTasks)
-                        "quick" -> Column(Modifier.fillMaxWidth()) {
-                            SectionTitle("Quick access")
-                            Spacer(Modifier.height(8.dp))
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                SmallAction("Subjects", Icons.Default.School) { go(Screen.ACADEMICS) }
-                                SmallAction("Files", Icons.Default.Folder) { go(Screen.FILES) }
-                                SmallAction("Tasks", Icons.Default.CheckCircle) { go(Screen.TASKS) }
-                            }
+                    }
                         }
                     }
                 }
@@ -781,7 +774,6 @@ fun HomeTileSettingsDialog(
         "classes" to "Today's Classes",
         "pinned" to "Pinned Tasks",
         "tasks" to "Tasks to Do",
-        "quick" to "Quick Access"
     )
     AlertDialog(
         onDismissRequest = done,
@@ -1176,14 +1168,16 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
 fun EditScheduleRecordDialog(record: Record, store: LocalStore, done: () -> Unit, cancel: () -> Unit) {
     var subject by remember(record.id) { mutableStateOf(record.title) }
     var fullName by remember(record.id) { mutableStateOf(record.subtitle) }
-    var day by remember(record.id) { mutableStateOf(record.day) }
-    var startTime by remember(record.id) { mutableStateOf(record.startTime) }
-    var endTime by remember(record.id) { mutableStateOf(record.endTime) }
     var room by remember(record.id) { mutableStateOf(record.room) }
     var professor by remember(record.id) { mutableStateOf(record.professor) }
     var notes by remember(record.id) { mutableStateOf(record.extra) }
     var type by remember(record.id) { mutableStateOf(record.classType.ifBlank { "Lecture" }) }
+    var selectedSlot by remember(record.id) { mutableStateOf("${record.day}|${record.startTime.toHourOrNull() ?: 7}") }
     val days = store.scheduleDays().ifEmpty { listOf("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday") }
+    val startHour = store.scheduleStartHour().coerceIn(0,23)
+    val endHour = store.scheduleEndHour().coerceAtLeast(startHour).coerceAtMost(23)
+    val hours = (startHour until endHour).toList()
+    val existing = store.get("schedule")
     AlertDialog(
         onDismissRequest = cancel,
         title = { Text("Edit class") },
@@ -1193,15 +1187,30 @@ fun EditScheduleRecordDialog(record: Record, store: LocalStore, done: () -> Unit
                 OutlinedTextField(fullName, { fullName = it }, Modifier.fillMaxWidth(), label = { Text("Whole subject name") })
                 Text("Class type", fontWeight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Lecture","Lab").forEach { option -> FilterChip(type == option, { type = option }, label = { Text(option) }) }
+                    listOf("Lecture", "Lab").forEach { option -> FilterChip(selected = type == option, onClick = { type = option }, label = { Text(option) }) }
                 }
-                Text("Day", fontWeight = FontWeight.SemiBold)
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    days.forEach { option -> FilterChip(day.equals(option,true), { day = option }, label = { Text(option.take(3)) }) }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(startTime, { startTime = it }, Modifier.weight(1f), label = { Text("Start (HH:mm)") }, singleLine = true)
-                    OutlinedTextField(endTime, { endTime = it }, Modifier.weight(1f), label = { Text("End (HH:mm)") }, singleLine = true)
+                Text("Pick day and hour", fontWeight = FontWeight.SemiBold)
+                Text("Tap a cell just like when adding a class.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 2.dp)) {
+                    Column {
+                        Row {
+                            Box(Modifier.width(48.dp).height(32.dp).border(1.dp, MaterialTheme.colorScheme.outline), contentAlignment = Alignment.Center) { Text("Time", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
+                            days.forEach { d -> Box(Modifier.width(86.dp).height(32.dp).border(1.dp, MaterialTheme.colorScheme.outline), contentAlignment = Alignment.Center) { Text(d.take(3), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) } }
+                        }
+                        hours.forEach { h ->
+                            Row {
+                                Box(Modifier.width(48.dp).height(52.dp).border(1.dp, MaterialTheme.colorScheme.outline), contentAlignment = Alignment.Center) { Text("%02d:00".format(h), style = MaterialTheme.typography.labelSmall) }
+                                days.forEach { d ->
+                                    val key = "$d|$h"
+                                    val selected = key == selectedSlot
+                                    val occupied = existing.any { it.id != record.id && it.day.equals(d, true) && it.startTime.toHourOrNull() == h }
+                                    Box(Modifier.width(86.dp).height(52.dp).border(2.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant).background(if (selected) MaterialTheme.colorScheme.primaryContainer else if (occupied) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface).clickable { selectedSlot = key }, contentAlignment = Alignment.Center) {
+                                        Text(if (selected) "Selected" else if (occupied) "Occupied" else "Empty", style = MaterialTheme.typography.labelSmall, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 OutlinedTextField(room, { room = it }, Modifier.fillMaxWidth(), label = { Text("Room") }, singleLine = true)
                 OutlinedTextField(professor, { professor = it }, Modifier.fillMaxWidth(), label = { Text("Professor") }, singleLine = true)
@@ -1210,10 +1219,13 @@ fun EditScheduleRecordDialog(record: Record, store: LocalStore, done: () -> Unit
         },
         confirmButton = {
             Button({
-                if (subject.isNotBlank() && day.isNotBlank() && startTime.isNotBlank() && endTime.isNotBlank()) {
-                    val updated = record.copy(title = subject.trim(), subtitle = fullName.trim(), extra = notes.trim(),
-                        day = day, startTime = startTime.trim(), endTime = endTime.trim(),
-                        room = room.trim(), professor = professor.trim(), classType = type)
+                val p = selectedSlot.split("|")
+                val newDay = p.getOrNull(0).orEmpty()
+                val newStartHour = p.getOrNull(1)?.toIntOrNull()
+                val oldDuration = ((record.endTime.toMinutesOrNull() ?: 0) - (record.startTime.toMinutesOrNull() ?: 0)).coerceAtLeast(60)
+                if (subject.isNotBlank() && newDay.isNotBlank() && newStartHour != null) {
+                    val newEnd = newStartHour * 60 + oldDuration
+                    val updated = record.copy(title = subject.trim(), subtitle = fullName.trim(), extra = notes.trim(), day = newDay, startTime = "%02d:00".format(newStartHour), endTime = "%02d:%02d".format(newEnd / 60, newEnd % 60), room = room.trim(), professor = professor.trim(), classType = type)
                     store.put("schedule", store.get("schedule").map { if (it.id == record.id) updated else it })
                     syncSubjectFromClass(store, updated)
                     done()
@@ -2468,9 +2480,9 @@ private fun String.toMinutesOrNull(): Int? {
 @Composable
 fun HomePinnedTile(pinnedTasks: List<Record>) {
     Column(Modifier.fillMaxWidth()) {
-        SectionTitle("Pinned tasks")
+        SectionTitle("📍 Pinned")
         Spacer(Modifier.height(8.dp))
-        if (pinnedTasks.isEmpty()) EmptyCard("No pinned tasks. Long-press a task to pin it.")
+        if (pinnedTasks.isEmpty()) EmptyCard("Nothing pinned yet.")
         else for (r in pinnedTasks) {
             Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
                 ListItem(headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) }, supportingContent = { if (r.dueDate.isNotBlank()) Text("Due " + r.dueDate + " " + r.dueTime) }, leadingContent = { Icon(Icons.Default.PushPin, "Pinned") })
