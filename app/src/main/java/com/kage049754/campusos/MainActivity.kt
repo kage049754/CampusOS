@@ -1369,14 +1369,29 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
                                 selected = subject.equals(code, true),
                                 onClick = {
                                     subject = code
-                                    selectedSlots = emptySet()
-                                    val first = existingSchedule.firstOrNull { it.title.trim().equals(code, true) }
+                                    val subjectRecords = existingSchedule.filter {
+                                        it.title.trim().equals(code.trim(), true)
+                                    }
+                                    selectedSlots = subjectRecords.mapNotNull { record ->
+                                        val hour = record.startTime.toMinutesOrNull()?.div(60)
+                                        if (hour != null && record.day.isNotBlank()) {
+                                            record.day + "|" + hour
+                                        } else null
+                                    }.toSet()
+                                    val first = subjectRecords.firstOrNull()
                                     if (first != null) {
                                         fullName = first.subtitle
                                         professor = first.professor
                                         notes = first.extra
                                         color = first.color
+                                        classType = if (first.classType.equals("Lab", true)) "Lab" else "Lecture"
                                     }
+                                    lectureRoom = subjectRecords.firstOrNull {
+                                        it.classType.equals("Lecture", true) && it.room.isNotBlank()
+                                    }?.room ?: ""
+                                    labRoom = subjectRecords.firstOrNull {
+                                        it.classType.equals("Lab", true) && it.room.isNotBlank()
+                                    }?.room ?: ""
                                 },
                                 label = { Text(code) }
                             )
@@ -1672,6 +1687,8 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
                 Button(
                     onClick = {
                         deleteScheduleAndSync(store, record)
+                        val deletedKey = record.day + "|" + (record.startTime.toMinutesOrNull()?.div(60))
+                        selectedSlots = selectedSlots - deletedKey
                         pendingDelete = null
                         refresh++
                     },
