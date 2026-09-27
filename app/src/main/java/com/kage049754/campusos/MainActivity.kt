@@ -538,7 +538,8 @@ fun HomeSettingsDialog(onModule:(String)->Unit,onAppearance:()->Unit,done:()->Un
 fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleManager:()->Unit,scheduleSettings:()->Unit,tableSettings:()->Unit,addClass:()->Unit,openTasks:()->Unit,openAcademics:()->Unit,editHome:()->Unit) {
     var showTaskSettings by remember { mutableStateOf(false) }
     var showHomeTiles by remember { mutableStateOf(false) }
-    val homeStore = remember { LocalStore(androidx.compose.ui.platform.LocalContext.current) }
+    val homeContext = androidx.compose.ui.platform.LocalContext.current
+    val homeStore = remember { LocalStore(homeContext) }
     var homeHiddenTiles by remember { mutableStateOf(homeStore.homeHiddenTiles()) }
     AlertDialog(onDismissRequest=close,title={Text("$module Settings")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
         when(module){
