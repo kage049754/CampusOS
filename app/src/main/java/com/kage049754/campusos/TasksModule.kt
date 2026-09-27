@@ -21,6 +21,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -149,7 +150,7 @@ fun TasksScreen(store: LocalStore, query: String, clear: () -> Unit, openSubject
             openSubject = openSubject,
             editing = editing,
             onEdit = { task -> editing = task },
-            onAdd = { showEditor = true },
+            onAdd = { },
             onDismiss = {
                 showDateWindow = false
                 editing = null
