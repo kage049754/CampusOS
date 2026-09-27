@@ -1210,7 +1210,14 @@ fun EditScheduleRecordDialog(record: Record, store: LocalStore, done: () -> Unit
                         }
                     }
                 }
-                OutlinedTextField(room, { room = it }, Modifier.fillMaxWidth(), label = { Text("Room") }, singleLine = true)
+                OutlinedTextField(
+                    room,
+                    { room = it },
+                    Modifier.fillMaxWidth(),
+                    label = { Text(if (type.equals("Lab", true)) "Lab room" else "Lecture room") },
+                    placeholder = { Text(if (type.equals("Lab", true)) "Enter lab room" else "Enter lecture room") },
+                    singleLine = true
+                )
                 OutlinedTextField(professor, { professor = it }, Modifier.fillMaxWidth(), label = { Text("Professor") }, singleLine = true)
                 OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth(), label = { Text("Notes") })
             }
