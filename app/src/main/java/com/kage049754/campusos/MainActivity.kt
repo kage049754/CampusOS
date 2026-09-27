@@ -2227,10 +2227,8 @@ fun AddRecordDialog(
     var extra by remember{mutableStateOf("")}
     var value by remember{mutableStateOf("")}
     var dueDate by remember(initialDueDate){mutableStateOf(initialDueDate)}
-    var showDueDatePicker by remember{mutableStateOf(false)}
     val subjects=store.get("subjects")
     val isTask=key=="tasks"
-    val context = androidx.compose.ui.platform.LocalContext.current
     AlertDialog(
         onDismissRequest=done,
         title={Text("Add $label")},
@@ -2255,13 +2253,19 @@ fun AddRecordDialog(
                             }
                         }
                     }
-                    OutlinedButton(
-                        onClick={showDueDatePicker=true},
-                        modifier=Modifier.fillMaxWidth()
+                    Surface(
+                        modifier=Modifier.fillMaxWidth(),
+                        shape=RoundedCornerShape(12.dp),
+                        color=MaterialTheme.colorScheme.surfaceVariant
                     ){
-                        Icon(Icons.Default.Event,null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Date: $dueDate")
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal=14.dp,vertical=12.dp),
+                            verticalAlignment=Alignment.CenterVertically
+                        ){
+                            Icon(Icons.Default.Event,null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Date: $dueDate",fontWeight=FontWeight.SemiBold)
+                        }
                     }
                 }
                 OutlinedTextField(title,{title=it},Modifier.fillMaxWidth(),label={Text("Title")})
@@ -2291,26 +2295,6 @@ fun AddRecordDialog(
         },
         dismissButton={TextButton(done){Text("Cancel")}}
     )
-    if (showDueDatePicker && isTask) {
-        val parsed = Calendar.getInstance().apply {
-            runCatching {
-                time = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(dueDate) ?: time
-            }
-        }
-        android.app.DatePickerDialog(
-            context,
-            { _, year, month, dayOfMonth ->
-                dueDate = "%04d-%02d-%02d".format(year, month + 1, dayOfMonth)
-                showDueDatePicker = false
-            },
-            parsed.get(Calendar.YEAR),
-            parsed.get(Calendar.MONTH),
-            parsed.get(Calendar.DAY_OF_MONTH)
-        ).apply {
-            setOnDismissListener { showDueDatePicker = false }
-            show()
-        }
-    }
 }
 
 @Composable
