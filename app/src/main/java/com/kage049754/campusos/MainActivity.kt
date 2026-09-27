@@ -753,8 +753,6 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                         "pinned" -> HomePinnedTile(pinnedTasks)
                         "tasks" -> HomeTasksTile(pendingTasks)
                     }
-                        }
-                    }
                 }
             }
         }
