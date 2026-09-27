@@ -579,7 +579,10 @@ fun CampusOSApp(activity: Activity) {
     Screen.TASKS -> Icons.Default.CheckCircle
     Screen.ACADEMICS -> Icons.Default.School
     Screen.FILES -> Icons.Default.Folder
-    Screen.@Composable
+    Screen.SETTINGS -> Icons.Default.Settings
+}
+
+@Composable
 fun HomeSettingsDialog(
     store: LocalStore,
     onModule:(String)->Unit,
@@ -622,7 +625,6 @@ fun HomeSettingsDialog(
                 }
                 HorizontalDivider()
                 OutlinedButton(onAppearance,Modifier.fillMaxWidth()){Icon(Icons.Default.Palette,null);Spacer(Modifier.width(8.dp));Text("Appearance & Design")}
-
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                         ListItem(
@@ -645,9 +647,7 @@ fun HomeSettingsDialog(
                             }
                         )
                         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton({
-                                pinValue="";confirmPin="";currentPin="";pinError="";enableAfterPin=false;showPin=true
-                            },Modifier.weight(1f)){
+                            OutlinedButton({pinValue="";confirmPin="";currentPin="";pinError="";enableAfterPin=false;showPin=true},Modifier.weight(1f)){
                                 Icon(Icons.Default.Lock,null);Spacer(Modifier.width(6.dp));Text(if(store.pin().isBlank()) "Set PIN" else "Change PIN")
                             }
                             if(store.pin().isNotBlank()) OutlinedButton({store.setLockEnabled(false)},Modifier.weight(1f)){Text("Turn off")}
@@ -655,7 +655,6 @@ fun HomeSettingsDialog(
                         Text("Use a 4–8 digit PIN. Changing the PIN requires the current PIN.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                         Text("Backup & Recovery",fontWeight=FontWeight.SemiBold)
@@ -694,14 +693,11 @@ fun HomeSettingsDialog(
         }){Text("Save")}},
         dismissButton={TextButton({showPin=false}){Text("Cancel")}}
     )
-
     if(showBackup) ModuleBackupDialog("Choose modules to backup",selectedModules,{selectedModules=it}){showBackup=false;if(selectedModules.isNotEmpty())backup.launch("CampusOS-backup.json")}
     if(showRecover) ModuleBackupDialog("Choose modules to recover",selectedModules,{selectedModules=it}){showRecover=false;if(selectedModules.isNotEmpty())restore.launch(arrayOf("application/json","text/plain"))}
     if(restoreError.isNotBlank()) AlertDialog(onDismissRequest={restoreError=""},title={Text("Backup / Recovery error")},text={Text(restoreError)},confirmButton={TextButton({restoreError=""}){Text("OK")}})
 }
 
-={TextButton(done){Text("Close")}})
-}
 @Composable
 fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleManager:()->Unit,scheduleSettings:()->Unit,tableSettings:()->Unit,addClass:()->Unit,openTasks:()->Unit,openAcademics:()->Unit,editHome:()->Unit) {
     var showTaskSettings by remember { mutableStateOf(false) }
