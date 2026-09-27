@@ -1639,14 +1639,14 @@ fun CrudScreen(title:String,key:String,store:LocalStore,query:String,clear:()->U
                 selectedDate = selectedDate,
                 store = store,
                 refresh = { refresh++ },
-                addTask = {
+                addTask = { onDone ->
                     AddRecordDialog(
                         label = "Task",
                         key = "tasks",
                         store = store,
                         initialDueDate = selectedDate
                     ) {
-                        refresh++
+                        onDone()
                     }
                 },
                 done = { showDateTasks = false }
@@ -1670,7 +1670,7 @@ fun TaskDateDialog(
     selectedDate: String,
     store: LocalStore,
     refresh: () -> Unit,
-    addTask: () -> Unit,
+    addTask: ((onDone: () -> Unit) -> Unit),
     done: () -> Unit
 ) {
     val revision = store.revision
@@ -1735,7 +1735,10 @@ fun TaskDateDialog(
     }
 
     if (showAdd) {
-        addTask()
+        addTask {
+            showAdd = false
+            refresh()
+        }
     }
 }
 
