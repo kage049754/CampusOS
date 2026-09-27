@@ -343,6 +343,7 @@ fun CampusOSApp(activity: Activity) {
     var showHomeAdd by remember { mutableStateOf(false) }
     var showHomeColors by remember { mutableStateOf(false) }
     var showHomeSettings by remember { mutableStateOf(false) }
+    var homeEditRequest by remember { mutableIntStateOf(0) }
     var showProfile by remember { mutableStateOf(false) }
     var showScheduleSettings by remember { mutableStateOf(false) }
     var showScheduleTableSettings by remember { mutableStateOf(false) }
@@ -466,7 +467,7 @@ fun CampusOSApp(activity: Activity) {
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
                 when (screen) {
-                    Screen.HOME -> HomeScreen(store) { screenName = it.name }
+                    Screen.HOME -> HomeScreen(store, { screenName = it.name }, homeEditRequest)
                     Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }, { showScheduleDetails = true }) { search = "" }
                     Screen.TASKS -> TasksScreen(store, search, { search = "" }, { id -> subjectPageId = id; subjectPageMode = 0 })
                     Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 })
@@ -501,7 +502,7 @@ fun CampusOSApp(activity: Activity) {
             if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
             if (showScheduleTableSettings) ScheduleTableSettingsDialog(store) { showScheduleTableSettings = false }
             if (showScheduleManager) ScheduleManagerDialog(store) { showScheduleManager = false }
-            settingsModule?.let { module -> ModuleSettingsDialog(module, { settingsModule = null; settingsParent = null; showHomeSettings = true }, { settingsParent = module; settingsModule = null; showProfile = true }, { settingsParent = module; settingsModule = null; showScheduleManager = true }, { settingsParent = module; settingsModule = null; showScheduleSettings = true }, { settingsParent = module; settingsModule = null; showScheduleTableSettings = true }, { settingsParent = module; settingsModule = null; showHomeAdd = true }, { settingsModule = null; settingsParent = null; screenName = Screen.TASKS.name }, { settingsModule = null; settingsParent = null; screenName = Screen.ACADEMICS.name }) }
+            settingsModule?.let { module -> ModuleSettingsDialog(module, { settingsModule = null; settingsParent = null; showHomeSettings = true }, { settingsParent = module; settingsModule = null; showProfile = true }, { settingsParent = module; settingsModule = null; showScheduleManager = true }, { settingsParent = module; settingsModule = null; showScheduleSettings = true }, { settingsParent = module; settingsModule = null; showScheduleTableSettings = true }, { settingsParent = module; settingsModule = null; showHomeAdd = true }, { settingsModule = null; settingsParent = null; screenName = Screen.TASKS.name }, { settingsModule = null; settingsParent = null; screenName = Screen.ACADEMICS.name }, { settingsModule = null; settingsParent = null; showHomeSettings = false; homeEditRequest++ }) }
             if (showScheduleDetails) SubjectDetailsDialog(store.get("schedule"), { showScheduleDetails = false })
         }
         }
@@ -526,17 +527,33 @@ fun HomeSettingsDialog(onModule:(String)->Unit,onAppearance:()->Unit,done:()->Un
     }},confirmButton={TextButton(done){Text("Close")}})
 }
 @Composable
-fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleManager:()->Unit,scheduleSettings:()->Unit,tableSettings:()->Unit,addClass:()->Unit,openTasks:()->Unit,openAcademics:()->Unit) {
+fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleManager:()->Unit,scheduleSettings:()->Unit,tableSettings:()->Unit,addClass:()->Unit,openTasks:()->Unit,openAcademics:()->Unit,editHome:()->Unit) {
     var showTaskSettings by remember { mutableStateOf(false) }
+    var showHomeTiles by remember { mutableStateOf(false) }
+    val homeStore = remember { LocalStore(androidx.compose.ui.platform.LocalContext.current) }
+    var homeHiddenTiles by remember { mutableStateOf(homeStore.homeHiddenTiles()) }
     AlertDialog(onDismissRequest=close,title={Text("$module Settings")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
         when(module){
-            "Homepage"->{Text("Homepage controls",fontWeight=FontWeight.Bold);OutlinedButton(profile,Modifier.fillMaxWidth()){Icon(Icons.Default.Person,null);Spacer(Modifier.width(8.dp));Text("Profile & homepage information")}}
+            "Homepage"->{
+                Text("Homepage controls",fontWeight=FontWeight.Bold)
+                Text("Manage your Home screen layout here. Tile moving keeps the same drag-and-drop edit mode.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(editHome,Modifier.fillMaxWidth()){Icon(Icons.Default.Edit,null);Spacer(Modifier.width(8.dp));Text("Edit Home Layout")}
+                OutlinedButton({ showHomeTiles = true },Modifier.fillMaxWidth()){Icon(Icons.Default.ViewModule,null);Spacer(Modifier.width(8.dp));Text("Home Tiles")}
+                OutlinedButton(profile,Modifier.fillMaxWidth()){Icon(Icons.Default.Person,null);Spacer(Modifier.width(8.dp));Text("Profile & homepage information")}
+            }
             "Schedule"->{Text("Schedule controls",fontWeight=FontWeight.Bold);OutlinedButton(addClass,Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Spacer(Modifier.width(8.dp));Text("Add Class")};OutlinedButton(scheduleManager,Modifier.fillMaxWidth()){Icon(Icons.Default.EditCalendar,null);Spacer(Modifier.width(8.dp));Text("Edit / Delete Classes")};OutlinedButton(scheduleSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.CalendarMonth,null);Spacer(Modifier.width(8.dp));Text("Class Schedule Settings")};OutlinedButton(tableSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.TableView,null);Spacer(Modifier.width(8.dp));Text("Schedule Table Settings")}}
             "Tasks"->{Text("Task controls",fontWeight=FontWeight.Bold);Text("Simple calendar and to-do tasks stored offline.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openTasks,Modifier.fillMaxWidth()){Icon(Icons.Default.CheckCircle,null);Spacer(Modifier.width(8.dp));Text("Open Tasks")};OutlinedButton({ showTaskSettings = true },Modifier.fillMaxWidth()){Icon(Icons.Default.Settings,null);Spacer(Modifier.width(8.dp));Text("Task Settings")}}
             "Academics"->{Text("Academics controls",fontWeight=FontWeight.Bold);Text("Subjects, Notepad, and Lecture Files are stored offline. Use the Academics screen to manage them.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openAcademics,Modifier.fillMaxWidth()){Icon(Icons.Default.School,null);Spacer(Modifier.width(8.dp));Text("Open Academics")}}
         }
     }},confirmButton={TextButton(close){Text("Close")}})
     if (showTaskSettings) TaskSettingsDialog(LocalStore(androidx.compose.ui.platform.LocalContext.current)) { showTaskSettings = false }
+    if (showHomeTiles) HomeTileSettingsDialog(
+        defaultOrder = listOf("profile", "stats", "classes", "pinned", "tasks"),
+        hiddenTiles = homeHiddenTiles,
+        onHiddenChanged = { homeHiddenTiles = it; homeStore.setHomeHiddenTiles(it) },
+        onReset = { homeStore.resetHomeLayout(); homeHiddenTiles = emptySet(); showHomeTiles = false },
+        done = { showHomeTiles = false }
+    )
 }
 @Composable
 fun ScheduleTableSettingsDialog(store: LocalStore, done: () -> Unit) {
@@ -609,7 +626,7 @@ fun ProfileDialog(store: LocalStore, done: () -> Unit) {
 }
 
 @Composable
-fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
+fun HomeScreen(store: LocalStore, go: (Screen) -> Unit, editRequest: Int = 0) {
     val revision = store.revision
     val tasks = remember(revision) { store.get("tasks") }
     val schedule = remember(revision) { store.get("schedule") }
@@ -633,12 +650,18 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     val savedOrder = store.homeLayoutOrder()
     var tileOrder by remember(revision) { mutableStateOf((savedOrder + defaultOrder).distinct().filter { it in defaultOrder }) }
     var editMode by remember { mutableStateOf(false) }
-    var showHomeTileSettings by remember { mutableStateOf(false) }
     var hiddenTiles by remember(revision) { mutableStateOf(store.homeHiddenTiles()) }
     val listState = rememberLazyListState()
     var draggedKey by remember { mutableStateOf<String?>(null) }
     var dragOffset by remember { mutableFloatStateOf(0f) }
     val visibleOrder = tileOrder.filter { it !in hiddenTiles }
+
+    LaunchedEffect(editRequest) {
+        if (editRequest > 0) {
+            editMode = true
+            tileOrder = (store.homeLayoutOrder() + defaultOrder).distinct().filter { it in defaultOrder }
+        }
+    }
 
     fun moveTile(key: String, targetKey: String) {
         val from = tileOrder.indexOf(key)
@@ -660,19 +683,13 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                 Text("CampusOS", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 if (editMode) Text("Drag tiles to arrange your Home screen", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = {
-                editMode = !editMode
-                if (editMode) tileOrder = (store.homeLayoutOrder() + defaultOrder).distinct().filter { it in defaultOrder }
-                else {
+            if (editMode) {
+                IconButton(onClick = {
+                    editMode = false
                     store.setHomeLayoutOrder(tileOrder)
                     store.setHomeHiddenTiles(hiddenTiles)
-                }
-            }) {
-                Icon(if (editMode) Icons.Default.Check else Icons.Default.Edit, if (editMode) "Done" else "Customize Home")
-            }
-            if (!editMode) {
-                IconButton(onClick = { showHomeTileSettings = true }) {
-                    Icon(Icons.Default.ViewModule, "Home tiles")
+                }) {
+                    Icon(Icons.Default.Check, "Done")
                 }
             }
         }
@@ -2148,8 +2165,6 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
     var lockOn by remember { mutableStateOf(store.lockEnabled()) }
     var showPin by remember { mutableStateOf(false) }
     var showTableSettings by remember { mutableStateOf(false) }
-    var showHomeTiles by remember { mutableStateOf(false) }
-    var homeHiddenTiles by remember { mutableStateOf(store.homeHiddenTiles()) }
     var notificationsOn by remember { mutableStateOf(context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).getBoolean("enabled", false) && CampusReminders.notificationsEnabled(context)) }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -2220,17 +2235,6 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
             }
         }
 
-        item { Text("Home", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Homepage", fontWeight = FontWeight.Bold)
-                    Text("Customize which Home tiles are visible and restore the default Home layout.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    OutlinedButton(onClick = { showHomeTiles = true }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.ViewModule, null); Spacer(Modifier.width(8.dp)); Text("Customize Home Tiles") }
-                    Text("Use the CampusOS settings button from the top bar for profile and appearance options.", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
         item { Text("Academics", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
         item {
             Card(Modifier.fillMaxWidth()) {
@@ -2305,15 +2309,6 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
     if (restoreMode) ModuleBackupDialog("Choose modules to restore", selectedModules, { selectedModules=it }) { restoreMode=false; if(selectedModules.isNotEmpty()) restore.launch(arrayOf("application/json","text/plain")) }
     if (showTableSettings) {
         ScheduleTableSettingsDialog(store) { showTableSettings = false }
-    }
-    if (showHomeTiles) {
-        HomeTileSettingsDialog(
-            defaultOrder = listOf("profile", "stats", "classes", "pinned", "tasks", "quick"),
-            hiddenTiles = homeHiddenTiles,
-            onHiddenChanged = { homeHiddenTiles = it; store.setHomeHiddenTiles(it) },
-            onReset = { store.resetHomeLayout(); homeHiddenTiles = emptySet(); showHomeTiles = false },
-            done = { showHomeTiles = false }
-        )
     }
 
     if (showPin) {
