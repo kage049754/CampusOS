@@ -1416,7 +1416,21 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
                     listOf("Lecture", "Lab").forEach { option ->
                         FilterChip(
                             selected = classType == option,
-                            onClick = { classType = option },
+                            onClick = {
+                                classType = option
+                                val subjectRecords = existingSchedule.filter {
+                                    subject.isNotBlank() && it.title.trim().equals(subject.trim(), true)
+                                }
+                                if (option.equals("Lecture", true)) {
+                                    lectureRoom = subjectRecords.firstOrNull {
+                                        it.classType.equals("Lecture", true) && it.room.isNotBlank()
+                                    }?.room ?: lectureRoom
+                                } else {
+                                    labRoom = subjectRecords.firstOrNull {
+                                        it.classType.equals("Lab", true) && it.room.isNotBlank()
+                                    }?.room ?: labRoom
+                                }
+                            },
                             label = { Text(option) }
                         )
                     }
