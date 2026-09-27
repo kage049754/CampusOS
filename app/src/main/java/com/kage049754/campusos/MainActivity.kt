@@ -1612,15 +1612,131 @@ fun TaskCalendar(selectedDate:String,onSelect:(String)->Unit){
 @Composable
 fun CrudScreen(title:String,key:String,store:LocalStore,query:String,clear:()->Unit){
     val revision = store.revision
-    var refresh by remember{mutableIntStateOf(0)};var showAdd by remember{mutableStateOf(false)};var selectedDate by remember{mutableStateOf(SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date()))}
+    var refresh by remember{mutableIntStateOf(0)}
+    var selectedDate by remember{mutableStateOf(SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date()))}
+    var showDateTasks by remember{mutableStateOf(false)}
+    val isTasks = key == "tasks"
+
+    LaunchedEffect(query) {
+        if (query == "__ADD__" && isTasks) {
+            showDateTasks = true
+            clear()
+        }
+    }
+
+    if (isTasks) {
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            TaskCalendar(selectedDate) {
+                selectedDate = it
+                showDateTasks = true
+            }
+        }
+        if (showDateTasks) {
+            TaskDateDialog(
+                selectedDate = selectedDate,
+                store = store,
+                refresh = { refresh++ },
+                addTask = {
+                    AddRecordDialog(
+                        label = "Task",
+                        key = "tasks",
+                        store = store,
+                        initialDueDate = selectedDate
+                    ) {
+                        refresh++
+                    }
+                },
+                done = { showDateTasks = false }
+            )
+        }
+        return
+    }
+
+    var showAdd by remember{mutableStateOf(false)}
     LaunchedEffect(query){if(query=="__ADD__")showAdd=true}
     val list=remember(refresh,revision,query){store.get(key).filter{query.isBlank()||query=="__ADD__"||(it.title+" "+it.subtitle+" "+it.extra).contains(query,true)}.sortedWith(compareBy<Record>({it.done},{it.dueDate},{it.dueTime}))}
     Column(Modifier.fillMaxSize()){
-        if(key=="tasks")Card(Modifier.fillMaxWidth().padding(12.dp)){Column(Modifier.padding(12.dp)){TaskCalendar(selectedDate){selectedDate=it};Text("Selected: $selectedDate",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
         Text(title,Modifier.padding(horizontal=16.dp,vertical=6.dp),style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
-        if(list.isEmpty())EmptyCard("No tasks yet. Tap + to add a task.") else LazyColumn(Modifier.fillMaxSize().padding(horizontal=16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){items(list,key={it.id}){r->RecordCard(r,key,store){refresh++}}}
+        if(list.isEmpty())EmptyCard("No items yet.") else LazyColumn(Modifier.fillMaxSize().padding(horizontal=16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){items(list,key={it.id}){r->RecordCard(r,key,store){refresh++}}}
     }
     if(showAdd)AddRecordDialog(title,key,store){showAdd=false;clear();refresh++}
+}
+
+@Composable
+fun TaskDateDialog(
+    selectedDate: String,
+    store: LocalStore,
+    refresh: () -> Unit,
+    addTask: () -> Unit,
+    done: () -> Unit
+) {
+    val revision = store.revision
+    var showAdd by remember(selectedDate) { mutableStateOf(false) }
+    val tasks = remember(selectedDate, revision) {
+        store.get("tasks")
+            .filter { it.dueDate == selectedDate }
+            .sortedWith(compareBy<Record>({ it.done }, { it.dueTime }, { it.title.lowercase(Locale.getDefault()) }))
+    }
+
+    Dialog(onDismissRequest = done) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            shape = RoundedCornerShape(24.dp),
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.getDefault()).format(
+                                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(selectedDate) ?: Date()
+                            ),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            tasks.size.toString() + " task" + if (tasks.size == 1) "" else "s",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(onClick = done) { Icon(Icons.Default.Close, "Close") }
+                }
+                HorizontalDivider()
+
+                if (tasks.isEmpty()) {
+                    EmptyCard("No tasks on this date yet.")
+                } else {
+                    LazyColumn(
+                        Modifier.fillMaxWidth().heightIn(max = 360.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(tasks, key = { it.id }) { task ->
+                            RecordCard(task, "tasks", store) { refresh() }
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = { showAdd = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Add, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Add task to this date")
+                }
+            }
+        }
+    }
+
+    if (showAdd) {
+        addTask()
+    }
 }
 
 @Composable
@@ -2095,21 +2211,82 @@ fun RecordCard(r: Record, key: String, store: LocalStore, refresh: () -> Unit) {
 }
 
 @Composable
-fun AddRecordDialog(label:String,key:String,store:LocalStore,done:()->Unit){
-    var subjectId by remember{mutableLongStateOf(0L)};var title by remember{mutableStateOf("")};var subtitle by remember{mutableStateOf("")};var extra by remember{mutableStateOf("")};var value by remember{mutableStateOf("")}
-    var dueDate by remember{mutableStateOf(SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date()))}
+fun AddRecordDialog(
+    label:String,
+    key:String,
+    store:LocalStore,
+    initialDueDate:String = SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date()),
+    done:()->Unit
+){
+    var subjectId by remember{mutableLongStateOf(0L)}
+    var title by remember{mutableStateOf("")}
+    var subtitle by remember{mutableStateOf("")}
+    var extra by remember{mutableStateOf("")}
+    var value by remember{mutableStateOf("")}
+    var dueDate by remember(initialDueDate){mutableStateOf(initialDueDate)}
     var showDueDatePicker by remember{mutableStateOf(false)}
-    val subjects=store.get("subjects");val isTask=key=="tasks"
-    AlertDialog(onDismissRequest=done,title={Text("Add $label")},text={Column(Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
-        if(isTask){Text("Subject",fontWeight=FontWeight.Bold);if(subjects.isEmpty())Text("Add a class first so this task can be linked to a subject.",color=MaterialTheme.colorScheme.error)
-            else Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){subjects.forEach{s->FilterChip(subjectId==s.id,{subjectId=s.id},label={Text(s.title)})}}
-            OutlinedButton(onClick={showDueDatePicker=true},modifier=Modifier.fillMaxWidth()){
-                Icon(Icons.Default.Event,null);Spacer(Modifier.width(8.dp));Text("Due date: $dueDate")
-            }}
-        OutlinedTextField(title,{title=it},Modifier.fillMaxWidth(),label={Text("Title")});OutlinedTextField(subtitle,{subtitle=it},Modifier.fillMaxWidth(),label={Text("Description")})
-        if(key=="tasks"||key=="reviewers")OutlinedTextField(extra,{extra=it},Modifier.fillMaxWidth(),label={Text("Notes")})
-        if(key=="grades"||key=="expenses")OutlinedTextField(value,{value=it},Modifier.fillMaxWidth(),label={Text(if(key=="grades")"Grade" else "Amount")})
-    }},confirmButton={Button({if(title.isNotBlank()&&(!isTask||subjectId!=0L))store.put(key,store.get(key)+Record(title=title.trim(),subtitle=subtitle.trim(),extra=extra.trim(),value=value.toDoubleOrNull()?:0.0,subjectId=subjectId,dueDate=if(isTask)dueDate else "",dueTime=""));done()}){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})
+    val subjects=store.get("subjects")
+    val isTask=key=="tasks"
+    AlertDialog(
+        onDismissRequest=done,
+        title={Text("Add $label")},
+        text={
+            Column(
+                Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement=Arrangement.spacedBy(10.dp)
+            ){
+                if(isTask){
+                    Text("Subject (optional)",fontWeight=FontWeight.Bold)
+                    if(subjects.isNotEmpty()) {
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement=Arrangement.spacedBy(6.dp)
+                        ){
+                            subjects.forEach{s->
+                                FilterChip(
+                                    subjectId==s.id,
+                                    {subjectId=if(subjectId==s.id)0L else s.id},
+                                    label={Text(s.title)}
+                                )
+                            }
+                        }
+                    }
+                    OutlinedButton(
+                        onClick={showDueDatePicker=true},
+                        modifier=Modifier.fillMaxWidth()
+                    ){
+                        Icon(Icons.Default.Event,null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Date: $dueDate")
+                    }
+                }
+                OutlinedTextField(title,{title=it},Modifier.fillMaxWidth(),label={Text("Title")})
+                OutlinedTextField(subtitle,{subtitle=it},Modifier.fillMaxWidth(),label={Text("Description")})
+                if(key=="tasks"||key=="reviewers")OutlinedTextField(extra,{extra=it},Modifier.fillMaxWidth(),label={Text("Notes")})
+                if(key=="grades"||key=="expenses")OutlinedTextField(value,{value=it},Modifier.fillMaxWidth(),label={Text(if(key=="grades")"Grade" else "Amount")})
+            }
+        },
+        confirmButton={
+            Button({
+                if(title.isNotBlank()){
+                    store.put(
+                        key,
+                        store.get(key)+Record(
+                            title=title.trim(),
+                            subtitle=subtitle.trim(),
+                            extra=extra.trim(),
+                            value=value.toDoubleOrNull()?:0.0,
+                            subjectId=subjectId,
+                            dueDate=if(isTask)dueDate else "",
+                            dueTime=""
+                        )
+                    )
+                    done()
+                }
+            }){Text("Save")}
+        },
+        dismissButton={TextButton(done){Text("Cancel")}}
+    )
 }
 
 @Composable
