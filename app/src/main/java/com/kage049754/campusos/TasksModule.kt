@@ -417,6 +417,7 @@ private fun SimpleTaskEditor(store: LocalStore, existing: Record?, selectedDate:
                     }, Modifier.weight(1f)) { Text(dueTime) }
                 }
                 Text("Due: " + dateLabel(date), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         },
         confirmButton = {
             Button(onClick = {
