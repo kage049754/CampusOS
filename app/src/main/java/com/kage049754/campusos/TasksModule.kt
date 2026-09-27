@@ -391,10 +391,24 @@ private fun SimpleTaskEditor(store: LocalStore, existing: Record?, selectedDate:
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = {
-                        val c = Calendar.getInstance().apply { time = taskDateFormat().parse(date) ?: Date() }
-                        DatePickerDialog(context, { _, y, m, d -> date = "%04d-%02d-%02d".format(y, m + 1, d) }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show()
-                    }, Modifier.weight(1f)) { Text("Date") }
+                    if (existing == null) {
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            tonalElevation = 1.dp
+                        ) {
+                            Text(
+                                "Date: " + dateLabel(date),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp),
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                        }
+                    } else {
+                        Button(onClick = {
+                            val c = Calendar.getInstance().apply { time = taskDateFormat().parse(date) ?: Date() }
+                            DatePickerDialog(context, { _, y, m, d -> date = "%04d-%02d-%02d".format(y, m + 1, d) }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show()
+                        }, Modifier.weight(1f)) { Text("Date") }
+                    }
                     Button(onClick = {
                         val c = Calendar.getInstance()
                         c.set(Calendar.HOUR_OF_DAY, dueTime.substringBefore(":").toIntOrNull() ?: 23)
@@ -402,8 +416,7 @@ private fun SimpleTaskEditor(store: LocalStore, existing: Record?, selectedDate:
                         TimePickerDialog(context, { _, h, m -> dueTime = "%02d:%02d".format(h, m) }, c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE), true).show()
                     }, Modifier.weight(1f)) { Text(dueTime) }
                 }
-                Text("Due: ${dateLabel(date)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+                Text("Due: " + dateLabel(date), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         },
         confirmButton = {
             Button(onClick = {
