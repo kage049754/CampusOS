@@ -1321,8 +1321,7 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
     var notes by remember { mutableStateOf("") }
     var classType by remember { mutableStateOf("Lecture") }
     var color by remember { mutableLongStateOf(0xFFE3F2FD) }
-    var selectedSlots by remember { mutableStateOf(setOf<String>()) }
-    var pendingDelete by remember { mutableStateOf<Record?>(null) }
+    var selectedSlots by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var refresh by remember { mutableIntStateOf(0) }
 
     val colors = listOf(0xFFE3F2FDL,0xFFE8F5E9L,0xFFFFF3E0L,0xFFF3E5F5L,0xFFFFEBEEL,0xFFE0F7FAL)
@@ -1331,10 +1330,8 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
     val hours = (startHour until endHour).toList()
     val weekDays = store.scheduleDays()
     val existingSchedule = remember(refresh, store.revision) { store.get("schedule") }
-
     val existingSubjects = remember(existingSchedule) {
-        existingSchedule.map { it.title.trim() }
-            .filter { it.isNotBlank() }
+        existingSchedule.map { it.title.trim() }.filter { it.isNotBlank() }
             .distinctBy { it.lowercase(Locale.getDefault()) }
             .sortedBy { it.lowercase(Locale.getDefault()) }
     }
@@ -1343,217 +1340,91 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
         onDismissRequest = done,
         title = { Text("Edit / Delete Classes") },
         text = {
-            Column(
-                Modifier.fillMaxWidth()
-                    .heightIn(max = 620.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    subject,
-                    { subject = it },
-                    Modifier.fillMaxWidth(),
-                    label = { Text("Subject code") },
-                    placeholder = { Text("e.g. DCIT 25") },
-                    singleLine = true
-                )
-
+            Column(Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(subject, { subject = it }, Modifier.fillMaxWidth(), label = { Text("Subject code") }, placeholder = { Text("e.g. DCIT 25") }, singleLine = true)
                 if (existingSubjects.isNotEmpty()) {
                     Text("Existing subject codes", fontWeight = FontWeight.SemiBold)
-                    Row(
-                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         existingSubjects.forEach { code ->
                             FilterChip(
                                 selected = subject.equals(code, true),
                                 onClick = {
                                     subject = code
-                                    val subjectRecords = existingSchedule.filter {
-                                        it.title.trim().equals(code.trim(), true)
+                                    val records = existingSchedule.filter { it.title.trim().equals(code.trim(), true) }
+                                    selectedSlots = records.associate { r ->
+                                        val hour = r.startTime.toMinutesOrNull()?.div(60) ?: 0
+                                        r.day + "|" + hour to if (r.classType.equals("Lab", true)) "Lab" else "Lecture"
                                     }
-                                    selectedSlots = subjectRecords.mapNotNull { record ->
-                                        val hour = record.startTime.toMinutesOrNull()?.div(60)
-                                        if (hour != null && record.day.isNotBlank()) {
-                                            record.day + "|" + hour
-                                        } else null
-                                    }.toSet()
-                                    val first = subjectRecords.firstOrNull()
-                                    if (first != null) {
+                                    records.firstOrNull()?.let { first ->
                                         fullName = first.subtitle
                                         professor = first.professor
                                         notes = first.extra
                                         color = first.color
                                         classType = if (first.classType.equals("Lab", true)) "Lab" else "Lecture"
                                     }
-                                    lectureRoom = subjectRecords.firstOrNull {
-                                        it.classType.equals("Lecture", true) && it.room.isNotBlank()
-                                    }?.room ?: ""
-                                    labRoom = subjectRecords.firstOrNull {
-                                        it.classType.equals("Lab", true) && it.room.isNotBlank()
-                                    }?.room ?: ""
+                                    lectureRoom = records.firstOrNull { it.classType.equals("Lecture", true) && it.room.isNotBlank() }?.room ?: ""
+                                    labRoom = records.firstOrNull { it.classType.equals("Lab", true) && it.room.isNotBlank() }?.room ?: ""
                                 },
                                 label = { Text(code) }
                             )
                         }
                     }
                 }
-
-                OutlinedTextField(
-                    fullName,
-                    { fullName = it },
-                    Modifier.fillMaxWidth(),
-                    label = { Text("Whole subject name") }
-                )
-
+                OutlinedTextField(fullName, { fullName = it }, Modifier.fillMaxWidth(), label = { Text("Whole subject name") })
                 Text("Class type", fontWeight = FontWeight.SemiBold)
-                Text(
-                    "Only one type can occupy a subject's exact day/time. Switching Lecture ↔ Lab and saving the same slot replaces the existing type.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall
-                )
+                Text("Lecture and Lab cannot occupy the same subject/day/time cell. To change a cell from Lecture to Lab, tap the existing subject cell to remove it first, then select the new type and tap that cell again.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("Lecture", "Lab").forEach { option ->
-                        FilterChip(
-                            selected = classType == option,
-                            onClick = {
-                                classType = option
-                                val subjectRecords = existingSchedule.filter {
-                                    subject.isNotBlank() && it.title.trim().equals(subject.trim(), true)
-                                }
-                                if (option.equals("Lecture", true)) {
-                                    lectureRoom = subjectRecords.firstOrNull {
-                                        it.classType.equals("Lecture", true) && it.room.isNotBlank()
-                                    }?.room ?: lectureRoom
-                                } else {
-                                    labRoom = subjectRecords.firstOrNull {
-                                        it.classType.equals("Lab", true) && it.room.isNotBlank()
-                                    }?.room ?: labRoom
-                                }
-                            },
-                            label = { Text(option) }
-                        )
+                        FilterChip(selected = classType == option, onClick = { classType = option }, label = { Text(option) })
                     }
                 }
-
                 Text("Pick class time(s) and day(s)", fontWeight = FontWeight.SemiBold)
-                Text(
-                    "Tap an empty cell to select it for adding/editing. Tap an existing cell of this subject to delete that class.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall
-                )
-
-                Row(
-                    Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 2.dp)
-                ) {
+                Text("Tap an existing cell for this subject to remove that schedule. Tap an empty cell to add the selected type. Other subjects are locked and cannot be overwritten.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 2.dp)) {
                     Column {
                         Row {
-                            Box(
-                                Modifier.width(48.dp).height(32.dp)
-                                    .border(1.dp, MaterialTheme.colorScheme.outline),
-                                contentAlignment = Alignment.Center
-                            ) { Text("Time", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
-
-                            weekDays.forEach { d ->
-                                Box(
-                                    Modifier.width(86.dp).height(32.dp)
-                                        .border(1.dp, MaterialTheme.colorScheme.outline),
-                                    contentAlignment = Alignment.Center
-                                ) { Text(d.take(3), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
-                            }
+                            Box(Modifier.width(48.dp).height(32.dp).border(1.dp, MaterialTheme.colorScheme.outline), contentAlignment = Alignment.Center) { Text("Time", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
+                            weekDays.forEach { d -> Box(Modifier.width(86.dp).height(32.dp).border(1.dp, MaterialTheme.colorScheme.outline), contentAlignment = Alignment.Center) { Text(d.take(3), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) } }
                         }
-
                         hours.forEach { h ->
                             Row {
-                                Box(
-                                    Modifier.width(48.dp).height(52.dp)
-                                        .border(1.dp, MaterialTheme.colorScheme.outline),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("%02d:00".format(h), style = MaterialTheme.typography.labelSmall)
-                                        Text("%02d:00".format(h + 1), style = MaterialTheme.typography.labelSmall)
-                                    }
-                                }
-
+                                Box(Modifier.width(48.dp).height(52.dp).border(1.dp, MaterialTheme.colorScheme.outline), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("%02d:00".format(h), style = MaterialTheme.typography.labelSmall); Text("%02d:00".format(h + 1), style = MaterialTheme.typography.labelSmall) } }
                                 weekDays.forEach { d ->
-                                    val currentKey = "$d|$h"
-                                    val selected = currentKey in selectedSlots
-                                    val cellRecords = existingSchedule.filter {
-                                        it.day.equals(d, true) &&
-                                            it.startTime.toMinutesOrNull() == h * 60
-                                    }
-                                    val sameSubjectRecord = cellRecords.firstOrNull {
-                                        subject.isNotBlank() && it.title.trim().equals(subject.trim(), true)
-                                    }
-                                    val occupantText = cellRecords.groupBy {
-                                        it.title.trim().uppercase(Locale.getDefault())
-                                    }.values.take(2).joinToString(" • ") { group ->
+                                    val key = "$d|$h"
+                                    val selectedType = selectedSlots[key]
+                                    val cellRecords = existingSchedule.filter { it.day.equals(d, true) && it.startTime.toMinutesOrNull() == h * 60 }
+                                    val sameSubject = cellRecords.firstOrNull { subject.isNotBlank() && it.title.trim().equals(subject.trim(), true) }
+                                    val otherSubject = cellRecords.firstOrNull { subject.isBlank() || !it.title.trim().equals(subject.trim(), true) }
+                                    val occupant = cellRecords.groupBy { it.title.trim().uppercase(Locale.getDefault()) }.values.take(2).joinToString(" • ") { group ->
                                         val first = group.first()
                                         val types = group.map { it.classType }.distinct().joinToString("+")
                                         val rooms = group.map { it.room.trim() }.filter { it.isNotBlank() }.distinct().joinToString("/")
-                                        buildString {
-                                            append(first.title)
-                                            append(" ")
-                                            append(types)
-                                            if (rooms.isNotBlank()) append(" • ").append(rooms)
-                                        }
+                                        buildString { append(first.title); append(" "); append(types); if (rooms.isNotBlank()) append(" • ").append(rooms) }
                                     }
-
                                     Box(
                                         Modifier.width(86.dp).height(52.dp)
-                                            .border(
-                                                2.dp,
-                                                if (selected) MaterialTheme.colorScheme.primary
-                                                else if (sameSubjectRecord != null) MaterialTheme.colorScheme.error
-                                                else if (cellRecords.isNotEmpty()) MaterialTheme.colorScheme.outline
-                                                else MaterialTheme.colorScheme.outlineVariant
-                                            )
-                                            .background(
-                                                if (selected) MaterialTheme.colorScheme.primaryContainer
-                                                else if (sameSubjectRecord != null) MaterialTheme.colorScheme.errorContainer
-                                                else if (cellRecords.isNotEmpty()) MaterialTheme.colorScheme.surfaceVariant
-                                                else MaterialTheme.colorScheme.surface
-                                            )
+                                            .border(2.dp, if (selectedType != null) MaterialTheme.colorScheme.primary else if (sameSubject != null) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outlineVariant)
+                                            .background(if (selectedType != null) MaterialTheme.colorScheme.primaryContainer else if (sameSubject != null) MaterialTheme.colorScheme.secondaryContainer else if (otherSubject != null) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)
                                             .clickable {
-                                                if (sameSubjectRecord != null) {
-                                                    pendingDelete = sameSubjectRecord
-                                                } else {
-                                                    selectedSlots = if (selected) {
-                                                        selectedSlots - currentKey
-                                                    } else {
-                                                        selectedSlots + currentKey
-                                                    }
+                                                when {
+                                                    sameSubject != null -> selectedSlots = selectedSlots - key
+                                                    cellRecords.isEmpty() -> selectedSlots = selectedSlots + (key to classType)
+                                                    else -> Unit
                                                 }
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center
-                                        ) {
-                                            if (cellRecords.isNotEmpty()) {
-                                                Text(
-                                                    occupantText,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontWeight = FontWeight.Bold,
-                                                    maxLines = 2,
-                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                                )
-                                                if (sameSubjectRecord != null) {
-                                                    Text(
-                                                        "Tap to delete",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = MaterialTheme.colorScheme.error,
-                                                        maxLines = 1
-                                                    )
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                            when {
+                                                selectedType != null -> {
+                                                    Text(if (sameSubject != null) occupant else "Selected $selectedType", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                    if (sameSubject != null) Text("Tap to remove", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                                                 }
-                                            } else {
-                                                Text(
-                                                    if (selected) "Selected $classType" else "Empty",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
+                                                cellRecords.isNotEmpty() -> {
+                                                    Text(occupant, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                    Text(if (otherSubject != null) "Occupied • locked" else "Tap to remove", style = MaterialTheme.typography.labelSmall, color = if (otherSubject != null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary)
+                                                }
+                                                else -> Text("Empty", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                         }
                                     }
@@ -1562,75 +1433,17 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
                         }
                     }
                 }
-
-                Text(
-                    if (selectedSlots.isEmpty()) "No time selected"
-                    else selectedSlots.size.toString() + " slot(s) selected • " + classType,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall
-                )
-
-                val lectureSelectedAny = selectedSlots.isNotEmpty() && classType.equals("Lecture", true)
-                val labSelectedAny = selectedSlots.isNotEmpty() && classType.equals("Lab", true)
-
+                Text(if (selectedSlots.isEmpty()) "No schedule selected" else selectedSlots.size.toString() + " slot(s) selected", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 Text("Rooms", fontWeight = FontWeight.SemiBold)
-                Text(
-                    "The room field follows the selected class type. Lecture uses Lecture room; Lab uses Lab room.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall
-                )
-                if (lectureSelectedAny) {
-                    OutlinedTextField(
-                        lectureRoom,
-                        { lectureRoom = it },
-                        Modifier.fillMaxWidth(),
-                        label = { Text("Lecture room") },
-                        placeholder = { Text("Enter lecture room") },
-                        singleLine = true
-                    )
-                }
-                if (labSelectedAny) {
-                    OutlinedTextField(
-                        labRoom,
-                        { labRoom = it },
-                        Modifier.fillMaxWidth(),
-                        label = { Text("Lab room") },
-                        placeholder = { Text("Enter lab room") },
-                        singleLine = true
-                    )
-                }
-
-                OutlinedTextField(
-                    professor,
-                    { professor = it },
-                    Modifier.fillMaxWidth(),
-                    label = { Text("Professor") }
-                )
-                OutlinedTextField(
-                    notes,
-                    { notes = it },
-                    Modifier.fillMaxWidth(),
-                    label = { Text("Notes") }
-                )
-
+                Text("Lecture and Lab rooms are loaded automatically from the subject. Change them only if the room itself changes.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(lectureRoom, { lectureRoom = it }, Modifier.fillMaxWidth(), label = { Text("Lecture room") }, singleLine = true)
+                OutlinedTextField(labRoom, { labRoom = it }, Modifier.fillMaxWidth(), label = { Text("Lab room") }, singleLine = true)
+                OutlinedTextField(professor, { professor = it }, Modifier.fillMaxWidth(), label = { Text("Professor") })
+                OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth(), label = { Text("Notes") })
                 Text("Class color", fontWeight = FontWeight.SemiBold)
-                Row(
-                    Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     colors.forEach { c ->
-                        Box(
-                            Modifier.size(40.dp)
-                                .border(
-                                    3.dp,
-                                    if (color == c) MaterialTheme.colorScheme.onSurface else Color.Transparent,
-                                    RoundedCornerShape(50)
-                                )
-                                .padding(4.dp)
-                                .background(Color(c), RoundedCornerShape(50))
-                                .clickable { color = c },
-                            contentAlignment = Alignment.Center
-                        ) {
+                        Box(Modifier.size(40.dp).border(3.dp, if (color == c) MaterialTheme.colorScheme.onSurface else Color.Transparent, RoundedCornerShape(50)).padding(4.dp).background(Color(c), RoundedCornerShape(50)).clickable { color = c }, contentAlignment = Alignment.Center) {
                             if (color == c) Text("✓", color = readableContentColor(Color(c)), fontWeight = FontWeight.Bold)
                         }
                     }
@@ -1638,81 +1451,33 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    if (subject.isNotBlank() && selectedSlots.isNotEmpty()) {
-                        val normalizedSubject = subject.trim()
-                        val existing = store.get("schedule")
-                        val slots = selectedSlots.map { key ->
-                            val p = key.split("|")
-                            Pair(p.getOrNull(0).orEmpty(), p.getOrNull(1)?.toIntOrNull() ?: 7)
-                        }
-
-                        val idBase = maxOf(
-                            System.currentTimeMillis(),
-                            (existing.maxOfOrNull { it.id } ?: 0L) + 1L
-                        )
-                        val selected = slots.mapIndexed { index, slot ->
-                            val (day, h) = slot
-                            Record(
-                                id = idBase + index,
-                                title = normalizedSubject,
-                                subtitle = fullName.trim(),
-                                extra = notes.trim(),
-                                day = day,
-                                startTime = "%02d:00".format(h),
-                                endTime = "%02d:00".format(h + 1),
-                                room = if (classType.equals("Lecture", true)) lectureRoom.trim() else labRoom.trim(),
-                                professor = professor.trim(),
-                                color = color,
-                                classType = classType
-                            )
-                        }
-
-                        val replaced = existing.filterNot { old ->
-                            old.title.trim().equals(normalizedSubject, true) &&
-                                slots.any { (day, h) ->
-                                    old.day.equals(day, true) &&
-                                        old.startTime.toMinutesOrNull() == h * 60
-                                }
-                        }
-                        store.put("schedule", replaced + selected)
-                        selected.forEach { syncSubjectFromClass(store, it) }
-                        refresh++
+            Button(onClick = {
+                val normalizedSubject = subject.trim()
+                if (normalizedSubject.isNotBlank()) {
+                    val existing = store.get("schedule")
+                    val idBase = maxOf(System.currentTimeMillis(), (existing.maxOfOrNull { it.id } ?: 0L) + 1L)
+                    val newRecords = selectedSlots.entries.mapIndexed { index, entry ->
+                        val p = entry.key.split("|")
+                        val day = p.getOrNull(0).orEmpty()
+                        val hour = p.getOrNull(1)?.toIntOrNull() ?: 0
+                        val type = if (entry.value.equals("Lab", true)) "Lab" else "Lecture"
+                        Record(id = idBase + index, title = normalizedSubject, subtitle = fullName.trim(), extra = notes.trim(), day = day, startTime = "%02d:00".format(hour), endTime = "%02d:00".format(hour + 1), room = if (type == "Lab") labRoom.trim() else lectureRoom.trim(), professor = professor.trim(), color = color, classType = type)
                     }
-                    done()
+                    val withoutSubject = existing.filterNot { it.title.trim().equals(normalizedSubject, true) }
+                    store.put("schedule", withoutSubject + newRecords)
+                    if (newRecords.isEmpty()) {
+                        store.put("subjects", store.get("subjects").filterNot { it.title.trim().equals(normalizedSubject, true) })
+                    } else {
+                        newRecords.forEach { syncSubjectFromClass(store, it) }
+                    }
                 }
-            ) { Text("Save") }
+                done()
+            }) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = done) { Text("Cancel") } }
     )
-
-    pendingDelete?.let { record ->
-        AlertDialog(
-            onDismissRequest = { pendingDelete = null },
-            title = { Text("Delete " + record.title + "?") },
-            text = {
-                Text(
-                    record.day + " • " + record.startTime + "–" + record.endTime + " • " +
-                        if (record.classType.equals("Lab", true)) "Lab" else "Lecture"
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        deleteScheduleAndSync(store, record)
-                        val deletedKey = record.day + "|" + (record.startTime.toMinutesOrNull()?.div(60))
-                        selectedSlots = selectedSlots - deletedKey
-                        pendingDelete = null
-                        refresh++
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) { Text("Delete") }
-            },
-            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancel") } }
-        )
-    }
 }
+
 @Composable
 fun EditScheduleRecordDialog(record: Record, store: LocalStore, done: () -> Unit, cancel: () -> Unit) {
     var subject by remember(record.id) { mutableStateOf(record.title) }
@@ -1983,10 +1748,10 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
             OutlinedTextField(subject,{subject=it},Modifier.fillMaxWidth(),label={Text("Subject code")},placeholder={Text("e.g. DCIT 25")},singleLine=true)
             OutlinedTextField(fullName,{fullName=it},Modifier.fillMaxWidth(),label={Text("Whole subject name")})
             Text("Class type",fontWeight=FontWeight.SemiBold)
-            Text("Only one type can occupy a subject's exact day/time. If you switch Lecture ↔ Lab and save the same subject in the same slot, the new type replaces the old one.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+            Text("Lecture and Lab cannot be added to the same day/time cell. Existing classes cannot be overwritten; remove or change them from Edit / Delete Classes first.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Lecture","Lab").forEach{option->FilterChip(selected=classType==option,onClick={classType=option},label={Text(option)})}}
             Text("Pick class time(s) and day(s)",fontWeight=FontWeight.SemiBold)
-            Text("Tap a cell once to select it. Tapping it again removes it. Lecture and Lab cannot be selected separately for the same cell.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+            Text("Tap an empty cell to select it. Existing Lecture/Lab or another subject is locked and cannot be overwritten.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal=2.dp)){Column{
                 Row{
                     Box(Modifier.width(48.dp).height(32.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text("Time",style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)}
@@ -2008,13 +1773,13 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                         Box(Modifier.width(86.dp).height(52.dp)
                             .border(2.dp,if(selected)MaterialTheme.colorScheme.primary else if(cellRecords.isNotEmpty())MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant)
                             .background(if(selected)MaterialTheme.colorScheme.primaryContainer else if(cellRecords.isNotEmpty())MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)
-                            .clickable{selectedSlots=if(selected)selectedSlots-currentKey else selectedSlots+currentKey},
+                            .clickable{if(cellRecords.isEmpty()){selectedSlots=if(selected)selectedSlots-currentKey else selectedSlots+currentKey}},
                             contentAlignment=Alignment.Center){
                             Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
                                 if(cellRecords.isNotEmpty()) Text(occupantText,style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                 else Text("Empty",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                 if(selected) Text("Selected $classType",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary,maxLines=1)
-                                else if(sameSubjectRecord!=null) Text("Will replace "+sameSubjectRecord.classType,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.tertiary,maxLines=1)
+                                else if(cellRecords.isNotEmpty()) Text("Occupied • locked",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1)
                             }
                         }
                     }
@@ -2068,12 +1833,13 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                     val (day,h)=slot
                     Record(id=idBase+index,title=normalizedSubject,subtitle=fullName.trim(),extra=notes.trim(),day=day,startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=(if (classType.equals("Lecture", true)) lectureRoom else labRoom).trim(),professor=professor.trim(),color=color,classType=classType)
                 }
-                val replaced=existing.filterNot{old->
-                    old.title.trim().equals(normalizedSubject,true) &&
-                    slots.any{(day,h)->old.day.equals(day,true)&&old.startTime.toMinutesOrNull()==h*60}
+                val conflict = slots.any { (day,h) ->
+                    existing.any { old -> old.day.equals(day,true) && old.startTime.toMinutesOrNull() == h * 60 }
                 }
-                store.put("schedule",replaced+selected)
-                selected.forEach{syncSubjectFromClass(store,it)}
+                if (!conflict) {
+                    store.put("schedule", existing + selected)
+                    selected.forEach{syncSubjectFromClass(store,it)}
+                }
             }
         }
         done()
