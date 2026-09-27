@@ -1373,7 +1373,7 @@ fun EditScheduleRecordDialog(record: Record, store: LocalStore, done: () -> Unit
                         }
                         hours.forEach { h ->
                             Row {
-                                Box(Modifier.width(48.dp).height(52.dp).border(1.dp, MaterialTheme.colorScheme.outline), contentAlignment = Alignment.Center) { Text(formatHourRange(h, h + 1), style = MaterialTheme.typography.labelSmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center, lineHeight = 12.sp) }
+                                Box(Modifier.width(48.dp).height(52.dp).border(1.dp, MaterialTheme.colorScheme.outline), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("%02d:00".format(h), style = MaterialTheme.typography.labelSmall); Text("%02d:00".format(h + 1), style = MaterialTheme.typography.labelSmall) } }
                                 days.forEach { d ->
                                     val key = "$d|$h"
                                     val selected = key == selectedSlot
