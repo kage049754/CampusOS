@@ -1271,44 +1271,41 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
 
 @Composable
 fun SubjectDetailsDialog(all: List<Record>, done: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = done,
-        title = { Text("Subject details") },
-        text = {
-            if (all.isEmpty()) {
-                EmptyCard("No classes in the current schedule.")
-            } else {
-                LazyColumn(
-                    Modifier.fillMaxWidth().heightIn(max = 520.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    items(all, key = { it.id }) { r ->
-                        Card(Modifier.fillMaxWidth()) {
-                            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    Modifier.size(width = 4.dp, height = 48.dp).background(
-                                        if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primary,
-                                        RoundedCornerShape(4.dp)
-                                    )
-                                )
-                                Spacer(Modifier.width(10.dp))
-                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
-                                        if (r.room.isNotBlank()) Text("  •  " + r.room, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                    if (r.subtitle.isNotBlank()) Text(r.subtitle, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
-                                    if (r.professor.isNotBlank()) Text(r.professor, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                                    Text(r.day + " • " + r.startTime + "-" + r.endTime + " • " + r.classType, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    data class SubjectGroup(val key: String, val subject: Record, val classes: List<Record>)
+    val groups = all.groupBy { "${it.title.trim().uppercase(Locale.getDefault())}|${it.professor.trim().lowercase(Locale.getDefault())}" }
+        .values.map { records ->
+            val first = records.first()
+            SubjectGroup(first.title.trim().uppercase(Locale.getDefault()) + "|" + first.professor.trim().lowercase(Locale.getDefault()), first,
+                records.sortedWith(compareBy<Record>({ it.day }, { it.startTime }, { it.classType })))
+        }.sortedBy { it.subject.title.lowercase(Locale.getDefault()) }
+
+    AlertDialog(onDismissRequest=done,title={Text("Subject details")},text={
+        if(groups.isEmpty()) EmptyCard("No classes in the current schedule.")
+        else LazyColumn(Modifier.fillMaxWidth().heightIn(max=560.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+            items(groups,key={it.key}) { group ->
+                val r=group.subject
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                        Text(r.title,fontWeight=FontWeight.Bold,style=MaterialTheme.typography.titleMedium)
+                        if(r.subtitle.isNotBlank()) Text(r.subtitle,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        if(r.professor.isNotBlank()) Text("Professor: ${r.professor}",fontWeight=FontWeight.SemiBold)
+                        Text("Class schedule",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelLarge)
+                        group.classes.forEach { c ->
+                            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.Top) {
+                                Icon(if(c.classType.equals("Lab",true)) Icons.Default.Science else Icons.Default.MenuBook,null,Modifier.size(18.dp))
+                                Spacer(Modifier.width(7.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("${c.day} • ${c.startTime}–${c.endTime}",fontWeight=FontWeight.SemiBold)
+                                    Text("${if(c.classType.equals("Lab",true)) "Lab" else "Lecture"}${if(c.room.isNotBlank()) " • Room ${c.room}" else ""}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
+                        if(r.extra.isNotBlank()) Text("Notes: ${r.extra}",style=MaterialTheme.typography.bodySmall)
                     }
                 }
             }
-        },
-        confirmButton = { TextButton(done) { Text("Close") } }
-    )
+        }
+    },confirmButton={TextButton(done){Text("Close")}})
 }
 
 @Composable
@@ -1627,7 +1624,7 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                     weekDays.forEach{d->Box(Modifier.width(86.dp).height(32.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text(d.take(3),style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)}}
                 }
                 hours.forEach{h->Row{
-                    Box(Modifier.width(48.dp).height(52.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text(formatHourRange(h, h + 1),style=MaterialTheme.typography.labelSmall,textAlign=androidx.compose.ui.text.style.TextAlign.Center,lineHeight=12.sp)}
+                    Box(Modifier.width(48.dp).height(52.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Column(horizontalAlignment=Alignment.CenterHorizontally) { Text("%02d:00".format(h),style=MaterialTheme.typography.labelSmall); Text("%02d:00".format(h + 1),style=MaterialTheme.typography.labelSmall) }}
                     weekDays.forEach{d->
                         val currentKey="$d|$h|$classType"
                         val selected=currentKey in selectedSlots
