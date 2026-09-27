@@ -149,7 +149,7 @@ fun TasksScreen(store: LocalStore, query: String, clear: () -> Unit, openSubject
             openSubject = openSubject,
             editing = editing,
             onEdit = { task -> editing = task },
-            onAdd = { editing = null },
+            onAdd = { showEditor = true },
             onDismiss = {
                 showDateWindow = false
                 editing = null
@@ -170,6 +170,7 @@ private fun TaskDateWindow(
     onDismiss: () -> Unit,
     onSaved: () -> Unit
 ) {
+    var showEditor by remember { mutableStateOf(false) }
     val revision = store.revision
     val tasks = remember(selectedDate, revision) {
         store.get("tasks")
@@ -177,8 +178,9 @@ private fun TaskDateWindow(
             .sortedWith(compareByDescending<Record> { taskPinned(it) }.thenBy { taskDue(it) })
     }
 
-    if (editing != null) {
+    if (editing != null || showEditor) {
         SimpleTaskEditor(store = store, existing = editing, selectedDate = selectedDate) {
+            showEditor = false
             onSaved()
         }
         return
