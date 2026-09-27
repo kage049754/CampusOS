@@ -1836,11 +1836,11 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
         Column(Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){
             OutlinedTextField(subject,{subject=it},Modifier.fillMaxWidth(),label={Text("Subject code")},placeholder={Text("e.g. DCIT 25")},singleLine=true)
             OutlinedTextField(fullName,{fullName=it},Modifier.fillMaxWidth(),label={Text("Whole subject name")})
-            Text("Type for the next slots",fontWeight=FontWeight.SemiBold)
-            Text("Changing Lecture/Lab keeps previous selections. The same subject can have multiple days, times, and both Lecture and Lab.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+            Text("Class type",fontWeight=FontWeight.SemiBold)
+            Text("Only one type can occupy a subject's exact day/time. If you switch Lecture ↔ Lab and save the same subject in the same slot, the new type replaces the old one.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Lecture","Lab").forEach{option->FilterChip(selected=classType==option,onClick={classType=option},label={Text(option)})}}
             Text("Pick class time(s) and day(s)",fontWeight=FontWeight.SemiBold)
-            Text("Existing schedules are shown in each cell so you can avoid duplicate or incorrect entries. Different subjects can still share the same time.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+            Text("Tap a cell once to select it. Tapping it again removes it. Lecture and Lab cannot be selected separately for the same cell.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal=2.dp)){Column{
                 Row{
                     Box(Modifier.width(48.dp).height(32.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Text("Time",style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold)}
@@ -1849,13 +1849,10 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                 hours.forEach{h->Row{
                     Box(Modifier.width(48.dp).height(52.dp).border(1.dp,MaterialTheme.colorScheme.outline),contentAlignment=Alignment.Center){Column(horizontalAlignment=Alignment.CenterHorizontally) { Text("%02d:00".format(h),style=MaterialTheme.typography.labelSmall); Text("%02d:00".format(h + 1),style=MaterialTheme.typography.labelSmall) }}
                     weekDays.forEach{d->
-                        val currentKey="$d|$h|$classType"
+                        val currentKey="$d|$h"
                         val selected=currentKey in selectedSlots
-                        val lectureSelected = "$d|$h|Lecture" in selectedSlots
-                        val labSelected = "$d|$h|Lab" in selectedSlots
-                        val anySelected = lectureSelected || labSelected
-                        val cellRecords=existingSchedule.filter{it.day.equals(d,true)&&it.startTime.toHourOrNull()==h}
-                        val sameSubjectAlreadyThere=cellRecords.any{subject.isNotBlank()&&it.title.trim().equals(subject.trim(),true)&&it.classType.equals(classType,true)}
+                        val cellRecords=existingSchedule.filter{it.day.equals(d,true)&&it.startTime.toMinutesOrNull()==h*60}
+                        val sameSubjectRecord=cellRecords.firstOrNull{subject.isNotBlank()&&it.title.trim().equals(subject.trim(),true)}
                         val occupantText=cellRecords.groupBy{it.title.trim().uppercase(Locale.getDefault())}.values.take(2).joinToString(" • "){group->
                             val first=group.first()
                             val types=group.map{it.classType}.distinct().joinToString("+")
@@ -1870,16 +1867,16 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                             Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
                                 if(cellRecords.isNotEmpty()) Text(occupantText,style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                 else Text("Empty",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                if(selected) Text(if(sameSubjectAlreadyThere)"Already added" else "Selected $classType",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary,maxLines=1)
-                                else if(anySelected) Text(listOfNotNull(if(lectureSelected) "Lecture" else null, if(labSelected) "Lab" else null).joinToString(" + ") + " selected",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.tertiary,maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                if(selected) Text("Selected $classType",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary,maxLines=1)
+                                else if(sameSubjectRecord!=null) Text("Will replace "+sameSubjectRecord.classType,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.tertiary,maxLines=1)
                             }
                         }
                     }
                 }}
             }}
-            Text(if(selectedSlots.isEmpty())"No time selected" else selectedSlots.size.toString()+" slot(s) selected",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
-            val lectureSelectedAny = selectedSlots.any { it.endsWith("|Lecture") }
-            val labSelectedAny = selectedSlots.any { it.endsWith("|Lab") }
+            Text(if(selectedSlots.isEmpty())"No time selected" else selectedSlots.size.toString()+" slot(s) selected • "+classType,color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+            val lectureSelectedAny = selectedSlots.isNotEmpty() && classType.equals("Lecture", true)
+            val labSelectedAny = selectedSlots.isNotEmpty() && classType.equals("Lab", true)
             Text("Rooms", fontWeight=FontWeight.SemiBold)
             Text(
                 "The room field follows the selected class type. Lecture uses Lecture room; Lab uses Lab room.",
@@ -1915,23 +1912,21 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
         if(subject.isNotBlank()&&selectedSlots.isNotEmpty()){
             val normalizedSubject=subject.trim()
             val existing=store.get("schedule")
-            val newKeys=selectedSlots.map { key ->
+            val slots=selectedSlots.map { key ->
                 val p=key.split("|")
-                Triple(p.getOrNull(0)?:"",p.getOrNull(1)?.toIntOrNull()?:7,p.getOrNull(2)?:classType)
-            }.filterNot{(day,h,type)->
-                existing.any{
-                    it.day.equals(day,true) &&
-                    it.startTime.toMinutesOrNull() == h * 60 &&
-                    it.title.trim().equals(normalizedSubject,true)
-                }
+                Pair(p.getOrNull(0)?:"",p.getOrNull(1)?.toIntOrNull()?:7)
             }
-            if(newKeys.isNotEmpty()){
+            if(slots.isNotEmpty()){
                 val idBase=maxOf(System.currentTimeMillis(),(existing.maxOfOrNull{it.id}?:0L)+1L)
-                val selected=newKeys.mapIndexed{index,slot->
-                    val (day,h,type)=slot
-                    Record(id=idBase+index,title=normalizedSubject,subtitle=fullName.trim(),extra=notes.trim(),day=day,startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=(if (type.equals("Lecture", true)) lectureRoom else labRoom).trim(),professor=professor.trim(),color=color,classType=type)
+                val selected=slots.mapIndexed{index,slot->
+                    val (day,h)=slot
+                    Record(id=idBase+index,title=normalizedSubject,subtitle=fullName.trim(),extra=notes.trim(),day=day,startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=(if (classType.equals("Lecture", true)) lectureRoom else labRoom).trim(),professor=professor.trim(),color=color,classType=classType)
                 }
-                store.put("schedule",existing+selected)
+                val replaced=existing.filterNot{old->
+                    old.title.trim().equals(normalizedSubject,true) &&
+                    slots.any{(day,h)->old.day.equals(day,true)&&old.startTime.toMinutesOrNull()==h*60}
+                }
+                store.put("schedule",replaced+selected)
                 selected.forEach{syncSubjectFromClass(store,it)}
             }
         }
