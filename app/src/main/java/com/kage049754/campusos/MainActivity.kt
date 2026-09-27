@@ -2436,6 +2436,17 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
         }
     }
 }
+private fun formatClassDuration(totalMinutes: Int): String {
+    val minutes = totalMinutes.coerceAtLeast(0)
+    val hours = minutes / 60
+    val remainder = minutes % 60
+    return when {
+        hours > 0 && remainder > 0 -> "${hours}h ${remainder}m"
+        hours > 0 -> "${hours}h"
+        else -> "${remainder}m"
+    }
+}
+
 private fun String.toMinutesOrNull(): Int? {
     val parts = trim().split(":")
     val hour = parts.getOrNull(0)?.toIntOrNull() ?: return null
