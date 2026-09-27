@@ -179,6 +179,15 @@ class LocalStore(context: Context) {
     var revision by mutableIntStateOf(0)
         private set
     private val prefs = context.getSharedPreferences("campusos", Context.MODE_PRIVATE)
+    init {
+        if (!prefs.getBoolean("schedule_time_range_extended_v1", false)) {
+            val existingEnd = prefs.getInt("schedule_end_hour", 21)
+            prefs.edit()
+                .putInt("schedule_end_hour", maxOf(existingEnd, 21))
+                .putBoolean("schedule_time_range_extended_v1", true)
+                .apply()
+        }
+    }
     private fun read(key: String): MutableList<Record> = runCatching {
         val out = mutableListOf<Record>()
         val raw = prefs.getString(key, "[]") ?: "[]"
