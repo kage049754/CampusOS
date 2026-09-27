@@ -23,7 +23,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
@@ -1970,8 +1969,11 @@ fun InAppFileViewerPage(file: File, done: () -> Unit) {
                                     )
                                 }.clickable{pendingTextPosition=Offset(0.5f,0.5f);showAddText=true}){
                                     pdfStrokes[safePage].orEmpty().forEach{stroke->val path=Path();stroke.points.forEachIndexed{i,p->if(i==0)path.moveTo(p.x,p.y)else path.lineTo(p.x,p.y)};drawPath(path,Color(0xFF1E5AD8),style=Stroke(width=4.dp.toPx(),cap=StrokeCap.Round))}
-                                    pdfTexts[safePage].orEmpty().forEach{mark->drawIntoCanvas { canvas -> canvas.nativeCanvas.drawText(mark.text,mark.x*size.width,mark.y*size.height,android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply{color=android.graphics.Color.rgb(30,90,220);textSize=28.dp.toPx()}) }}
+                                    
                                 }
+                            }
+                            pdfTexts[safePage].orEmpty().forEach { mark ->
+                                Text(mark.text, color = Color(0xFF1E5AD8), fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.Center))
                             }
                         }
                     }
