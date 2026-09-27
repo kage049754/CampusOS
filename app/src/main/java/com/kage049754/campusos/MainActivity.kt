@@ -220,6 +220,10 @@ class LocalStore(context: Context) {
     fun delete(key: String, id: Long) = save(key, read(key).filterNot { it.id == id })
     fun pin() = prefs.getString("pin", "") ?: ""
     fun setPin(v: String) { prefs.edit().putString("pin", v).apply(); revision++ }
+    fun pattern() = prefs.getString("lock_pattern", "") ?: ""
+    fun setPattern(v: String) { prefs.edit().putString("lock_pattern", v).apply(); revision++ }
+    fun authMethod(): String { val stored = prefs.getString("lock_method", "") ?: ""; if (stored.isNotBlank()) return stored; return if (pin().isNotBlank()) "pin" else "none" }
+    fun setAuthMethod(v: String) { prefs.edit().putString("lock_method", v).apply(); revision++ }
     fun theme() = prefs.getString("theme", "system") ?: "system"
     fun homeLayoutOrder(): List<String> = (prefs.getString("home_layout_order", "") ?: "").split(",").filter { it.isNotBlank() }
     fun setHomeLayoutOrder(order: List<String>) { prefs.edit().putString("home_layout_order", order.joinToString(",")).apply(); revision++ }
@@ -319,7 +323,7 @@ class LocalStore(context: Context) {
             root.put("subjectFiles", files)
         }
         if ("homepage" in selected) {
-            root.put("theme", theme()); root.put("lock", lockEnabled())
+            root.put("theme", theme()); root.put("lock", lockEnabled()); root.put("lockMethod", authMethod())
             root.put("profileName", profileName()); root.put("profileStudentId", profileStudentId()); root.put("profileSection", profileSection())
             root.put("homeLayoutOrder", prefs.getString("home_layout_order", ""))
             root.put("homeHiddenTiles", prefs.getString("home_hidden_tiles", ""))
@@ -355,6 +359,7 @@ class LocalStore(context: Context) {
         if ("homepage" in selected) {
             if (root.has("theme")) e.putString("theme", root.getString("theme"))
             if (root.has("lock")) e.putBoolean("lock", root.getBoolean("lock"))
+            if (root.has("lockMethod") && listOf("none","pin","pattern").contains(root.optString("lockMethod"))) e.putString("lock_method", root.getString("lockMethod"))
             if (root.has("profileName")) e.putString("profile_name", root.getString("profileName"))
             if (root.has("profileStudentId")) e.putString("profile_student_id", root.getString("profileStudentId"))
             if (root.has("profileSection")) e.putString("profile_section", root.getString("profileSection"))
@@ -395,13 +400,15 @@ enum class Screen(val label: String) {
 fun CampusOSApp(activity: Activity) {
     val store = remember { LocalStore(activity) }
     var theme by remember { mutableStateOf(store.theme()) }
-    var locked by remember { mutableStateOf(store.lockEnabled() && store.pin().isNotBlank()) }
+    var locked by remember { mutableStateOf(store.lockEnabled() && store.authMethod() != "none") }
     var screenName by rememberSaveable { mutableStateOf(Screen.HOME.name) }
     val screen = Screen.valueOf(screenName)
     var search by rememberSaveable { mutableStateOf("") }
     var showHomeAdd by remember { mutableStateOf(false) }
     var showHomeColors by remember { mutableStateOf(false) }
     var showHomeSettings by remember { mutableStateOf(false) }
+    var showAppLock by remember { mutableStateOf(false) }
+    var showBackupRecovery by remember { mutableStateOf(false) }
     var homeEditRequest by remember { mutableIntStateOf(0) }
     var showProfile by remember { mutableStateOf(false) }
     var showScheduleSettings by remember { mutableStateOf(false) }
@@ -560,7 +567,7 @@ fun CampusOSApp(activity: Activity) {
                 }
             }
             if (showHomeSettings) {
-                HomeSettingsDialog(store, onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, onLockNow = { locked = true }, done = { showHomeSettings = false })
+                HomeSettingsDialog(store, onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, onLockNow = { locked = true }, done = { showHomeSettings = false }, openAppLock = { showHomeSettings = false; showAppLock = true }, openBackupRecovery = { showHomeSettings = false; showBackupRecovery = true })
             }
             if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
             if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }) { showHomeColors = false }
@@ -570,6 +577,8 @@ fun CampusOSApp(activity: Activity) {
             if (showScheduleManager) ScheduleManagerDialog(store) { showScheduleManager = false }
             settingsModule?.let { module -> ModuleSettingsDialog(module, { settingsModule = null; settingsParent = null; showHomeSettings = true }, { settingsParent = module; settingsModule = null; showProfile = true }, { settingsParent = module; settingsModule = null; showScheduleManager = true }, { settingsParent = module; settingsModule = null; showScheduleSettings = true }, { settingsParent = module; settingsModule = null; showScheduleTableSettings = true }, { settingsParent = module; settingsModule = null; showHomeAdd = true }, { settingsModule = null; settingsParent = null; screenName = Screen.TASKS.name }, { settingsModule = null; settingsParent = null; screenName = Screen.ACADEMICS.name }, { settingsModule = null; settingsParent = null; showHomeSettings = false; homeEditRequest++ }) }
             if (showScheduleDetails) SubjectDetailsDialog(store.get("schedule"), { showScheduleDetails = false })
+            if (showAppLock) AppLockSettingsDialog(store, { showAppLock = false }, { locked = true })
+            if (showBackupRecovery) BackupRecoverySettingsDialog(store, { showBackupRecovery = false })
         }
         }
     }
@@ -588,31 +597,10 @@ fun HomeSettingsDialog(
     onModule:(String)->Unit,
     onAppearance:()->Unit,
     onLockNow:()->Unit,
-    done:()->Unit
+    done:()->Unit,
+    openAppLock:()->Unit,
+    openBackupRecovery:()->Unit
 ) {
-    var showPin by remember { mutableStateOf(false) }
-    var showBackup by remember { mutableStateOf(false) }
-    var showRecover by remember { mutableStateOf(false) }
-    var selectedModules by remember { mutableStateOf(setOf("homepage","schedule","tasks","academics")) }
-    var restoreError by remember { mutableStateOf("") }
-    var pinValue by remember { mutableStateOf("") }
-    var confirmPin by remember { mutableStateOf("") }
-    var currentPin by remember { mutableStateOf("") }
-    var pinError by remember { mutableStateOf("") }
-    var enableAfterPin by remember { mutableStateOf(false) }
-    val context = androidx.compose.ui.platform.LocalContext.current
-
-    val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        uri ?: return@rememberLauncherForActivityResult
-        runCatching { context.contentResolver.openOutputStream(uri)?.use { it.write(store.backupJson(selectedModules).toByteArray()) } }
-            .onFailure { restoreError = it.message ?: "Unable to create the backup file." }
-    }
-    val restore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri ?: return@rememberLauncherForActivityResult
-        runCatching { context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { store.restoreJson(it.readText(), selectedModules) } }
-            .onFailure { restoreError = it.message ?: "Unable to recover this backup file." }
-    }
-
     AlertDialog(
         onDismissRequest=done,
         title={Text("CampusOS Settings")},
@@ -625,79 +613,14 @@ fun HomeSettingsDialog(
                 }
                 HorizontalDivider()
                 OutlinedButton(onAppearance,Modifier.fillMaxWidth()){Icon(Icons.Default.Palette,null);Spacer(Modifier.width(8.dp));Text("Appearance & Design")}
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                        ListItem(
-                            headlineContent={Text("App lock",fontWeight=FontWeight.SemiBold)},
-                            supportingContent={Text(when {
-                                store.pin().isBlank() -> "No PIN set"
-                                store.lockEnabled() -> "Enabled • PIN required when CampusOS opens"
-                                else -> "PIN set • lock is off"
-                            },color=MaterialTheme.colorScheme.onSurfaceVariant)},
-                            trailingContent={
-                                Switch(checked=store.lockEnabled() && store.pin().isNotBlank(),onCheckedChange={enabled->
-                                    if(enabled) {
-                                        if(store.pin().isBlank()) {
-                                            pinValue="";confirmPin="";currentPin="";pinError="";enableAfterPin=true;showPin=true
-                                        } else {
-                                            store.setLockEnabled(true);onLockNow()
-                                        }
-                                    } else store.setLockEnabled(false)
-                                })
-                            }
-                        )
-                        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton({pinValue="";confirmPin="";currentPin="";pinError="";enableAfterPin=false;showPin=true},Modifier.weight(1f)){
-                                Icon(Icons.Default.Lock,null);Spacer(Modifier.width(6.dp));Text(if(store.pin().isBlank()) "Set PIN" else "Change PIN")
-                            }
-                            if(store.pin().isNotBlank()) OutlinedButton({store.setLockEnabled(false)},Modifier.weight(1f)){Text("Turn off")}
-                        }
-                        Text("Use a 4–8 digit PIN. Changing the PIN requires the current PIN.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                        Text("Backup & Recovery",fontWeight=FontWeight.SemiBold)
-                        Text("Back up or recover only the CampusOS modules you choose.",color=MaterialTheme.colorScheme.onSurfaceVariant)
-                        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                            Button({selectedModules=setOf("homepage","schedule","tasks","academics");showBackup=true},Modifier.weight(1f)){Icon(Icons.Default.Backup,null);Spacer(Modifier.width(5.dp));Text("Backup")}
-                            OutlinedButton({selectedModules=setOf("homepage","schedule","tasks","academics");restoreError="";showRecover=true},Modifier.weight(1f)){Icon(Icons.Default.Restore,null);Spacer(Modifier.width(5.dp));Text("Recover")}
-                        }
-                        Text("Homepage • Schedule • Notes • Academics / Lessons",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
+                OutlinedButton(openAppLock,Modifier.fillMaxWidth()){Icon(Icons.Default.Lock,null);Spacer(Modifier.width(8.dp));Text("App Lock")}
+                OutlinedButton(openBackupRecovery,Modifier.fillMaxWidth()){Icon(Icons.Default.Backup,null);Spacer(Modifier.width(8.dp));Text("Backup & Recovery")}
                 Text("CampusOS 1.0.0 • Offline-first",color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         confirmButton={TextButton(done){Text("Close")}}
     )
-
-    if(showPin) AlertDialog(
-        onDismissRequest={showPin=false},
-        title={Text(if(store.pin().isBlank()) "Set app PIN" else "Change app PIN")},
-        text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
-            if(store.pin().isNotBlank()) OutlinedTextField(currentPin,{currentPin=it.filter(Char::isDigit).take(8)},label={Text("Current PIN")},singleLine=true)
-            OutlinedTextField(pinValue,{pinValue=it.filter(Char::isDigit).take(8)},label={Text("New PIN")},singleLine=true)
-            OutlinedTextField(confirmPin,{confirmPin=it.filter(Char::isDigit).take(8)},label={Text("Confirm PIN")},singleLine=true)
-            if(pinError.isNotBlank()) Text(pinError,color=MaterialTheme.colorScheme.error)
-            Text("Use 4–8 digits.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-        }},
-        confirmButton={Button({
-            pinError=when {
-                store.pin().isNotBlank() && currentPin!=store.pin() -> "Current PIN is incorrect."
-                pinValue.length !in 4..8 -> "PIN must be 4–8 digits."
-                pinValue!=confirmPin -> "PINs do not match."
-                else -> ""
-            }
-            if(pinError.isBlank()){store.setPin(pinValue);if(enableAfterPin){store.setLockEnabled(true);onLockNow()};showPin=false}
-        }){Text("Save")}},
-        dismissButton={TextButton({showPin=false}){Text("Cancel")}}
-    )
-    if(showBackup) ModuleBackupDialog("Choose modules to backup",selectedModules,{selectedModules=it}){showBackup=false;if(selectedModules.isNotEmpty())backup.launch("CampusOS-backup.json")}
-    if(showRecover) ModuleBackupDialog("Choose modules to recover",selectedModules,{selectedModules=it}){showRecover=false;if(selectedModules.isNotEmpty())restore.launch(arrayOf("application/json","text/plain"))}
-    if(restoreError.isNotBlank()) AlertDialog(onDismissRequest={restoreError=""},title={Text("Backup / Recovery error")},text={Text(restoreError)},confirmButton={TextButton({restoreError=""}){Text("OK")}})
 }
-
 @Composable
 fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleManager:()->Unit,scheduleSettings:()->Unit,tableSettings:()->Unit,addClass:()->Unit,openTasks:()->Unit,openAcademics:()->Unit,editHome:()->Unit) {
     var showTaskSettings by remember { mutableStateOf(false) }
@@ -1924,6 +1847,14 @@ fun AcademicsScreen(
         ScrollableTabRow(selectedTabIndex = tab, edgePadding = 12.dp) {
             labels.forEachIndexed { i, label -> Tab(tab == i, { tab = i }, text = { Text(label) }) }
         }
+        if (tab == 1) {
+            Card(Modifier.fillMaxWidth().padding(horizontal=16.dp, vertical=8.dp)) {
+                Column(Modifier.padding(14.dp), verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                    Row(verticalAlignment=Alignment.CenterVertically) { Icon(Icons.Default.Construction, null); Spacer(Modifier.width(8.dp)); Text("Feature development", fontWeight=FontWeight.Bold) }
+                    Text("Reviewer tools are still being developed. Planned functions include question-bank management, reviewer categories, quiz/practice mode, search and sorting, and import/export.", style=MaterialTheme.typography.bodySmall, color=MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
         if (list.isEmpty()) {
             EmptyCard("No " + labels[tab].lowercase() + " yet. Add classes from Home Settings or use your existing data.")
         } else {
@@ -2723,21 +2654,50 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
 
 @Composable
 fun LockScreen(store: LocalStore, unlock: () -> Unit) {
+    if (store.authMethod() == "pattern") PatternUnlockScreen(store, unlock) else PinUnlockScreen(store, unlock)
+}
+
+@Composable
+fun PinUnlockScreen(store: LocalStore, unlock: () -> Unit) {
     var entered by remember { mutableStateOf("") }
     var error by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-    Icon(Icons.Default.Lock, null, Modifier.size(64.dp))
-    Spacer(Modifier.height(18.dp))
-    Text("CampusOS is locked", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-    Text("Enter your PIN to continue.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-    Spacer(Modifier.height(18.dp))
-    OutlinedTextField(entered, { entered = it.filter(Char::isDigit).take(8) }, label = { Text("PIN") })
-    if (error) Text("Incorrect PIN", color = MaterialTheme.colorScheme.error)
-    Spacer(Modifier.height(12.dp))
-    Button({ if (entered == store.pin()) unlock() else error = true }) { Text("Unlock") }
+    Column(Modifier.fillMaxSize().padding(28.dp), horizontalAlignment=Alignment.CenterHorizontally, verticalArrangement=Arrangement.Center) {
+        Icon(Icons.Default.Lock, null, Modifier.size(64.dp)); Spacer(Modifier.height(18.dp))
+        Text("CampusOS is locked", style=MaterialTheme.typography.headlineSmall, fontWeight=FontWeight.Bold)
+        Text("Enter your PIN to continue.", color=MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.height(18.dp))
+        OutlinedTextField(entered, { entered = it.filter(Char::isDigit).take(8) }, label={Text("PIN")}, singleLine=true)
+        if (error) Text("Incorrect PIN", color=MaterialTheme.colorScheme.error)
+        Spacer(Modifier.height(12.dp)); Button({ if (entered == store.pin()) unlock() else error=true }) { Text("Unlock") }
     }
 }
 
+@Composable
+fun PatternUnlockScreen(store: LocalStore, unlock: () -> Unit) {
+    var entered by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf(false) }
+    fun add(n:Int) { if (!entered.split("-").contains(n.toString())) entered = if (entered.isBlank()) n.toString() else "$" + "entered-$n" }
+    Column(Modifier.fillMaxSize().padding(28.dp), horizontalAlignment=Alignment.CenterHorizontally, verticalArrangement=Arrangement.Center) {
+        Icon(Icons.Default.Grid3x3, null, Modifier.size(64.dp)); Spacer(Modifier.height(18.dp))
+        Text("CampusOS is locked", style=MaterialTheme.typography.headlineSmall, fontWeight=FontWeight.Bold)
+        Text("Draw your pattern to continue.", color=MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.height(12.dp))
+        PatternGrid(entered.split("-").filter{it.isNotBlank()}.mapNotNull{it.toIntOrNull()}, ::add, { entered="" })
+        if (error) Text("Incorrect pattern", color=MaterialTheme.colorScheme.error)
+        Button({ if (entered == store.pattern()) unlock() else { error=true; entered="" } }) { Text("Unlock") }
+    }
+}
+
+@Composable
+fun PatternGrid(selected: List<Int>, onPoint:(Int)->Unit, clear:()->Unit) {
+    Column(horizontalAlignment=Alignment.CenterHorizontally) {
+        for (row in 0..2) Row {
+            for (col in 0..2) {
+                val n=row*3+1+col
+                OutlinedButton({onPoint(n)}, Modifier.size(64.dp).padding(4.dp), contentPadding=PaddingValues(0.dp)) { Text(if(selected.contains(n)) "●" else "○", fontSize=22.sp) }
+            }
+        }
+        TextButton(clear) { Text("Clear") }
+    }
+}
 @Composable fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
     Card(modifier) { Column(Modifier.padding(14.dp)) { Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
 }
