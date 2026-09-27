@@ -1310,54 +1310,263 @@ fun SubjectDetailsDialog(all: List<Record>, done: () -> Unit) {
         }
     },confirmButton={TextButton(done){Text("Close")}})
 }
+
 @Composable
 fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
     var refresh by remember { mutableIntStateOf(0) }
-    var editing by remember { mutableStateOf<Record?>(null) }
-    val records = remember(refresh, store.revision) {
-        store.get("schedule").sortedWith(compareBy<Record>({ it.day }, { it.startTime }, { it.title.lowercase() }, { it.classType }))
+    var selectedSubject by remember { mutableStateOf("") }
+    var newSubject by remember { mutableStateOf("") }
+    var classType by remember { mutableStateOf("Lecture") }
+    var pendingDelete by remember { mutableStateOf<Record?>(null) }
+
+    val records = remember(refresh, store.revision) { store.get("schedule") }
+    val subjects = remember(records) {
+        records.map { it.title.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+            .sortedBy { it.lowercase(Locale.getDefault()) }
     }
+    val days = store.scheduleDays().ifEmpty { listOf("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday") }
+    val startHour = store.scheduleStartHour().coerceIn(0, 23)
+    val endHour = store.scheduleEndHour().coerceAtLeast(startHour + 1).coerceAtMost(23)
+    val hours = (startHour until endHour).toList()
+
+    LaunchedEffect(subjects) {
+        if (selectedSubject.isBlank() && subjects.isNotEmpty()) selectedSubject = subjects.first()
+        if (selectedSubject.isNotBlank() && subjects.none { it.equals(selectedSubject, true) }) {
+            selectedSubject = subjects.firstOrNull().orEmpty()
+        }
+    }
+
     AlertDialog(
         onDismissRequest = done,
         title = { Text("Edit / Delete Classes") },
         text = {
-            Column(Modifier.fillMaxWidth().heightIn(max = 620.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Fix a wrong type, room, time, day, professor, or subject without rebuilding the whole schedule.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (records.isEmpty()) EmptyCard("No schedule entries yet.")
-                else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 500.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(records, key = { it.id }) { r ->
-                        Card(Modifier.fillMaxWidth()) {
-                            ListItem(
-                                headlineContent = { Text(r.title + " • " + r.classType, fontWeight = FontWeight.SemiBold) },
-                                supportingContent = {
-                                    Text(buildString {
-                                        append(r.day); append(" • "); append(r.startTime)
-                                        if (r.endTime.isNotBlank()) append("–").append(r.endTime)
-                                        if (r.room.isNotBlank()) append(" • ").append(r.room)
-                                        if (r.professor.isNotBlank()) append(" • ").append(r.professor)
-                                    }, maxLines = 2)
-                                },
-                                leadingContent = { Icon(Icons.Default.EventNote, null) },
-                                trailingContent = {
-                                    Row {
-                                        IconButton({ editing = r }) { Icon(Icons.Default.Edit, "Edit class") }
-                                        IconButton({
-                                            deleteScheduleAndSync(store, r)
-                                            refresh++
-                                        }) { Icon(Icons.Default.Delete, "Delete class") }
-                                    }
-                                }
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 650.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    "Select a subject code, then tap an empty table cell to add a class. Tap an existing cell for that subject to delete that class.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        newSubject,
+                        { newSubject = it },
+                        Modifier.weight(1f),
+                        label = { Text("Subject code") },
+                        placeholder = { Text("e.g. DCIT 25") },
+                        singleLine = true
+                    )
+                    Button(
+                        onClick = {
+                            val value = newSubject.trim()
+                            if (value.isNotBlank()) {
+                                selectedSubject = value
+                                newSubject = ""
+                            }
+                        },
+                        enabled = newSubject.isNotBlank()
+                    ) { Text("Use") }
+                }
+
+                if (subjects.isNotEmpty()) {
+                    Text("Subject codes", fontWeight = FontWeight.SemiBold)
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        subjects.forEach { subject ->
+                            FilterChip(
+                                selected = selectedSubject.equals(subject, true),
+                                onClick = { selectedSubject = subject },
+                                label = { Text(subject) }
                             )
                         }
                     }
                 }
+
+                Text("Class type for new cells", fontWeight = FontWeight.SemiBold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Lecture", "Lab").forEach { option ->
+                        FilterChip(
+                            selected = classType == option,
+                            onClick = { classType = option },
+                            label = { Text(option) }
+                        )
+                    }
+                }
+
+                if (selectedSubject.isBlank()) {
+                    EmptyCard("Select or enter a subject code first.")
+                } else {
+                    Text("Selected: " + selectedSubject, fontWeight = FontWeight.Bold)
+                    Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 2.dp)) {
+                        Column {
+                            Row {
+                                Box(
+                                    Modifier.width(54.dp).height(34.dp).border(1.dp, MaterialTheme.colorScheme.outline),
+                                    contentAlignment = Alignment.Center
+                                ) { Text("Time", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
+                                days.forEach { day ->
+                                    Box(
+                                        Modifier.width(86.dp).height(34.dp).border(1.dp, MaterialTheme.colorScheme.outline),
+                                        contentAlignment = Alignment.Center
+                                    ) { Text(day.take(3), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
+                                }
+                            }
+
+                            hours.forEach { h ->
+                                Row {
+                                    Box(
+                                        Modifier.width(54.dp).height(56.dp).border(1.dp, MaterialTheme.colorScheme.outline),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("%02d:00".format(h), style = MaterialTheme.typography.labelSmall)
+                                            Text("%02d:00".format(h + 1), style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    }
+                                    days.forEach { day ->
+                                        val matches = records.filter {
+                                            it.day.equals(day, true) &&
+                                                it.startTime.toMinutesOrNull() == h * 60 &&
+                                                it.title.trim().equals(selectedSubject.trim(), true)
+                                        }
+                                        val occupiedByOther = records.any {
+                                            it.day.equals(day, true) &&
+                                                it.startTime.toMinutesOrNull() == h * 60 &&
+                                                !it.title.trim().equals(selectedSubject.trim(), true)
+                                        }
+                                        val record = matches.firstOrNull()
+                                        val hasSubject = record != null
+                                        val bg = when {
+                                            hasSubject -> MaterialTheme.colorScheme.primaryContainer
+                                            occupiedByOther -> MaterialTheme.colorScheme.surfaceVariant
+                                            else -> MaterialTheme.colorScheme.surface
+                                        }
+
+                                        Box(
+                                            Modifier.width(86.dp).height(56.dp)
+                                                .border(
+                                                    2.dp,
+                                                    if (hasSubject) MaterialTheme.colorScheme.primary
+                                                    else MaterialTheme.colorScheme.outlineVariant
+                                                )
+                                                .background(bg)
+                                                .clickable {
+                                                    if (record != null) {
+                                                        pendingDelete = record
+                                                    } else if (!occupiedByOther) {
+                                                        val existing = store.get("schedule")
+                                                        val sameSubjectSameSlot = existing.any {
+                                                            it.day.equals(day, true) &&
+                                                                it.startTime.toMinutesOrNull() == h * 60 &&
+                                                                it.title.trim().equals(selectedSubject.trim(), true)
+                                                        }
+                                                        if (!sameSubjectSameSlot) {
+                                                            val id = maxOf(
+                                                                System.currentTimeMillis(),
+                                                                (existing.maxOfOrNull { it.id } ?: 0L) + 1L
+                                                            )
+                                                            val added = Record(
+                                                                id = id,
+                                                                title = selectedSubject.trim(),
+                                                                day = day,
+                                                                startTime = "%02d:00".format(h),
+                                                                endTime = "%02d:00".format(h + 1),
+                                                                classType = classType
+                                                            )
+                                                            store.put("schedule", existing + added)
+                                                            syncSubjectFromClass(store, added)
+                                                            refresh++
+                                                        }
+                                                    }
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center
+                                            ) {
+                                                when {
+                                                    hasSubject -> {
+                                                        Text(
+                                                            record!!.title,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.Bold,
+                                                            maxLines = 1,
+                                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                        )
+                                                        Text(
+                                                            if (record.classType.equals("Lab", true)) "Lab" else "Lec",
+                                                            style = MaterialTheme.typography.labelSmall
+                                                        )
+                                                        Text(
+                                                            "Tap to delete",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.error,
+                                                            maxLines = 1
+                                                        )
+                                                    }
+                                                    occupiedByOther -> Text(
+                                                        "Other subject",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                    else -> Text(
+                                                        "Tap to add",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Text(
+                    "A Lecture and Lab for the same subject cannot occupy the same day and time. Other subjects are left visible so you can avoid accidental changes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         },
         confirmButton = { Button(done) { Text("Close") } }
     )
-    editing?.let { record ->
-        EditScheduleRecordDialog(record, store, { editing = null; refresh++ }, { editing = null })
+
+    pendingDelete?.let { record ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Delete " + record.title + "?") },
+            text = {
+                Text(
+                    record.day + " • " + record.startTime + "–" + record.endTime + " • " +
+                        if (record.classType.equals("Lab", true)) "Lab" else "Lecture"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        deleteScheduleAndSync(store, record)
+                        pendingDelete = null
+                        refresh++
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancel") } }
+        )
     }
 }
 
@@ -1400,7 +1609,12 @@ fun EditScheduleRecordDialog(record: Record, store: LocalStore, done: () -> Unit
                                 days.forEach { d ->
                                     val key = "$d|$h"
                                     val selected = key == selectedSlot
-                                    val occupied = existing.any { it.id != record.id && it.day.equals(d, true) && it.startTime.toHourOrNull() == h }
+                                    val occupied = existing.any {
+                                        it.id != record.id &&
+                                            it.day.equals(d, true) &&
+                                            it.startTime.toMinutesOrNull() == h * 60 &&
+                                            it.title.trim().equals(subject.trim(), true)
+                                    }
                                     Box(Modifier.width(86.dp).height(52.dp).border(2.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant).background(if (selected) MaterialTheme.colorScheme.primaryContainer else if (occupied) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface).clickable { selectedSlot = key }, contentAlignment = Alignment.Center) {
                                         Text(if (selected) "Selected" else if (occupied) "Occupied" else "Empty", style = MaterialTheme.typography.labelSmall, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
                                     }
@@ -1428,6 +1642,13 @@ fun EditScheduleRecordDialog(record: Record, store: LocalStore, done: () -> Unit
                 val newStartHour = p.getOrNull(1)?.toIntOrNull()
                 val oldDuration = ((record.endTime.toMinutesOrNull() ?: 0) - (record.startTime.toMinutesOrNull() ?: 0)).coerceAtLeast(60)
                 if (subject.isNotBlank() && newDay.isNotBlank() && newStartHour != null) {
+                    val conflict = existing.any {
+                        it.id != record.id &&
+                            it.day.equals(newDay, true) &&
+                            it.startTime.toMinutesOrNull() == newStartHour * 60 &&
+                            it.title.trim().equals(subject.trim(), true)
+                    }
+                    if (conflict) return@Button
                     val newEnd = newStartHour * 60 + oldDuration
                     val updated = record.copy(title = subject.trim(), subtitle = fullName.trim(), extra = notes.trim(), day = newDay, startTime = "%02d:00".format(newStartHour), endTime = "%02d:%02d".format(newEnd / 60, newEnd % 60), room = room.trim(), professor = professor.trim(), classType = type)
                     store.put("schedule", store.get("schedule").map { if (it.id == record.id) updated else it })
@@ -1698,7 +1919,11 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                 val p=key.split("|")
                 Triple(p.getOrNull(0)?:"",p.getOrNull(1)?.toIntOrNull()?:7,p.getOrNull(2)?:classType)
             }.filterNot{(day,h,type)->
-                existing.any{it.day.equals(day,true)&&it.startTime.toHourOrNull()==h&&it.classType.equals(type,true)&&it.title.trim().equals(normalizedSubject,true)}
+                existing.any{
+                    it.day.equals(day,true) &&
+                    it.startTime.toMinutesOrNull() == h * 60 &&
+                    it.title.trim().equals(normalizedSubject,true)
+                }
             }
             if(newKeys.isNotEmpty()){
                 val idBase=maxOf(System.currentTimeMillis(),(existing.maxOfOrNull{it.id}?:0L)+1L)
