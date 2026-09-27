@@ -1051,7 +1051,7 @@ fun HomeTodayClassCard(r: Record,status:String?=null){
         Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){
             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
                 Text(r.title,Modifier.weight(1f),fontWeight=FontWeight.Bold)
-                if(status!=null)Text(status,fontWeight=FontWeight.SemiBold,color=if(completed)MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant)
+                if(status!=null)Text(status,fontWeight=FontWeight.SemiBold,color=if(completed) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text("${r.startTime}–${r.endTime}",style=MaterialTheme.typography.bodyMedium)
             Text(if(r.classType.equals("Lab",true))"Lab" else "Lecture",style=MaterialTheme.typography.bodySmall,fontWeight=FontWeight.SemiBold)
@@ -2964,7 +2964,7 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
                     if (currentMinutes >= end) 1 else 0
                 }.thenBy { it.startTime.toMinutesOrNull() ?: Int.MAX_VALUE }
             )
-            remaining.take(6).forEach{r->
+            remaining.forEach{r->
                 val st=r.startTime.toMinutesOrNull();val en=r.endTime.toMinutesOrNull()
                 val completed = st != null && en != null && currentMinutes >= en
                 val status=when {
