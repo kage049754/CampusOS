@@ -1347,7 +1347,7 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    "Select a subject code, then tap an empty table cell to add a class. Tap an existing cell for that subject to delete that class.",
+                    "Select a subject code. Tap an empty cell to add it. If the cell already has this subject, the selected class type controls what happens: same type deletes; Lecture ↔ Lab replaces the existing type.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1527,7 +1527,7 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
                                                             style = MaterialTheme.typography.labelSmall
                                                         )
                                                         Text(
-                                                            "Tap to delete",
+                                                            if (record.classType.equals(classType, true)) "Tap to delete" else "Tap to replace",
                                                             style = MaterialTheme.typography.labelSmall,
                                                             color = MaterialTheme.colorScheme.error,
                                                             maxLines = 1
