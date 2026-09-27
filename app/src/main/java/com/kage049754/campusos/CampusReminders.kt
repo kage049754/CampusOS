@@ -180,13 +180,18 @@ class CampusBootReceiver : BroadcastReceiver() {
 }
 
 object CampusWidgets {
+    private const val LIVE_WIDGET_REQUEST = 78001
+
     fun updateAll(context: Context) {
-        val manager = android.appwidget.AppWidgetManager.getInstance(context)
-        updateProvider(context, manager, CampusTodayWidgetProvider::class.java)
-        updateProvider(context, manager, CampusNextClassWidgetProvider::class.java)
-        updateProvider(context, manager, CampusTaskWidgetProvider::class.java)
-        updateProvider(context, manager, CampusScheduleWidgetProvider::class.java)
+        val app = context.applicationContext
+        val manager = android.appwidget.AppWidgetManager.getInstance(app)
+        updateProvider(app, manager, CampusTodayWidgetProvider::class.java)
+        updateProvider(app, manager, CampusNextClassWidgetProvider::class.java)
+        updateProvider(app, manager, CampusTaskWidgetProvider::class.java)
+        updateProvider(app, manager, CampusScheduleWidgetProvider::class.java)
+        ensureLiveUpdates(app, manager)
     }
+
     private fun updateProvider(context: Context, manager: android.appwidget.AppWidgetManager, provider: Class<*>) {
         val ids = manager.getAppWidgetIds(ComponentName(context, provider))
         when (provider) {
@@ -195,6 +200,41 @@ object CampusWidgets {
             CampusTaskWidgetProvider::class.java -> ids.forEach { CampusTaskWidgetProvider.update(context, manager, it) }
             CampusScheduleWidgetProvider::class.java -> ids.forEach { CampusScheduleWidgetProvider.update(context, manager, it) }
         }
+    }
+
+    private fun ensureLiveUpdates(context: Context, manager: android.appwidget.AppWidgetManager) {
+        val hasWidgets = listOf(
+            CampusTodayWidgetProvider::class.java,
+            CampusNextClassWidgetProvider::class.java,
+            CampusTaskWidgetProvider::class.java,
+            CampusScheduleWidgetProvider::class.java
+        ).any { manager.getAppWidgetIds(ComponentName(context, it)).isNotEmpty() }
+
+        val alarmManager = context.getSystemService(AlarmManager::class.java)
+        val intent = Intent(context, CampusWidgetTickReceiver::class.java)
+        val pending = PendingIntent.getBroadcast(
+            context,
+            LIVE_WIDGET_REQUEST,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        if (hasWidgets) {
+            alarmManager.setRepeating(
+                AlarmManager.RTC_WAKEUP,
+                System.currentTimeMillis() + 60_000L,
+                60_000L,
+                pending
+            )
+        } else {
+            alarmManager.cancel(pending)
+        }
+    }
+}
+
+class CampusWidgetTickReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent?) {
+        CampusWidgets.updateAll(context.applicationContext)
     }
 }
 
@@ -220,11 +260,39 @@ class CampusNextClassWidgetProvider : android.appwidget.AppWidgetProvider() {
     companion object {
         fun update(context: Context, manager: android.appwidget.AppWidgetManager, id: Int) {
             val v = android.widget.RemoteViews(context.packageName, R.layout.widget_next_class)
-            val text = nextClassText(LocalStore(context))
-            v.setTextViewText(R.id.widget_title, "Next Class")
-            v.setTextViewText(R.id.widget_main, text)
-            v.setTextViewText(R.id.widget_secondary, "Tap to open Schedule")
-            v.setOnClickPendingIntent(R.id.widget_root, appOpenPendingIntent(context)); manager.updateAppWidget(id, v)
+            val state = nextWidgetClass(LocalStore(context))
+            if (state == null) {
+                v.setTextViewText(R.id.widget_title, "Next Class")
+                v.setTextViewText(R.id.widget_main, "No upcoming class")
+                v.setTextViewText(R.id.widget_secondary, "")
+                v.setTextViewText(R.id.widget_status, "")
+                v.setProgressBar(R.id.widget_progress, 100, 0, false)
+            } else {
+                val r = state.record
+                val now = System.currentTimeMillis()
+                val start = state.startMillis
+                val end = state.endMillis
+                val day = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date(start))
+                val duration = (end - start).coerceAtLeast(1L)
+                val progress = if (state.current) (((now - start).toDouble() / duration.toDouble()) * 100.0).toInt().coerceIn(0, 100) else 0
+                val status = if (state.current) {
+                    "Started " + widgetCountdown((now - start) / 60_000L) + " ago • " +
+                        widgetCountdown((end - now) / 60_000L) + " remaining"
+                } else {
+                    "Starts in " + widgetCountdown((start - now) / 60_000L)
+                }
+                v.setTextViewText(R.id.widget_title, if (state.current) "Current Class" else "Next Class")
+                v.setTextViewText(R.id.widget_main, r.title)
+                v.setTextViewText(
+                    R.id.widget_secondary,
+                    day + " • " + r.startTime + "–" + r.endTime +
+                        if (r.room.isNotBlank()) " • Room " + r.room else ""
+                )
+                v.setTextViewText(R.id.widget_status, status)
+                v.setProgressBar(R.id.widget_progress, 100, progress, false)
+            }
+            v.setOnClickPendingIntent(R.id.widget_root, appOpenPendingIntent(context))
+            manager.updateAppWidget(id, v)
         }
     }
 }
@@ -300,22 +368,80 @@ private fun mergeAdjacentWidgetClasses(records: List<Record>): List<Record> {
     return out
 }
 
-private fun nextClassText(store: LocalStore): String {
+private data class WidgetClassState(
+    val record: Record,
+    val startMillis: Long,
+    val endMillis: Long,
+    val current: Boolean
+)
+
+private fun nextWidgetClass(store: LocalStore): WidgetClassState? {
     val now = Calendar.getInstance()
-    val candidate = store.get("schedule").mapNotNull { r ->
-        val hour = r.startTime.toHourOrNull() ?: return@mapNotNull null
-        val minute = r.startTime.substringAfter(':', "0").toIntOrNull() ?: 0
-        val target = Calendar.getInstance()
-        target.set(Calendar.DAY_OF_WEEK, when (r.day.lowercase(Locale.getDefault())) {
-            "sunday" -> Calendar.SUNDAY; "monday" -> Calendar.MONDAY; "tuesday" -> Calendar.TUESDAY
-            "wednesday" -> Calendar.WEDNESDAY; "thursday" -> Calendar.THURSDAY; "friday" -> Calendar.FRIDAY
-            "saturday" -> Calendar.SATURDAY; else -> return@mapNotNull null
-        })
-        target.set(Calendar.HOUR_OF_DAY, hour); target.set(Calendar.MINUTE, minute); target.set(Calendar.SECOND, 0); target.set(Calendar.MILLISECOND, 0)
-        if (target.timeInMillis <= now.timeInMillis) target.add(Calendar.DAY_OF_YEAR, 7)
-        target.timeInMillis to r
-    }.minByOrNull { it.first }
-    return candidate?.let { it.second.title + " • " + it.second.day + " " + it.second.startTime } ?: "No upcoming class"
+    val records = mergeAdjacentWidgetClasses(store.get("schedule"))
+    val current = records.mapNotNull { r ->
+        val start = widgetOccurrenceMillis(r, now, false) ?: return@mapNotNull null
+        val end = widgetEndOccurrenceMillis(r, start) ?: return@mapNotNull null
+        if (start <= now.timeInMillis && now.timeInMillis < end) WidgetClassState(r, start, end, true) else null
+    }.minByOrNull { it.endMillis }
+
+    if (current != null) return current
+
+    return records.mapNotNull { r ->
+        val start = widgetOccurrenceMillis(r, now, true) ?: return@mapNotNull null
+        val end = widgetEndOccurrenceMillis(r, start) ?: return@mapNotNull null
+        WidgetClassState(r, start, end, false)
+    }.minByOrNull { it.startMillis }
+}
+
+private fun widgetOccurrenceMillis(record: Record, now: Calendar, futureOnly: Boolean): Long? {
+    val wanted = when (record.day.lowercase(Locale.getDefault())) {
+        "sunday" -> Calendar.SUNDAY
+        "monday" -> Calendar.MONDAY
+        "tuesday" -> Calendar.TUESDAY
+        "wednesday" -> Calendar.WEDNESDAY
+        "thursday" -> Calendar.THURSDAY
+        "friday" -> Calendar.FRIDAY
+        "saturday" -> Calendar.SATURDAY
+        else -> return null
+    }
+    val startMinute = widgetMinutes(record.startTime) ?: return null
+    for (offset in 0..7) {
+        val c = now.clone() as Calendar
+        c.add(Calendar.DAY_OF_YEAR, offset)
+        if (c.get(Calendar.DAY_OF_WEEK) != wanted) continue
+        c.set(Calendar.HOUR_OF_DAY, startMinute / 60)
+        c.set(Calendar.MINUTE, startMinute % 60)
+        c.set(Calendar.SECOND, 0)
+        c.set(Calendar.MILLISECOND, 0)
+        if (futureOnly && c.timeInMillis <= now.timeInMillis) continue
+        return c.timeInMillis
+    }
+    return null
+}
+
+private fun widgetEndOccurrenceMillis(record: Record, startMillis: Long): Long? {
+    val endMinute = widgetMinutes(record.endTime) ?: return null
+    return Calendar.getInstance().apply {
+        timeInMillis = startMillis
+        set(Calendar.HOUR_OF_DAY, endMinute / 60)
+        set(Calendar.MINUTE, endMinute % 60)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+}
+
+private fun widgetCountdown(minutes: Long): String {
+    val m = minutes.coerceAtLeast(0)
+    return if (m < 60) "$m min" else {
+        val h = m / 60
+        val rem = m % 60
+        if (rem == 0L) "$h hr" else "$h hr $rem min"
+    }
+}
+
+private fun nextClassText(store: LocalStore): String {
+    val state = nextWidgetClass(store) ?: return "No upcoming class"
+    return state.record.title
 }
 
 private fun nextTaskText(store: LocalStore): String {
