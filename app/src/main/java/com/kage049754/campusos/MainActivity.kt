@@ -1461,32 +1461,50 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
                                                 )
                                                 .background(bg)
                                                 .clickable {
-                                                    if (record != null) {
-                                                        pendingDelete = record
-                                                    } else if (!occupiedByOther) {
-                                                        val existing = store.get("schedule")
-                                                        val sameSubjectSameSlot = existing.any {
-                                                            it.day.equals(day, true) &&
-                                                                it.startTime.toMinutesOrNull() == h * 60 &&
-                                                                it.title.trim().equals(selectedSubject.trim(), true)
-                                                        }
-                                                        if (!sameSubjectSameSlot) {
-                                                            val id = maxOf(
-                                                                System.currentTimeMillis(),
-                                                                (existing.maxOfOrNull { it.id } ?: 0L) + 1L
+                                                    val existing = store.get("schedule")
+                                                    val slotRecords = existing.filter {
+                                                        it.day.equals(day, true) &&
+                                                            it.startTime.toMinutesOrNull() == h * 60 &&
+                                                            it.title.trim().equals(selectedSubject.trim(), true)
+                                                    }
+                                                    val recordForSlot = slotRecords.firstOrNull()
+
+                                                    if (recordForSlot != null) {
+                                                        if (recordForSlot.classType.equals(classType, true)) {
+                                                            pendingDelete = recordForSlot
+                                                        } else {
+                                                            val replacement = recordForSlot.copy(
+                                                                classType = classType,
+                                                                endTime = "%02d:00".format(h + 1)
                                                             )
-                                                            val added = Record(
-                                                                id = id,
-                                                                title = selectedSubject.trim(),
-                                                                day = day,
-                                                                startTime = "%02d:00".format(h),
-                                                                endTime = "%02d:00".format(h + 1),
-                                                                classType = classType
-                                                            )
-                                                            store.put("schedule", existing + added)
-                                                            syncSubjectFromClass(store, added)
+                                                            val cleaned = existing
+                                                                .filterNot {
+                                                                    it.id != recordForSlot.id &&
+                                                                        it.day.equals(day, true) &&
+                                                                        it.startTime.toMinutesOrNull() == h * 60 &&
+                                                                        it.title.trim().equals(selectedSubject.trim(), true)
+                                                                }
+                                                                .map { if (it.id == recordForSlot.id) replacement else it }
+                                                            store.put("schedule", cleaned)
+                                                            syncSubjectFromClass(store, replacement)
                                                             refresh++
                                                         }
+                                                    } else if (!occupiedByOther) {
+                                                        val id = maxOf(
+                                                            System.currentTimeMillis(),
+                                                            (existing.maxOfOrNull { it.id } ?: 0L) + 1L
+                                                        )
+                                                        val added = Record(
+                                                            id = id,
+                                                            title = selectedSubject.trim(),
+                                                            day = day,
+                                                            startTime = "%02d:00".format(h),
+                                                            endTime = "%02d:00".format(h + 1),
+                                                            classType = classType
+                                                        )
+                                                        store.put("schedule", existing + added)
+                                                        syncSubjectFromClass(store, added)
+                                                        refresh++
                                                     }
                                                 },
                                             contentAlignment = Alignment.Center
@@ -1642,16 +1660,19 @@ fun EditScheduleRecordDialog(record: Record, store: LocalStore, done: () -> Unit
                 val newStartHour = p.getOrNull(1)?.toIntOrNull()
                 val oldDuration = ((record.endTime.toMinutesOrNull() ?: 0) - (record.startTime.toMinutesOrNull() ?: 0)).coerceAtLeast(60)
                 if (subject.isNotBlank() && newDay.isNotBlank() && newStartHour != null) {
-                    val conflict = existing.any {
+                    val newEnd = newStartHour * 60 + oldDuration
+                    val updated = record.copy(title = subject.trim(), subtitle = fullName.trim(), extra = notes.trim(), day = newDay, startTime = "%02d:00".format(newStartHour), endTime = "%02d:%02d".format(newEnd / 60, newEnd % 60), room = room.trim(), professor = professor.trim(), classType = type)
+                    val cleaned = store.get("schedule").filterNot {
                         it.id != record.id &&
                             it.day.equals(newDay, true) &&
                             it.startTime.toMinutesOrNull() == newStartHour * 60 &&
                             it.title.trim().equals(subject.trim(), true)
                     }
-                    if (conflict) return@Button
-                    val newEnd = newStartHour * 60 + oldDuration
-                    val updated = record.copy(title = subject.trim(), subtitle = fullName.trim(), extra = notes.trim(), day = newDay, startTime = "%02d:00".format(newStartHour), endTime = "%02d:%02d".format(newEnd / 60, newEnd % 60), room = room.trim(), professor = professor.trim(), classType = type)
-                    store.put("schedule", store.get("schedule").map { if (it.id == record.id) updated else it })
+                    store.put(
+                        "schedule",
+                        cleaned.map { if (it.id == record.id) updated else it } +
+                            if (cleaned.none { it.id == record.id }) listOf(updated) else emptyList()
+                    )
                     syncSubjectFromClass(store, updated)
                     done()
                 }
