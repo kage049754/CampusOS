@@ -39,6 +39,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import org.json.JSONArray
@@ -427,6 +428,7 @@ fun CampusOSApp(activity: Activity) {
             }
         } else {
         Scaffold(
+            contentWindowInsets = WindowInsets.safeDrawing,
             topBar = {
                 if (!scheduleFullscreen) {
                     TopAppBar(
@@ -465,7 +467,13 @@ fun CampusOSApp(activity: Activity) {
             },
             floatingActionButton = { }
         ) { padding ->
-            Column(Modifier.fillMaxSize().padding(padding)) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .consumeWindowInsets(padding)
+                    .padding(padding)
+                    .imePadding()
+            ) {
                 when (screen) {
                     Screen.HOME -> HomeScreen(store, { screenName = it.name }, homeEditRequest)
                     Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }, { showScheduleDetails = true }) { search = "" }
