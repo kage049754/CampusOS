@@ -31,7 +31,7 @@ private const val TASK_PREFS = "campusos_tasks"
 
 data class TaskSub(val id: Long, val title: String, val done: Boolean)
 data class TaskMeta(
-    val type: String = "Task",
+    val type: String = "Note",
     val priority: String = "Medium",
     val status: String = "Not started",
     val reminders: List<Long> = emptyList(),
@@ -55,7 +55,7 @@ fun taskMeta(r: Record): TaskMeta {
         val a = o.optJSONArray("reminders")
         if (a != null) for (i in 0 until a.length()) reminders += a.optLong(i)
         TaskMeta(
-            type = o.optString("type", "Task"),
+            type = o.optString("type", "Note"),
             priority = o.optString("priority", "Medium"),
             status = if (r.done) "Completed" else o.optString("status", "Not started"),
             reminders = reminders
@@ -196,7 +196,7 @@ private fun TaskDateWindow(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(dateLabel(selectedDate), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text(tasks.size.toString() + " task" + if (tasks.size == 1) "" else "s", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(tasks.size.toString() + " note" + if (tasks.size == 1) "" else "s", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Close") }
                 }
@@ -224,7 +224,7 @@ private fun TaskDateWindow(
                 Button(onClick = { showEditor = true }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.Add, null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Add task to this date")
+                    Text("Add note to this date")
                 }
             }
         }
@@ -372,7 +372,7 @@ private fun SimpleTaskEditor(store: LocalStore, existing: Record?, selectedDate:
 
     AlertDialog(
         onDismissRequest = done,
-        title = { Text(if (existing == null) "Add Task" else "Edit Task") },
+        title = { Text(if (existing == null) "Add Note" else "Edit Note") },
         text = {
             Column(
                 Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState()),
@@ -504,19 +504,19 @@ fun TaskSettingsDialog(store: LocalStore, done: () -> Unit) {
     var defaultReminder by remember { mutableStateOf(prefs(context).getBoolean("default_reminder", false)) }
     AlertDialog(
         onDismissRequest = done,
-        title = { Text("Tasks Settings") },
+        title = { Text("Notes Settings") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Calendar & To-do", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Calendar & Notes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Show completed tasks", Modifier.weight(1f))
+                    Text("Show completed notes", Modifier.weight(1f))
                     Switch(checked = showCompleted, onCheckedChange = { showCompleted = it; prefs(context).edit().putBoolean("show_completed", it).apply() })
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Default reminder", Modifier.weight(1f))
+                    Text("Default note reminder", Modifier.weight(1f))
                     Switch(checked = defaultReminder, onCheckedChange = { defaultReminder = it; prefs(context).edit().putBoolean("default_reminder", it).apply() })
                 }
-                Text("Tasks are stored offline on this device.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Text("Notes are stored offline on this device.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = { TextButton(onClick = done) { Text("Done") } }
