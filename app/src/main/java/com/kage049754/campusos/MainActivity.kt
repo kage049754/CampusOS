@@ -560,7 +560,7 @@ fun CampusOSApp(activity: Activity) {
                 }
             }
             if (showHomeSettings) {
-                HomeSettingsDialog(onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, done = { showHomeSettings = false })
+                HomeSettingsDialog(store, onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, onLockNow = { locked = true }, done = { showHomeSettings = false })
             }
             if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
             if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }) { showHomeColors = false }
@@ -579,19 +579,242 @@ fun CampusOSApp(activity: Activity) {
     Screen.TASKS -> Icons.Default.CheckCircle
     Screen.ACADEMICS -> Icons.Default.School
     Screen.FILES -> Icons.Default.Folder
-    Screen.SETTINGS -> Icons.Default.Settings
+    Screen.@Composable
+fun HomeSettingsDialog(
+    store: LocalStore,
+    onModule:(String)->Unit,
+    onAppearance:()->Unit,
+    onLockNow:()->Unit,
+    done:()->Unit
+) {
+    var showPin by remember { mutableStateOf(false) }
+    var showBackup by remember { mutableStateOf(false) }
+    var showRecover by remember { mutableStateOf(false) }
+    var selectedModules by remember { mutableStateOf(setOf("homepage","schedule","tasks","academics")) }
+    var restoreError by remember { mutableStateOf("") }
+    var pinValue by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
+    var currentPin by remember { mutableStateOf("") }
+    var pinError by remember { mutableStateOf("") }
+    var enableAfterPin by remember { mutableStateOf(false) }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { it.write(store.backupJson(selectedModules).toByteArray()) }
+        }.onFailure { restoreError = it.message ?: "Unable to create the backup file." }
+    }
+    val restore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { store.restoreJson(it.readText(), selectedModules) }
+        }.onFailure { restoreError = it.message ?: "Unable to recover this backup file." }
+    }
+
+    AlertDialog(
+        onDismissRequest=done,
+        title={Text("CampusOS Settings")},
+        text={
+            Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement=Arrangement.spacedBy(10.dp)
+            ) {
+                Text("Choose a module",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+                Text("Open the dedicated settings for each part of CampusOS.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                listOf(
+                    "Homepage" to Icons.Default.Home,
+                    "Schedule" to Icons.Default.CalendarMonth,
+                    "Notes" to Icons.Default.CheckCircle,
+                    "Academics" to Icons.Default.School
+                ).forEach{(name,icon)->
+                    OutlinedButton({onModule(name)},Modifier.fillMaxWidth()){
+                        Icon(icon,null);Spacer(Modifier.width(8.dp));Text(name)
+                    }
+                }
+                HorizontalDivider()
+                OutlinedButton(onAppearance,Modifier.fillMaxWidth()){
+                    Icon(Icons.Default.Palette,null);Spacer(Modifier.width(8.dp));Text("Appearance & Design")
+                }
+
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                        ListItem(
+                            headlineContent={Text("App lock",fontWeight=FontWeight.SemiBold)},
+                            supportingContent={
+                                Text(
+                                    when {
+                                        store.pin().isBlank() -> "No PIN set"
+                                        store.lockEnabled() -> "Enabled • PIN required when CampusOS opens"
+                                        else -> "PIN set • lock is off"
+                                    },
+                                    color=MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            },
+                            trailingContent={
+                                Switch(
+                                    checked=store.lockEnabled() && store.pin().isNotBlank(),
+                                    onCheckedChange={enabled->
+                                        if (enabled) {
+                                            if (store.pin().isBlank()) {
+                                                pinValue=""
+                                                confirmPin=""
+                                                currentPin=""
+                                                pinError=""
+                                                enableAfterPin=true
+                                                showPin=true
+                                            } else {
+                                                store.setLockEnabled(true)
+                                                onLockNow()
+                                            }
+                                        } else {
+                                            store.setLockEnabled(false)
+                                        }
+                                    }
+                                )
+                            }
+                        )
+                        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton({
+                                pinValue=""
+                                confirmPin=""
+                                currentPin=""
+                                pinError=""
+                                enableAfterPin=false
+                                showPin=true
+                            },Modifier.weight(1f)){
+                                Icon(Icons.Default.Lock,null)
+                                Spacer(Modifier.width(6.dp))
+                                Text(if(store.pin().isBlank()) "Set PIN" else "Change PIN")
+                            }
+                            if(store.pin().isNotBlank()) {
+                                OutlinedButton({ store.setLockEnabled(false) },Modifier.weight(1f)){
+                                    Text("Turn off")
+                                }
+                            }
+                        }
+                        Text(
+                            "The app lock uses your 4–8 digit PIN and can be turned on or off here.",
+                            style=MaterialTheme.typography.bodySmall,
+                            color=MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                        Text("Backup & Recovery",fontWeight=FontWeight.SemiBold)
+                        Text(
+                            "Back up or recover only the CampusOS modules you choose. This is available directly from the main settings.",
+                            color=MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Button({
+                                selectedModules=setOf("homepage","schedule","tasks","academics")
+                                showBackup=true
+                            },Modifier.weight(1f)){
+                                Icon(Icons.Default.Backup,null);Spacer(Modifier.width(5.dp));Text("Backup")
+                            }
+                            OutlinedButton({
+                                selectedModules=setOf("homepage","schedule","tasks","academics")
+                                restoreError=""
+                                showRecover=true
+                            },Modifier.weight(1f)){
+                                Icon(Icons.Default.Restore,null);Spacer(Modifier.width(5.dp));Text("Recover")
+                            }
+                        }
+                        Text(
+                            "Modules: Homepage, Schedule, Notes, Academics / Lessons.",
+                            style=MaterialTheme.typography.bodySmall,
+                            color=MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Text("CampusOS 1.0.0 • Offline-first",color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton={TextButton(done){Text("Close")}}
+    )
+
+    if (showPin) {
+        AlertDialog(
+            onDismissRequest={showPin=false},
+            title={Text(if(store.pin().isBlank()) "Set app PIN" else "Change app PIN")},
+            text={
+                Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    if(store.pin().isNotBlank()) {
+                        OutlinedTextField(
+                            currentPin,
+                            {currentPin=it.filter(Char::isDigit).take(8)},
+                            label={Text("Current PIN")},
+                            singleLine=true
+                        )
+                    }
+                    OutlinedTextField(
+                        pinValue,
+                        {pinValue=it.filter(Char::isDigit).take(8)},
+                        label={Text("New PIN")},
+                        singleLine=true
+                    )
+                    OutlinedTextField(
+                        confirmPin,
+                        {confirmPin=it.filter(Char::isDigit).take(8)},
+                        label={Text("Confirm PIN")},
+                        singleLine=true
+                    )
+                    if(pinError.isNotBlank()) Text(pinError,color=MaterialTheme.colorScheme.error)
+                    Text(
+                        "Use 4–8 digits. Keep this PIN somewhere safe because it is required to open the app when the lock is enabled.",
+                        style=MaterialTheme.typography.bodySmall,
+                        color=MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton={
+                Button({
+                    pinError=when {
+                        store.pin().isNotBlank() && currentPin != store.pin() -> "Current PIN is incorrect."
+                        pinValue.length !in 4..8 -> "PIN must be 4–8 digits."
+                        pinValue != confirmPin -> "PINs do not match."
+                        else -> ""
+                    }
+                    if(pinError.isBlank()) {
+                        store.setPin(pinValue)
+                        if(enableAfterPin) {
+                            store.setLockEnabled(true)
+                            onLockNow()
+                        }
+                        showPin=false
+                    }
+                }){Text("Save")}
+            },
+            dismissButton={TextButton({showPin=false}){Text("Cancel")}}
+        )
+    }
+
+    if (showBackup) {
+        ModuleBackupDialog("Choose modules to backup",selectedModules,{selectedModules=it}) {
+            showBackup=false
+            if(selectedModules.isNotEmpty()) backup.launch("CampusOS-backup.json")
+        }
+    }
+    if (showRecover) {
+        ModuleBackupDialog("Choose modules to recover",selectedModules,{selectedModules=it}) {
+            showRecover=false
+            if(selectedModules.isNotEmpty()) restore.launch(arrayOf("application/json","text/plain"))
+        }
+    }
+    if (restoreError.isNotBlank()) {
+        AlertDialog(
+            onDismissRequest={restoreError=""},
+            title={Text("Backup / Recovery error")},
+            text={Text(restoreError)},
+            confirmButton={TextButton({restoreError=""}){Text("OK")}}
+        )
+    }
 }
 
-@Composable
-fun HomeSettingsDialog(onModule:(String)->Unit,onAppearance:()->Unit,done:()->Unit) {
-    AlertDialog(onDismissRequest=done,title={Text("CampusOS Settings")},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
-        Text("Choose a module",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
-        Text("Open the dedicated settings for each part of CampusOS.",color=MaterialTheme.colorScheme.onSurfaceVariant)
-        listOf("Homepage" to Icons.Default.Home,"Schedule" to Icons.Default.CalendarMonth,"Notes" to Icons.Default.CheckCircle,"Academics" to Icons.Default.School).forEach{(name,icon)->OutlinedButton({onModule(name)},Modifier.fillMaxWidth()){Icon(icon,null);Spacer(Modifier.width(8.dp));Text(name)}}
-        HorizontalDivider()
-        OutlinedButton(onAppearance,Modifier.fillMaxWidth()){Icon(Icons.Default.Palette,null);Spacer(Modifier.width(8.dp));Text("Appearance & Design")}
-    }},confirmButton={TextButton(done){Text("Close")}})
-}
 @Composable
 fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleManager:()->Unit,scheduleSettings:()->Unit,tableSettings:()->Unit,addClass:()->Unit,openTasks:()->Unit,openAcademics:()->Unit,editHome:()->Unit) {
     var showTaskSettings by remember { mutableStateOf(false) }
