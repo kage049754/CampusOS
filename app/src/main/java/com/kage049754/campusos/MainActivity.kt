@@ -1178,6 +1178,9 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                         TextButton(onClick = { zoom = 1f }) { Text("Reset") }
                     }
                 }
+                if (needsDaySwipe) {
+                    Text("Swipe left or right to see more days • Time stays fixed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                }
                 Row(Modifier.height(headerHeight)) {
                     Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) {
                         Text("Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
@@ -1239,42 +1242,38 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
 @Composable
 fun SubjectDetailsDialog(all: List<Record>, done: () -> Unit) {
     data class SubjectGroup(val key: String, val subject: Record, val classes: List<Record>)
-    val groups = all.groupBy { "${it.title.trim().uppercase(Locale.getDefault())}|${it.professor.trim().lowercase(Locale.getDefault())}" }
+    val groups = all.groupBy { it.title.trim().uppercase(Locale.getDefault()) + "|" + it.professor.trim().lowercase(Locale.getDefault()) }
         .values.map { records ->
             val first = records.first()
-            SubjectGroup(first.title.trim().uppercase(Locale.getDefault()) + "|" + first.professor.trim().lowercase(Locale.getDefault()), first,
-                records.sortedWith(compareBy<Record>({ it.day }, { it.startTime }, { it.classType })))
+            SubjectGroup(first.title.trim().uppercase(Locale.getDefault()) + "|" + first.professor.trim().lowercase(Locale.getDefault()), first, records.sortedWith(compareBy<Record>({ it.day }, { it.startTime }, { it.endTime }, { it.classType })))
         }.sortedBy { it.subject.title.lowercase(Locale.getDefault()) }
-
     AlertDialog(onDismissRequest=done,title={Text("Subject details")},text={
         if(groups.isEmpty()) EmptyCard("No classes in the current schedule.")
         else LazyColumn(Modifier.fillMaxWidth().heightIn(max=560.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
             items(groups,key={it.key}) { group ->
                 val r=group.subject
+                val lecture=group.classes.filter { it.classType.equals("Lecture",true) }
+                val lab=group.classes.filter { it.classType.equals("Lab",true) }
                 Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                    Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         Text(r.title,fontWeight=FontWeight.Bold,style=MaterialTheme.typography.titleMedium)
                         if(r.subtitle.isNotBlank()) Text(r.subtitle,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                        if(r.professor.isNotBlank()) Text("Professor: ${r.professor}",fontWeight=FontWeight.SemiBold)
-                        Text("Class schedule",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelLarge)
-                        group.classes.forEach { c ->
-                            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.Top) {
-                                Icon(if(c.classType.equals("Lab",true)) Icons.Default.Science else Icons.Default.MenuBook,null,Modifier.size(18.dp))
-                                Spacer(Modifier.width(7.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text("${c.day} • ${c.startTime}–${c.endTime}",fontWeight=FontWeight.SemiBold)
-                                    Text("${if(c.classType.equals("Lab",true)) "Lab" else "Lecture"}${if(c.room.isNotBlank()) " • Room ${c.room}" else ""}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
+                        if(r.professor.isNotBlank()) Text("Professor • "+r.professor,fontWeight=FontWeight.SemiBold)
+                        if(lecture.isNotEmpty()) {
+                            Row(verticalAlignment=Alignment.CenterVertically) { Icon(Icons.Default.MenuBook,null,Modifier.size(18.dp)); Spacer(Modifier.width(7.dp)); Text("Lecture",fontWeight=FontWeight.Bold) }
+                            lecture.forEach { c -> Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceVariant)) { Column(Modifier.padding(9.dp),verticalArrangement=Arrangement.spacedBy(2.dp)) { Text(c.day.take(3)+" • "+c.startTime+"–"+c.endTime,fontWeight=FontWeight.SemiBold); if(c.room.isNotBlank()) Text("Room "+c.room,style=MaterialTheme.typography.bodySmall) } } }
                         }
-                        if(r.extra.isNotBlank()) Text("Notes: ${r.extra}",style=MaterialTheme.typography.bodySmall)
+                        if(lab.isNotEmpty()) {
+                            Row(verticalAlignment=Alignment.CenterVertically) { Icon(Icons.Default.Science,null,Modifier.size(18.dp)); Spacer(Modifier.width(7.dp)); Text("Lab",fontWeight=FontWeight.Bold) }
+                            lab.forEach { c -> Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceVariant)) { Column(Modifier.padding(9.dp),verticalArrangement=Arrangement.spacedBy(2.dp)) { Text(c.day.take(3)+" • "+c.startTime+"–"+c.endTime,fontWeight=FontWeight.SemiBold); if(c.room.isNotBlank()) Text("Room "+c.room,style=MaterialTheme.typography.bodySmall) } } }
+                        }
+                        if(r.extra.isNotBlank()) Text("Notes • "+r.extra,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
         }
     },confirmButton={TextButton(done){Text("Close")}})
 }
-
 @Composable
 fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
     var refresh by remember { mutableIntStateOf(0) }
@@ -2772,8 +2771,18 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
             Spacer(Modifier.height(8.dp))
         }
         if(todaySchedule.isEmpty()) EmptyCard("No classes scheduled for today.") else {
-            val remaining=todaySchedule.filterNot{current?.first?.id==it.id||next?.first?.id==it.id}
-                .sortedWith(compareBy<Record>{if(currentMinutes>=(it.endTime.toMinutesOrNull()?:Int.MAX_VALUE))1 else 0}.thenBy{it.startTime.toMinutesOrNull()?:Int.MAX_VALUE})
+            val featuredSubjects = setOfNotNull(
+                current?.first?.title?.trim()?.uppercase(Locale.getDefault()),
+                next?.first?.title?.trim()?.uppercase(Locale.getDefault())
+            )
+            val remaining=todaySchedule.filterNot {
+                it.title.trim().uppercase(Locale.getDefault()) in featuredSubjects
+            }.sortedWith(
+                compareBy<Record> {
+                    val end = it.endTime.toMinutesOrNull() ?: Int.MAX_VALUE
+                    if (currentMinutes >= end) 1 else 0
+                }.thenBy { it.startTime.toMinutesOrNull() ?: Int.MAX_VALUE }
+            )
             remaining.take(6).forEach{r->
                 val st=r.startTime.toMinutesOrNull();val en=r.endTime.toMinutesOrNull()
                 val status=when{st!=null&&en!=null&&currentMinutes>=en->"✓ Completed";st!=null->"Starts in ${formatClassCountdown((st-currentMinutes).coerceAtLeast(0))}";else->null}
