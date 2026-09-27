@@ -205,7 +205,7 @@ private fun TaskDateWindow(
                     Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.EventNote, null, Modifier.size(44.dp))
                         Spacer(Modifier.height(8.dp))
-                        Text("No tasks on this date", fontWeight = FontWeight.SemiBold)
+                        Text("No notes on this date", fontWeight = FontWeight.SemiBold)
                         Text("Add something for this date.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else {
