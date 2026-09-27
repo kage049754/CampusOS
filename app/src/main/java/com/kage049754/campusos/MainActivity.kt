@@ -1185,7 +1185,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
             val headerHeight = 34.dp
             val baseRowHeight = if (customRowHeight > 0f) customRowHeight.dp else ((maxHeight - headerHeight).coerceAtLeast(0.dp) / hours.size.coerceAtLeast(1)).coerceAtLeast(30.dp)
             val rowHeight = baseRowHeight * zoom
-            val needsDaySwipe = orderedDays.size > 3
+            val needsDaySwipe = orderedDays.size >= 4
             val dayScroll = rememberScrollState()
 
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
