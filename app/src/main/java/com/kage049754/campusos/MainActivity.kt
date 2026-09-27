@@ -622,6 +622,77 @@ fun HomeSettingsDialog(
     )
 }
 @Composable
+fun AppLockSettingsDialog(store: LocalStore, done: () -> Unit, lockNow: () -> Unit) {
+    var method by remember { mutableStateOf(store.authMethod()) }
+    var showPin by remember { mutableStateOf(false) }
+    var showPattern by remember { mutableStateOf(false) }
+    var enableAfterSetup by remember { mutableStateOf(false) }
+    AlertDialog(onDismissRequest=done,title={Text("App Lock")},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
+        Text("Choose how CampusOS is protected when it opens.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+        listOf("none" to "None","pin" to "PIN","pattern" to "Pattern").forEach { (value,label) ->
+            OutlinedButton({
+                method=value
+                if(value=="none"){store.setAuthMethod("none");store.setLockEnabled(false)}
+                else if(value=="pin"){enableAfterSetup=true;showPin=true}
+                else {enableAfterSetup=true;showPattern=true}
+            },Modifier.fillMaxWidth()){
+                Icon(if(value=="pattern") Icons.Default.Grid3x3 else if(value=="pin") Icons.Default.Pin else Icons.Default.LockOpen,null)
+                Spacer(Modifier.width(8.dp));Text(if(method==value) "✓ $label" else label)
+            }
+        }
+        Text(when(method){"pin"->"PIN lock is ${if(store.lockEnabled()) "on" else "off"}. Minimum 4 digits; maximum 8.";"pattern"->"Pattern lock is ${if(store.lockEnabled()) "on" else "off"}. Use at least 4 points.";else->"No app lock is enabled."},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        if(method=="pin") OutlinedButton({showPin=true},Modifier.fillMaxWidth()){Icon(Icons.Default.Edit,null);Spacer(Modifier.width(8.dp));Text(if(store.pin().isBlank()) "Set PIN" else "Change PIN")}
+        if(method=="pattern") OutlinedButton({showPattern=true},Modifier.fillMaxWidth()){Icon(Icons.Default.Grid3x3,null);Spacer(Modifier.width(8.dp));Text(if(store.pattern().isBlank()) "Set Pattern" else "Change Pattern")}
+        if(method!="none" && store.authMethod()==method && store.lockEnabled()) OutlinedButton({store.setLockEnabled(false)},Modifier.fillMaxWidth()){Text("Turn off app lock")}
+    }},confirmButton={TextButton(done){Text("Done")}})
+    if(showPin) PinSetupDialog(store,enableAfterSetup){showPin=false;enableAfterSetup=false}
+    if(showPattern) PatternSetupDialog(store,enableAfterSetup){showPattern=false;enableAfterSetup=false}
+}
+
+@Composable
+fun PinSetupDialog(store: LocalStore, enableAfterSetup:Boolean, done:()->Unit) {
+    var current by remember{mutableStateOf("")};var value by remember{mutableStateOf("")};var confirm by remember{mutableStateOf("")};var error by remember{mutableStateOf("")}
+    AlertDialog(onDismissRequest=done,title={Text(if(store.pin().isBlank()) "Set PIN" else "Change PIN")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+        if(store.pin().isNotBlank()) OutlinedTextField(current,{current=it.filter(Char::isDigit).take(8)},label={Text("Current PIN")},singleLine=true)
+        OutlinedTextField(value,{value=it.filter(Char::isDigit).take(8)},label={Text("New PIN")},singleLine=true)
+        OutlinedTextField(confirm,{confirm=it.filter(Char::isDigit).take(8)},label={Text("Confirm PIN")},singleLine=true)
+        if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error)
+        Text("Minimum 4 digits, maximum 8.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    }},confirmButton={Button({error=when{store.pin().isNotBlank()&&current!=store.pin()->"Current PIN is incorrect.";value.length !in 4..8->"PIN must be 4–8 digits.";value!=confirm->"PINs do not match.";else->""};if(error.isBlank()){store.setPin(value);store.setAuthMethod("pin");if(enableAfterSetup)store.setLockEnabled(true);done()}}){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})
+}
+
+@Composable
+fun PatternSetupDialog(store:LocalStore,enableAfterSetup:Boolean,done:()->Unit){
+    var current by remember{mutableStateOf("")};var value by remember{mutableStateOf("")};var confirm by remember{mutableStateOf("")};var error by remember{mutableStateOf("")}
+    fun add(target:String,n:Int):String=if(target.split("-").contains(n.toString()))target else if(target.isBlank())n.toString() else "$target-$n"
+    AlertDialog(onDismissRequest=done,title={Text(if(store.pattern().isBlank())"Set Pattern" else "Change Pattern")},text={Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(8.dp)){
+        if(store.pattern().isNotBlank()){Text("Current pattern",style=MaterialTheme.typography.bodySmall);PatternGrid(current.split("-").filter{it.isNotBlank()}.mapNotNull{it.toIntOrNull()},{n->current=add(current,n)},{current=""})}
+        Text("New pattern",style=MaterialTheme.typography.bodySmall);PatternGrid(value.split("-").filter{it.isNotBlank()}.mapNotNull{it.toIntOrNull()},{n->value=add(value,n)},{value=""})
+        Text("Repeat pattern",style=MaterialTheme.typography.bodySmall);PatternGrid(confirm.split("-").filter{it.isNotBlank()}.mapNotNull{it.toIntOrNull()},{n->confirm=add(confirm,n)},{confirm=""})
+        if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error);Text("Use at least 4 different points.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    }},confirmButton={Button({val currentOk=store.pattern().isBlank()||current==store.pattern();error=when{!currentOk->"Current pattern is incorrect.";value.split("-").filter{it.isNotBlank()}.size<4->"Pattern must use at least 4 points.";value!=confirm->"Patterns do not match.";else->""};if(error.isBlank()){store.setPattern(value);store.setAuthMethod("pattern");store.setLockEnabled(true);done()}}){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})
+}
+
+@Composable
+fun PatternGrid(selected:List<Int>,onPoint:(Int)->Unit,clear:()->Unit){
+    Column(horizontalAlignment=Alignment.CenterHorizontally){for(row in 0..2)Row{for(col in 0..2){val n=row*3+1+col;OutlinedButton({onPoint(n)},Modifier.size(64.dp).padding(4.dp),contentPadding=PaddingValues(0.dp)){Text(if(selected.contains(n))"●" else "○",fontSize=22.sp)}}};TextButton(clear){Text("Clear")}}
+}
+
+@Composable
+fun BackupRecoverySettingsDialog(store:LocalStore,done:()->Unit){
+    var selectedModules by remember{mutableStateOf(setOf("homepage","schedule","tasks","academics"))};var showBackup by remember{mutableStateOf(false)};var showRecover by remember{mutableStateOf(false)};var error by remember{mutableStateOf("")};val context=androidx.compose.ui.platform.LocalContext.current
+    val backup=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")){uri->uri?:return@rememberLauncherForActivityResult;runCatching{context.contentResolver.openOutputStream(uri)?.use{it.write(store.backupJson(selectedModules).toByteArray())}}.onFailure{error=it.message?:"Unable to create backup file."}}
+    val restore=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->uri?:return@rememberLauncherForActivityResult;runCatching{context.contentResolver.openInputStream(uri)?.bufferedReader()?.use{store.restoreJson(it.readText(),selectedModules)}}.onFailure{error=it.message?:"Unable to recover backup file."}}
+    AlertDialog(onDismissRequest=done,title={Text("Backup & Recovery")},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
+        Text("Choose what you want to back up or recover. Your existing module data stays separate.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedButton({showBackup=true},Modifier.fillMaxWidth()){Icon(Icons.Default.Backup,null);Spacer(Modifier.width(8.dp));Text("Backup")}
+        OutlinedButton({showRecover=true;error=""},Modifier.fillMaxWidth()){Icon(Icons.Default.Restore,null);Spacer(Modifier.width(8.dp));Text("Recovery")}
+        HorizontalDivider();Text("Modules",fontWeight=FontWeight.Bold);Text("Homepage • Schedule • Notes • Academics / Lessons",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Text("Backups use the CampusOS JSON format. Recovery can restore only the modules you select.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);if(error.isNotBlank())Text(error,color=MaterialTheme.colorScheme.error)
+    }},confirmButton={TextButton(done){Text("Done")}})
+    if(showBackup)ModuleBackupDialog("Choose modules to backup",selectedModules,{selectedModules=it}){showBackup=false;if(selectedModules.isNotEmpty())backup.launch("CampusOS-backup.json")}
+    if(showRecover)ModuleBackupDialog("Choose modules to recover",selectedModules,{selectedModules=it}){showRecover=false;if(selectedModules.isNotEmpty())restore.launch(arrayOf("application/json","text/plain"))}
+}
+@Composable
 fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleManager:()->Unit,scheduleSettings:()->Unit,tableSettings:()->Unit,addClass:()->Unit,openTasks:()->Unit,openAcademics:()->Unit,editHome:()->Unit) {
     var showTaskSettings by remember { mutableStateOf(false) }
     var showHomeTiles by remember { mutableStateOf(false) }
