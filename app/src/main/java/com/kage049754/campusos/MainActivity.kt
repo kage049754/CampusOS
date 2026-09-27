@@ -620,6 +620,11 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
     val photoPath = store.profilePhotoPath()
     val date = SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date())
     val todayName = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date())
+    val mergedSchedule = remember(schedule) {
+        schedule.groupBy { it.day.trim().lowercase(Locale.getDefault()) }
+            .values
+            .flatMap { mergeTodayClasses(it) }
+    }
     val todaySchedule = remember(schedule, todayName) { mergeTodayClasses(schedule.filter { it.day.equals(todayName, true) }) }
     val pendingTasks = remember(tasks) { tasks.filter { !it.done }.sortedWith(compareBy({ it.dueDate }, { it.dueTime })).take(5) }
     val pinnedTasks = remember(tasks) { tasks.filter { !it.done && taskPinned(it) }.sortedWith(compareBy({ it.dueDate }, { it.dueTime })).take(5) }
@@ -745,7 +750,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit) {
                             }
                         }
                         "stats" -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            StatCard("Classes", schedule.size.toString(), Modifier.weight(1f))
+                            StatCard("Classes", mergedSchedule.size.toString(), Modifier.weight(1f))
                             StatCard("Subjects", subjects.size.toString(), Modifier.weight(1f))
                             StatCard("Tasks", tasks.count { !it.done }.toString(), Modifier.weight(1f))
                         }
@@ -2500,7 +2505,7 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
         }
 
         if (todaySchedule.isEmpty()) EmptyCard("No classes scheduled for today.")
-        else for (r in todaySchedule.take(5)) {
+        else for (r in todaySchedule.filterNot { currentClass?.first?.id == it.id }.take(5)) {
             val start = r.startTime.toMinutesOrNull()
             val end = r.endTime.toMinutesOrNull()
             val status = when {
