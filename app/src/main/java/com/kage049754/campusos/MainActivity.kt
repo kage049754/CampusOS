@@ -1644,10 +1644,9 @@ fun CrudScreen(title:String,key:String,store:LocalStore,query:String,clear:()->U
                         label = "Task",
                         key = "tasks",
                         store = store,
+                        done = { onDone() },
                         initialDueDate = selectedDate
-                    ) {
-                        onDone()
-                    }
+                    )
                 },
                 done = { showDateTasks = false }
             )
@@ -1662,7 +1661,7 @@ fun CrudScreen(title:String,key:String,store:LocalStore,query:String,clear:()->U
         Text(title,Modifier.padding(horizontal=16.dp,vertical=6.dp),style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
         if(list.isEmpty())EmptyCard("No items yet.") else LazyColumn(Modifier.fillMaxSize().padding(horizontal=16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){items(list,key={it.id}){r->RecordCard(r,key,store){refresh++}}}
     }
-    if(showAdd)AddRecordDialog(title,key,store){showAdd=false;clear();refresh++}
+    if(showAdd)AddRecordDialog(title,key,store,done={showAdd=false;clear();refresh++})
 }
 
 @Composable
@@ -1792,7 +1791,7 @@ fun AcademicsScreen(
             }
         }
     }
-    if (query == "__ADD__") AddRecordDialog(labels[tab], keys[tab], store) { clear(); refresh++ }
+    if (query == "__ADD__") AddRecordDialog(labels[tab], keys[tab], store, done={ clear(); refresh++ })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
