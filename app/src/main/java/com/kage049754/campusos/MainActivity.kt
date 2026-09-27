@@ -272,7 +272,7 @@ class LocalStore(context: Context) {
     fun scheduleDaysConfigured() = prefs.getBoolean("schedule_days_configured", false)
     fun setScheduleDays(v: List<String>) { prefs.edit().putString("schedule_days", v.joinToString(",")).putBoolean("schedule_days_configured", true).apply(); revision++; CampusReminders.reschedule(appContext); CampusWidgets.updateAll(appContext) }
     fun scheduleStartHour() = prefs.getInt("schedule_start_hour", 7)
-    fun scheduleEndHour() = prefs.getInt("schedule_end_hour", 19)
+    fun scheduleEndHour() = prefs.getInt("schedule_end_hour", 21)
     fun setScheduleHours(start: Int, end: Int) { prefs.edit().putInt("schedule_start_hour", start).putInt("schedule_end_hour", end).apply(); revision++; CampusReminders.reschedule(appContext); CampusWidgets.updateAll(appContext) }
     fun backupJson(selected: Set<String> = setOf("homepage","schedule","tasks","academics")): String {
         val root = JSONObject()
@@ -1375,7 +1375,7 @@ fun TimeWheelDialog(
     done: (String) -> Unit,
     cancel: () -> Unit
 ) {
-    val initialHour = initial.substringBefore(":").toIntOrNull()?.coerceIn(7, 19) ?: 7
+    val initialHour = initial.substringBefore(":").toIntOrNull()?.coerceIn(7, 20) ?: 7
     var hour by remember { mutableIntStateOf(initialHour) }
 
     AlertDialog(
@@ -1400,10 +1400,10 @@ fun TimeWheelDialog(
                     factory = { context ->
                         android.widget.NumberPicker(context).apply {
                             minValue = 7
-                            maxValue = 19
+                            maxValue = 20
                             value = hour
                             wrapSelectorWheel = false
-                            displayedValues = (7..19).map { "%02d:00".format(it) }.toTypedArray()
+                            displayedValues = (7..20).map { "%02d:00".format(it) }.toTypedArray()
                             setOnValueChangedListener { _, _, newValue -> hour = newValue }
                         }
                     },
