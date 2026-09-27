@@ -2218,8 +2218,8 @@ fun AddRecordDialog(
     label:String,
     key:String,
     store:LocalStore,
-    initialDueDate:String = SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date()),
-    done:()->Unit
+    done:()->Unit,
+    initialDueDate:String = SimpleDateFormat("yyyy-MM-dd",Locale.getDefault()).format(Date())
 ){
     var subjectId by remember{mutableLongStateOf(0L)}
     var title by remember{mutableStateOf("")}
