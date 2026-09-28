@@ -1618,13 +1618,24 @@ fun ScheduleHighlightColorDialog(store: LocalStore, done: () -> Unit) {
 
 fun String.toHourOrNull(): Int? = substringBefore(":").toIntOrNull()
 private fun formatHourRange(start: Int, end: Int) = "%02d:00\n%02d:00".format(start, end)
-private fun mergeTodayClasses(records: List<Record>): List<Record> {
-    // Merge adjacent time slots for the same subject and class type.
-    // Example: 07:00–08:00 + 08:00–09:00 becomes one 07:00–09:00 class.
+private /**
+ * Canonical timetable merge used by Home and widgets.
+ *
+ * Two adjacent one-hour records are one displayed class only when they describe
+ * the same subject, full subject name, class type, room, and professor.
+ * This prevents unrelated records from being joined while guaranteeing
+ * 07:00–08:00 + 08:00–09:00 for the same Lecture/room/subject becomes 07:00–09:00.
+ */
+fun mergeAdjacentClassRecords(records: List<Record>): List<Record> {
+    fun normalized(value: String) = value.trim().replace(Regex("\\s+"), " ").lowercase(Locale.getDefault())
+
     val sorted = records.sortedWith(
         compareBy<Record>(
             { it.startTime.toMinutesOrNull() ?: Int.MAX_VALUE },
-            { it.endTime.toMinutesOrNull() ?: Int.MAX_VALUE }
+            { it.endTime.toMinutesOrNull() ?: Int.MAX_VALUE },
+            { normalized(it.title) },
+            { normalized(it.classType) },
+            { normalized(it.room) }
         )
     )
     val out = mutableListOf<Record>()
@@ -1632,21 +1643,24 @@ private fun mergeTodayClasses(records: List<Record>): List<Record> {
         val previous = out.lastOrNull()
         val previousEnd = previous?.endTime?.toMinutesOrNull()
         val start = r.startTime.toMinutesOrNull()
-        val sameSubject = previous?.title?.trim()?.equals(r.title.trim(), ignoreCase = true) == true
-        val sameType = previous?.classType?.trim()?.equals(r.classType.trim(), ignoreCase = true) == true
+        val sameSubject = previous != null && normalized(previous.title) == normalized(r.title)
+        val sameFullName = previous != null && normalized(previous.subtitle) == normalized(r.subtitle)
+        val sameType = previous != null && normalized(previous.classType) == normalized(r.classType)
+        val sameRoom = previous != null && normalized(previous.room) == normalized(r.room)
+        val sameProfessor = previous != null && normalized(previous.professor) == normalized(r.professor)
         val consecutive = previousEnd != null && start != null && previousEnd == start
-        if (previous != null && sameSubject && sameType && consecutive) {
-            out[out.lastIndex] = previous.copy(
-                endTime = r.endTime,
-                room = previous.room.ifBlank { r.room },
-                professor = previous.professor.ifBlank { r.professor }
-            )
+
+        if (previous != null && sameSubject && sameFullName && sameType && sameRoom && sameProfessor && consecutive) {
+            out[out.lastIndex] = previous.copy(endTime = r.endTime)
         } else {
             out += r
         }
     }
     return out
 }
+
+private fun mergeTodayClasses(records: List<Record>): List<Record> =
+    mergeAdjacentClassRecords(records)
 private fun deleteScheduleAndSync(store: LocalStore, classRecord: Record) {
     store.delete("schedule", classRecord.id)
     val remaining = store.get("schedule").any { it.title.equals(classRecord.title, true) }
