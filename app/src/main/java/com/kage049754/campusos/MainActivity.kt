@@ -12,6 +12,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -544,20 +545,33 @@ fun CampusOSApp(activity: Activity) {
         else -> androidx.compose.foundation.isSystemInDarkTheme()
     }
 
+    var subjectPageVisible by remember(subjectPageId, subjectPageMode, subjectOpenedFile) { mutableStateOf(false) }
+    LaunchedEffect(subjectPageId, subjectPageMode, subjectOpenedFile) {
+        subjectPageVisible = false
+        delay(20)
+        subjectPageVisible = true
+    }
+
     MaterialTheme(colorScheme = if (dark) CampusDarkColors else CampusLightColors, shapes = CampusShapes) {
         if (subjectPageId != 0L) {
-            val subject = store.get("subjects").firstOrNull { it.id == subjectPageId }
-            if (subject == null) {
-                subjectPageId = 0L
-                subjectOpenedFile = ""
-            } else if (subjectOpenedFile.isNotBlank()) {
-                val file = File(subjectFolder(activity, subject.id), subjectOpenedFile)
-                if (file.exists()) InAppFileViewerPage(file) { subjectOpenedFile = "" }
-                else subjectOpenedFile = ""
-            } else if (subjectPageMode == 0) {
-                SubjectNotepadPage(subject, store) { subjectPageId = 0L }
-            } else {
-                SubjectLectureFilesPage(subject, { subjectOpenedFile = it }) { subjectPageId = 0L }
+            AnimatedVisibility(
+                visible = subjectPageVisible,
+                enter = fadeIn(animationSpec = tween(180)),
+                label = "subject page transition"
+            ) {
+                val subject = store.get("subjects").firstOrNull { it.id == subjectPageId }
+                if (subject == null) {
+                    subjectPageId = 0L
+                    subjectOpenedFile = ""
+                } else if (subjectOpenedFile.isNotBlank()) {
+                    val file = File(subjectFolder(activity, subject.id), subjectOpenedFile)
+                    if (file.exists()) InAppFileViewerPage(file) { subjectOpenedFile = "" }
+                    else subjectOpenedFile = ""
+                } else if (subjectPageMode == 0) {
+                    SubjectNotepadPage(subject, store) { subjectPageId = 0L }
+                } else {
+                    SubjectLectureFilesPage(subject, { subjectOpenedFile = it }) { subjectPageId = 0L }
+                }
             }
         } else {
         Scaffold(
