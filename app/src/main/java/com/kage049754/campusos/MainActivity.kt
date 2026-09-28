@@ -295,6 +295,8 @@ class LocalStore(context: Context) {
     fun setHomeHiddenTiles(hidden: Set<String>) { prefs.edit().putString("home_hidden_tiles", hidden.joinToString(",")).apply(); revision++ }
     fun resetHomeLayout() { prefs.edit().remove("home_layout_order").remove("home_hidden_tiles").apply(); revision++ }
     fun setTheme(v: String) { prefs.edit().putString("theme", v).apply(); revision++ }
+    fun dynamicColorEnabled() = prefs.getBoolean("dynamic_color_enabled", true)
+    fun setDynamicColorEnabled(v: Boolean) { prefs.edit().putBoolean("dynamic_color_enabled", v).apply(); revision++ }
     fun lockEnabled() = prefs.getBoolean("lock", false)
     fun setLockEnabled(v: Boolean) { prefs.edit().putBoolean("lock", v).apply(); revision++ }
     fun profileName() = prefs.getString("profile_name", "") ?: ""
@@ -471,6 +473,7 @@ enum class Screen(val label: String) {
 fun CampusOSApp(activity: Activity) {
     val store = remember { LocalStore(activity) }
     var theme by remember { mutableStateOf(store.theme()) }
+    var dynamicColor by remember { mutableStateOf(store.dynamicColorEnabled()) }
     var locked by remember { mutableStateOf(store.lockEnabled() && store.authMethod() != "none") }
     var screenName by rememberSaveable {
         mutableStateOf(activity.intent.getStringExtra("widget_open_screen")?.let { runCatching { Screen.valueOf(it) }.getOrNull()?.name } ?: Screen.HOME.name)
@@ -565,7 +568,12 @@ fun CampusOSApp(activity: Activity) {
         subjectPageVisible = true
     }
 
-    MaterialTheme(colorScheme = if (dark) CampusDarkColors else CampusLightColors, shapes = CampusShapes) {
+    val colorScheme = if (dynamicColor && android.os.Build.VERSION.SDK_INT >= 31) {
+        if (dark) androidx.compose.material3.dynamicDarkColorScheme(activity)
+        else androidx.compose.material3.dynamicLightColorScheme(activity)
+    } else if (dark) CampusDarkColors else CampusLightColors
+
+    MaterialTheme(colorScheme = colorScheme, shapes = CampusShapes) {
         if (subjectPageId != 0L) {
             AnimatedVisibility(
                 visible = subjectPageVisible,
@@ -674,7 +682,7 @@ fun CampusOSApp(activity: Activity) {
                 HomeSettingsDialog(store, onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, onLockNow = { locked = true }, done = { showHomeSettings = false }, openAppLock = { showHomeSettings = false; showAppLock = true }, openBackupRecovery = { showHomeSettings = false; showBackupRecovery = true })
             }
             if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
-            if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }) { showHomeColors = false }
+            if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }, dynamicColor, { dynamicColor = it; store.setDynamicColorEnabled(it) }) { showHomeColors = false }
             if (showProfile) ProfileDialog(store) { showProfile = false }
             if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
             if (showScheduleTableSettings) ScheduleTableSettingsDialog(store) { showScheduleTableSettings = false }
@@ -1151,7 +1159,7 @@ fun ScheduleSettingsDialog(store:LocalStore,done:()->Unit){
         }
     }},confirmButton={Button({if(chosen.isNotEmpty()){store.setScheduleDays(allDays.filter{it in chosen});store.setScheduleHours(start,end)};done()}){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})}
 @Composable
-fun HomeAppearanceDialog(store: LocalStore, theme: String, setTheme: (String) -> Unit, done: () -> Unit) {
+fun HomeAppearanceDialog(store: LocalStore, theme: String, setTheme: (String) -> Unit, dynamicColor: Boolean, setDynamicColor: (Boolean) -> Unit, done: () -> Unit) {
     var tableBg by remember { mutableLongStateOf(store.scheduleTableBackground()) }
     var border by remember { mutableLongStateOf(store.scheduleTableBorder()) }
     val colors = listOf(0xFF000000L,0xFFFFFFFFL,0xFF263238L,0xFF37474FL,0xFFECEFF1L,0xFFF5F5F5L,0xFF1976D2L,0xFF7B1FA2L,0xFFC62828L,0xFF00897BL)
@@ -1161,6 +1169,13 @@ fun HomeAppearanceDialog(store: LocalStore, theme: String, setTheme: (String) ->
         text={
             Column(Modifier.heightIn(max=560.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text("Theme",fontWeight=FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Dynamic colors", fontWeight = FontWeight.SemiBold)
+                        Text(if (android.os.Build.VERSION.SDK_INT >= 31) "Use colors derived from your phone wallpaper and system theme." else "Dynamic colors require Android 12 or newer.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = dynamicColor && android.os.Build.VERSION.SDK_INT >= 31, onCheckedChange = { if (android.os.Build.VERSION.SDK_INT >= 31) setDynamicColor(it) }, enabled = android.os.Build.VERSION.SDK_INT >= 31)
+                }
                 Row(horizontalArrangement=Arrangement.spacedBy(7.dp)) {
                     listOf("system","light","dark").forEach { mode ->
                         FilterChip(theme==mode,{setTheme(mode)},label={Text(mode.replaceFirstChar{it.uppercase()})})
