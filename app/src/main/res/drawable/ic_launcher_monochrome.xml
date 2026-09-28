@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Monochrome CampusOS mark used by Android themed icons. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M78,25 C70,19 61,16 51,16 C31,16 16,31 16,54 C16,77 31,92 51,92 C62,92 72,88 79,81 L68,69 C63,73 57,76 51,76 C41,76 33,68 33,54 C33,40 41,32 51,32 C57,32 63,35 68,39 Z" />
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M66,49 L84,39 L84,45 L91,45 L91,68 L64,68 L64,61 L69,61 L69,55 L74,55 L74,50 Z" />
+</vector>
