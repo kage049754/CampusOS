@@ -2123,116 +2123,69 @@ fun SubjectNotepadPage(subject: Record, store: LocalStore, done: () -> Unit) {
     var editingNoteId by rememberSaveable(subject.id) { mutableStateOf<Long?>(null) }
     var noteTitle by rememberSaveable(subject.id) { mutableStateOf("") }
     var noteBody by rememberSaveable(subject.id) { mutableStateOf("") }
-
-    fun beginNewNote() {
-        editingNoteId = -1L
-        noteTitle = ""
-        noteBody = ""
-    }
-    fun editNote(note: SubjectNote) {
-        editingNoteId = note.id
-        noteTitle = note.title
-        noteBody = note.body
-    }
+    fun beginNewNote() { editingNoteId = -1L; noteTitle = ""; noteBody = "" }
+    fun editNote(note: SubjectNote) { editingNoteId = note.id; noteTitle = note.title; noteBody = note.body }
     fun saveNote() {
         if (noteTitle.isBlank() && noteBody.isBlank()) return
         val now = System.currentTimeMillis()
         val old = if (editingNoteId != null && editingNoteId != -1L) notes.firstOrNull { it.id == editingNoteId } else null
-        val note = SubjectNote(
-            id = old?.id ?: maxOf(now, (notes.maxOfOrNull { it.id } ?: 0L) + 1L),
-            title = noteTitle.trim().ifBlank { "Untitled note" },
-            body = noteBody,
-            updatedAt = now,
-            favorite = old?.favorite ?: false,
-            order = old?.order ?: ((notes.maxOfOrNull { it.order } ?: 0L) + 1L)
-        )
-        val updated = if (old == null) notes + note else notes.map { if (it.id == old.id) note else it }
-        store.saveSubjectNotes(subject.id, updated)
-        notes = store.subjectNotes(subject.id)
-        editingNoteId = null
+        val note = SubjectNote(old?.id ?: maxOf(now, (notes.maxOfOrNull { it.id } ?: 0L) + 1L), noteTitle.trim().ifBlank { "Untitled note" }, noteBody, now, old?.favorite ?: false, old?.order ?: ((notes.maxOfOrNull { it.order } ?: 0L) + 1L))
+        store.saveSubjectNotes(subject.id, if (old == null) notes + note else notes.map { if (it.id == old.id) note else it })
+        notes = store.subjectNotes(subject.id); editingNoteId = null
     }
-    fun deleteNote(note: SubjectNote) {
-        store.saveSubjectNotes(subject.id, notes.filterNot { it.id == note.id })
-        notes = store.subjectNotes(subject.id)
-    }
-
+    fun deleteNote(note: SubjectNote) { store.saveSubjectNotes(subject.id, notes.filterNot { it.id == note.id }); notes = store.subjectNotes(subject.id) }
     LaunchedEffect(subject.id) {
-        if (notes.isEmpty()) {
-            runCatching {
-                val o = JSONObject(subject.extra)
-                val title = o.optString("title")
-                val body = o.optString("body")
-                if (title.isNotBlank() || body.isNotBlank()) {
-                    val legacy = SubjectNote(maxOf(System.currentTimeMillis(), 1L), title.ifBlank { "Untitled note" }, body, System.currentTimeMillis())
-                    store.saveSubjectNotes(subject.id, listOf(legacy))
-                    notes = store.subjectNotes(subject.id)
-                }
+        if (notes.isEmpty()) runCatching {
+            val o = JSONObject(subject.extra); val title = o.optString("title"); val body = o.optString("body")
+            if (title.isNotBlank() || body.isNotBlank()) {
+                store.saveSubjectNotes(subject.id, listOf(SubjectNote(maxOf(System.currentTimeMillis(), 1L), title.ifBlank { "Untitled note" }, body, System.currentTimeMillis())))
+                notes = store.subjectNotes(subject.id)
             }
         }
     }
-
-    val filtered = notes.filter { noteQuery.isBlank() || (it.title + " " + it.body).contains(noteQuery, true) }
-    val noteList = filtered.sortedWith(
-        compareByDescending<SubjectNote> { it.favorite }.thenBy {
-            when (noteSort) {
-                "Created" -> -it.id
-                "Alphabetical" -> it.title.lowercase()
-                "Manual" -> it.order
-                else -> -it.updatedAt
-            }
-        }
+    val noteList = notes.filter { noteQuery.isBlank() || (it.title + " " + it.body).contains(noteQuery, true) }.sortedWith(
+        compareByDescending<SubjectNote> { it.favorite }.thenBy { when (noteSort) { "Created" -> -it.id; "Alphabetical" -> it.title.lowercase(); "Manual" -> it.order; else -> -it.updatedAt } }
     )
-
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))) {
-        TopAppBar(
-            title = {
-                Column {
-                    Text("Notepad", fontWeight = FontWeight.Bold)
-                    Text(subject.title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            },
-            navigationIcon = {
-                IconButton(onClick = done) { Icon(Icons.Default.ArrowBack, "Back to Academics") }
-            },
-            actions = {
-                if (editingNoteId == null) IconButton(onClick = { beginNewNote() }) { Icon(Icons.Default.NoteAdd, "New note") }
-            }
-        )
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         if (editingNoteId == null) {
-            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                OutlinedTextField(
-                    value = noteQuery,
-                    onValueChange = { noteQuery = it },
-                    Modifier.fillMaxWidth().padding(top = 8.dp),
-                    singleLine = true,
-                    leadingIcon = { Icon(Icons.Default.Search, null) },
-                    placeholder = { Text("Search notes") }
+            Column(Modifier.fillMaxSize()) {
+                TopAppBar(
+                    title = { Column { Text("Notepad", fontWeight = FontWeight.Bold); Text(subject.title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) } },
+                    navigationIcon = { IconButton(onClick = done) { Icon(Icons.Default.ArrowBack, "Back to Academics") } },
+                    actions = { IconButton(onClick = { beginNewNote() }) { Icon(Icons.Default.NoteAdd, "New note") } },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
                 )
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Sort:", fontWeight = FontWeight.SemiBold)
-                    listOf("Modified", "Created", "Alphabetical", "Manual").forEach { option ->
-                        FilterChip(selected = noteSort == option, onClick = { noteSort = option }, label = { Text(option) }, modifier = Modifier.padding(end=6.dp))
+                Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(noteQuery, { noteQuery = it }, Modifier.fillMaxWidth().padding(top = 4.dp), singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = { if (noteQuery.isNotBlank()) IconButton(onClick = { noteQuery = "" }) { Icon(Icons.Default.Clear, "Clear search") } }, placeholder = { Text("Search notes") }, shape = RoundedCornerShape(14.dp))
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Sort", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(end = 8.dp))
+                        listOf("Modified", "Created", "Alphabetical", "Manual").forEach { option -> FilterChip(selected = noteSort == option, onClick = { noteSort = option }, label = { Text(option) }, leadingIcon = if (noteSort == option) ({ Icon(Icons.Default.Check, null, Modifier.size(16.dp)) }) else null, modifier = Modifier.padding(end = 6.dp)) }
                     }
-                }
-                if (noteList.isEmpty()) {
-                    EmptyCard("No notes yet. Tap + to create a note for " + subject.title + ".")
-                } else {
-                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(noteList, key = { it.id }) { note ->
-                            Card(onClick = { editNote(note) }, Modifier.fillMaxWidth()) {
-                                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.StickyNote2, null)
-                                    Spacer(Modifier.width(10.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(note.title, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                        if (note.body.isNotBlank()) Text(note.body, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                                        Text(SimpleDateFormat("MMM d, yyyy h:mm a", Locale.getDefault()).format(Date(note.updatedAt)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (noteList.isEmpty()) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                                Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Icon(Icons.Default.StickyNote2, null, Modifier.size(42.dp), tint = MaterialTheme.colorScheme.primary)
+                                    Text(if (noteQuery.isBlank()) "No notes yet" else "No matching notes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text(if (noteQuery.isBlank()) "Tap the + button to create a note for " + subject.title + "." else "Try a different search.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    } else {
+                        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(noteList, key = { it.id }) { note ->
+                                Card(onClick = { editNote(note) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                                    Row(Modifier.fillMaxWidth().padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(44.dp)) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.StickyNote2, null, tint = MaterialTheme.colorScheme.onPrimaryContainer) } }
+                                        Spacer(Modifier.width(12.dp))
+                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) { Text(note.title, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f)); if (note.favorite) Icon(Icons.Default.Star, "Favorite", Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary) }
+                                            if (note.body.isNotBlank()) Text(note.body, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                            Text(SimpleDateFormat("MMM d, yyyy • h:mm a", Locale.getDefault()).format(Date(note.updatedAt)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        IconButton(onClick = { store.saveSubjectNotes(subject.id, notes.map { if (it.id == note.id) it.copy(favorite = !it.favorite) else it }); notes = store.subjectNotes(subject.id) }) { Icon(if (note.favorite) Icons.Default.Star else Icons.Default.StarBorder, "Favorite") }
+                                        IconButton(onClick = { deleteNote(note) }) { Icon(Icons.Default.Delete, "Delete note") }
                                     }
-                                    IconButton(onClick = {
-                                        store.saveSubjectNotes(subject.id, notes.map { if (it.id == note.id) it.copy(favorite = !it.favorite) else it })
-                                        notes = store.subjectNotes(subject.id)
-                                    }) { Icon(if (note.favorite) Icons.Default.Star else Icons.Default.StarBorder, "Favorite") }
-                                    IconButton(onClick = { deleteNote(note) }) { Icon(Icons.Default.Delete, "Delete note") }
                                 }
                             }
                         }
@@ -2240,92 +2193,64 @@ fun SubjectNotepadPage(subject: Record, store: LocalStore, done: () -> Unit) {
                 }
             }
         } else {
-            Column(Modifier.fillMaxSize().padding(16.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { editingNoteId = null }) { Icon(Icons.Default.ArrowBack, "Back to notes") }
-                    Text(if (editingNoteId == -1L) "New note" else "Edit note", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                }
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(noteTitle, { noteTitle = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Title") })
-                Spacer(Modifier.height(10.dp))
-                OutlinedTextField(noteBody, { noteBody = it }, Modifier.fillMaxWidth().weight(1f), label = { Text("Note") }, placeholder = { Text("Write your notes here...") }, textStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp))
-                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { editingNoteId = null }, Modifier.weight(1f)) { Text("Cancel") }
-                    Button(onClick = { saveNote() }, Modifier.weight(1f)) { Text("Save") }
+            Column(Modifier.fillMaxSize()) {
+                TopAppBar(title = { Column { Text(if (editingNoteId == -1L) "New note" else "Edit note", fontWeight = FontWeight.Bold); Text(subject.title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) } }, navigationIcon = { IconButton(onClick = { editingNoteId = null }) { Icon(Icons.Default.ArrowBack, "Back to notes") } }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
+                Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(noteTitle, { noteTitle = it }, Modifier.fillMaxWidth().padding(top = 4.dp), singleLine = true, label = { Text("Title") }, shape = RoundedCornerShape(14.dp))
+                    OutlinedTextField(noteBody, { noteBody = it }, Modifier.fillMaxWidth().weight(1f), label = { Text("Note") }, placeholder = { Text("Write your notes here...") }, textStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp), shape = RoundedCornerShape(14.dp))
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { editingNoteId = null }, Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) { Text("Cancel") }
+                        Button(onClick = { saveNote() }, Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) { Text("Save") }
+                    }
+                    Spacer(Modifier.height(8.dp))
                 }
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubjectLectureFilesPage(subject: Record, openFile: (String) -> Unit, done: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var files by remember(subject.id) { mutableStateOf(subjectFiles(context, subject.id)) }
     var fileSort by rememberSaveable(subject.id) { mutableStateOf("Newest") }
-    val upload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        uri ?: return@rememberLauncherForActivityResult
-        copyUriToSubject(context, uri, subject.id)?.let { files = subjectFiles(context, subject.id) }
-    }
-    val fileList = files.sortedWith(
-        compareByDescending<File> { File(context.filesDir, "subject_favorite_" + subject.id + "_" + it.name).exists() }.thenBy {
-            when (fileSort) {
-                "Alphabetical" -> it.name.lowercase()
-                "Oldest" -> it.lastModified()
-                "Manual" -> it.name.lowercase()
-                else -> -it.lastModified()
-            }
-        }
-    )
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))) {
-        TopAppBar(
-            title = {
-                Column {
-                    Text("Lecture Files", fontWeight = FontWeight.Bold)
-                    Text(subject.title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val upload = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? -> uri ?: return@rememberLauncherForActivityResult; copyUriToSubject(context, uri, subject.id)?.let { files = subjectFiles(context, subject.id) } }
+    val fileList = files.sortedWith(compareByDescending<File> { File(context.filesDir, "subject_favorite_" + subject.id + "_" + it.name).exists() }.thenBy { when (fileSort) { "Alphabetical" -> it.name.lowercase(); "Oldest" -> it.lastModified(); "Manual" -> it.name.lowercase(); else -> -it.lastModified() } })
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Column(Modifier.fillMaxSize()) {
+            TopAppBar(title = { Column { Text("Lecture Files", fontWeight = FontWeight.Bold); Text(subject.title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) } }, navigationIcon = { IconButton(onClick = done) { Icon(Icons.Default.ArrowBack, "Back to Academics") } }, actions = { IconButton(onClick = { upload.launch(arrayOf("*/*")) }) { Icon(Icons.Default.Add, "Add lecture file") } }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
+            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Sort", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(end = 8.dp))
+                    listOf("Newest", "Oldest", "Alphabetical", "Manual").forEach { option -> FilterChip(selected = fileSort == option, onClick = { fileSort = option }, label = { Text(option) }, leadingIcon = if (fileSort == option) ({ Icon(Icons.Default.Check, null, Modifier.size(16.dp)) }) else null, modifier = Modifier.padding(end = 6.dp)) }
                 }
-            },
-            navigationIcon = { IconButton(onClick = done) { Icon(Icons.Default.ArrowBack, "Back to Academics") } },
-            actions = { IconButton(onClick = { upload.launch(arrayOf("*/*")) }) { Icon(Icons.Default.Add, "Add lecture file") } }
-        )
-        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                Text("Sort:", fontWeight = FontWeight.SemiBold)
-                listOf("Newest", "Oldest", "Alphabetical", "Manual").forEach { option ->
-                    FilterChip(selected = fileSort == option, onClick = { fileSort = option }, label = { Text(option) }, modifier = Modifier.padding(end=6.dp))
-                }
-            }
-            if (fileList.isEmpty()) {
-                EmptyCard("No lecture files yet. Add a PDF, PowerPoint, Word file, image, or other lecture file.")
-            } else {
-                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(fileList, key = { it.name }) { file ->
-                        val marker = File(context.filesDir, "subject_favorite_" + subject.id + "_" + file.name)
-                        Card(onClick = { openFile(file.name) }, Modifier.fillMaxWidth()) {
-                            ListItem(
-                                headlineContent = { Text(file.name, maxLines = 2) },
-                                supportingContent = { Text("Lecture " + (fileList.indexOf(file) + 1) + " • " + formatSize(file.length())) },
-                                leadingContent = {
-                                    Icon(when (fileExtension(file)) {
-                                        "pdf" -> Icons.Default.PictureAsPdf
-                                        "ppt", "pptx" -> Icons.Default.Slideshow
-                                        "doc", "docx" -> Icons.Default.Description
-                                        else -> Icons.Default.InsertDriveFile
-                                    }, null)
-                                },
-                                trailingContent = {
-                                    IconButton(onClick = {
-                                        if (marker.exists()) marker.delete() else marker.createNewFile()
-                                        files = subjectFiles(context, subject.id)
-                                    }) { Icon(if (marker.exists()) Icons.Default.Star else Icons.Default.StarBorder, "Favorite") }
-                                    IconButton(onClick = {
-                                        file.delete()
-                                        marker.delete()
-                                        files = subjectFiles(context, subject.id)
-                                    }) { Icon(Icons.Default.Delete, "Delete lecture file") }
+                if (fileList.isEmpty()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                            Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Default.FolderOpen, null, Modifier.size(46.dp), tint = MaterialTheme.colorScheme.primary)
+                                Text("No lecture files yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text("Add a PDF, PowerPoint, Word file, image, or other lecture file.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                FilledTonalButton(onClick = { upload.launch(arrayOf("*/*")) }, shape = RoundedCornerShape(12.dp)) { Icon(Icons.Default.UploadFile, null); Spacer(Modifier.width(8.dp)); Text("Add file") }
+                            }
+                        }
+                    }
+                } else {
+                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(fileList, key = { it.name }) { file ->
+                            val marker = File(context.filesDir, "subject_favorite_" + subject.id + "_" + file.name)
+                            Card(onClick = { openFile(file.name) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                                Row(Modifier.fillMaxWidth().padding(start = 12.dp, top = 10.dp, bottom = 10.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.size(46.dp)) {
+                                        Box(contentAlignment = Alignment.Center) { Icon(when (fileExtension(file)) { "pdf" -> Icons.Default.PictureAsPdf; "ppt", "pptx" -> Icons.Default.Slideshow; "doc", "docx" -> Icons.Default.Description; "xls", "xlsx" -> Icons.Default.GridOn; else -> Icons.Default.InsertDriveFile }, null, tint = MaterialTheme.colorScheme.onSecondaryContainer) }
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) { Text(file.name, maxLines = 2, fontWeight = FontWeight.SemiBold, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis); Text("Lecture " + (fileList.indexOf(file) + 1) + " • " + formatSize(file.length()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                                    IconButton(onClick = { if (marker.exists()) marker.delete() else marker.createNewFile(); files = subjectFiles(context, subject.id) }) { Icon(if (marker.exists()) Icons.Default.Star else Icons.Default.StarBorder, "Favorite") }
+                                    IconButton(onClick = { file.delete(); marker.delete(); files = subjectFiles(context, subject.id) }) { Icon(Icons.Default.Delete, "Delete lecture file") }
                                 }
-                            )
+                            }
                         }
                     }
                 }
@@ -2334,7 +2259,7 @@ fun SubjectLectureFilesPage(subject: Record, openFile: (String) -> Unit, done: (
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InAppFileViewerPage(file: File, done: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
