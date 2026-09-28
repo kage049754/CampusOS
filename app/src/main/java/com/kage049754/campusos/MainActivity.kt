@@ -2209,7 +2209,7 @@ fun SubjectNotepadPage(subject: Record, store: LocalStore, done: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubjectLectureFilesPage(subject: Record, openFile: (String) -> Unit, done: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -2259,7 +2259,7 @@ fun SubjectLectureFilesPage(subject: Record, openFile: (String) -> Unit, done: (
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InAppFileViewerPage(file: File, done: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
