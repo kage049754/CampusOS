@@ -276,10 +276,10 @@ class CampusNextClassWidgetProvider : android.appwidget.AppWidgetProvider() {
                 val duration = (end - start).coerceAtLeast(1L)
                 val progress = if (state.current) (((now - start).toDouble() / duration.toDouble()) * 100.0).toInt().coerceIn(0, 100) else 0
                 val status = if (state.current) {
-                    "Started " + widgetCountdown((now - start) / 60_000L) + " ago • " +
-                        widgetCountdown((end - now) / 60_000L) + " remaining"
+                    "Started " + widgetCountdownMillis(now - start, false) + " ago • " +
+                        widgetCountdownMillis(end - now, true) + " remaining"
                 } else {
-                    "Starts in " + widgetCountdown((start - now) / 60_000L)
+                    "Starts in " + widgetCountdownMillis(start - now, true)
                 }
                 v.setTextViewText(R.id.widget_title, if (state.current) "Current Class" else "Next Class")
                 v.setTextViewText(R.id.widget_main, r.title)
@@ -341,32 +341,8 @@ private fun widgetMinutes(value: String): Int? {
     return hour * 60 + minute
 }
 
-private fun mergeAdjacentWidgetClasses(records: List<Record>): List<Record> {
-    val sorted = records.sortedWith(
-        compareBy<Record>(
-            { widgetMinutes(it.startTime) ?: Int.MAX_VALUE },
-            { widgetMinutes(it.endTime) ?: Int.MAX_VALUE }
-        )
-    )
-    val out = mutableListOf<Record>()
-    for (r in sorted) {
-        val previous = out.lastOrNull()
-        val previousEnd = previous?.let { widgetMinutes(it.endTime) }
-        val start = widgetMinutes(r.startTime)
-        val sameSubject = previous?.title?.trim()?.equals(r.title.trim(), true) == true
-        val sameType = previous?.classType?.trim()?.equals(r.classType.trim(), true) == true
-        if (previous != null && previousEnd != null && start != null && previousEnd == start && sameSubject && sameType) {
-            out[out.lastIndex] = previous.copy(
-                endTime = r.endTime,
-                room = previous.room.ifBlank { r.room },
-                professor = previous.professor.ifBlank { r.professor }
-            )
-        } else {
-            out += r
-        }
-    }
-    return out
-}
+private fun mergeAdjacentWidgetClasses(records: List<Record>): List<Record> =
+    mergeAdjacentClassRecords(records)
 
 private data class WidgetClassState(
     val record: Record,
@@ -430,11 +406,16 @@ private fun widgetEndOccurrenceMillis(record: Record, startMillis: Long): Long? 
     }.timeInMillis
 }
 
-private fun widgetCountdown(minutes: Long): String {
-    val m = minutes.coerceAtLeast(0)
-    return if (m < 60) "$m min" else {
-        val h = m / 60
-        val rem = m % 60
+private fun widgetCountdownMillis(millis: Long, roundRemainingUp: Boolean): String {
+    val safeMillis = millis.coerceAtLeast(0L)
+    val m = if (roundRemainingUp) {
+        kotlin.math.ceil(safeMillis / 60_000.0).toLong()
+    } else {
+        safeMillis / 60_000L
+    }
+    return if (m < 60L) "$m min" else {
+        val h = m / 60L
+        val rem = m % 60L
         if (rem == 0L) "$h hr" else "$h hr $rem min"
     }
 }
