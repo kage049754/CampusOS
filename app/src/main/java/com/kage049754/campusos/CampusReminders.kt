@@ -238,8 +238,17 @@ class CampusWidgetTickReceiver : BroadcastReceiver() {
     }
 }
 
-private fun appOpenPendingIntent(context: Context): PendingIntent =
-    PendingIntent.getActivity(context, 700, Intent(context, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+private fun appOpenPendingIntent(context: Context, screen: String? = null, subjectId: Long = 0L): PendingIntent {
+    val intent = Intent(context, MainActivity::class.java)
+    screen?.let { intent.putExtra("widget_open_screen", it) }
+    if (subjectId > 0L) intent.putExtra("widget_subject_id", subjectId)
+    return PendingIntent.getActivity(
+        context,
+        (700 + subjectId.toInt().coerceAtLeast(0)) and 0x7FFFFFFF,
+        intent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+}
 
 class CampusTodayWidgetProvider : android.appwidget.AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: android.appwidget.AppWidgetManager, ids: IntArray) { ids.forEach { update(context, manager, it) } }
@@ -260,13 +269,16 @@ class CampusNextClassWidgetProvider : android.appwidget.AppWidgetProvider() {
     companion object {
         fun update(context: Context, manager: android.appwidget.AppWidgetManager, id: Int) {
             val v = android.widget.RemoteViews(context.packageName, R.layout.widget_next_class)
-            val state = nextWidgetClass(LocalStore(context))
+            val store = LocalStore(context)
+            val state = nextWidgetClass(store)
             if (state == null) {
                 v.setTextViewText(R.id.widget_title, "Next Class")
                 v.setTextViewText(R.id.widget_main, "No upcoming class")
                 v.setTextViewText(R.id.widget_secondary, "")
                 v.setTextViewText(R.id.widget_status, "")
+                v.setTextViewText(R.id.widget_after, "")
                 v.setProgressBar(R.id.widget_progress, 100, 0, false)
+                v.setOnClickPendingIntent(R.id.widget_root, appOpenPendingIntent(context, "SCHEDULE"))
             } else {
                 val r = state.record
                 val now = System.currentTimeMillis()
@@ -281,43 +293,57 @@ class CampusNextClassWidgetProvider : android.appwidget.AppWidgetProvider() {
                 } else {
                     "Starts in " + widgetCountdownMillis(start - now, true)
                 }
+                val nextAfter = nextWidgetClassAfter(store, end)
+                val afterText = nextAfter?.let {
+                    "Next: " + it.record.title +
+                        if (it.record.subtitle.isNotBlank()) " • " + it.record.subtitle else "" +
+                        " • " + it.record.startTime + "–" + it.record.endTime
+                } ?: "No more classes after this one"
                 v.setTextViewText(R.id.widget_title, if (state.current) "Current Class" else "Next Class")
                 v.setTextViewText(R.id.widget_main, r.title)
                 v.setTextViewText(
                     R.id.widget_secondary,
-                    day + " • " + r.startTime + "–" + r.endTime +
+                    (r.subtitle.takeIf { it.isNotBlank() }?.let { it + " • " } ?: "") +
+                        day + " • " + r.startTime + "–" + r.endTime +
                         if (r.room.isNotBlank()) " • Room " + r.room else ""
                 )
                 v.setTextViewText(R.id.widget_status, status)
+                v.setTextViewText(R.id.widget_after, afterText)
                 v.setProgressBar(R.id.widget_progress, 100, progress, false)
+                v.setOnClickPendingIntent(R.id.widget_root, appOpenPendingIntent(context, null, r.subjectId))
             }
-            v.setOnClickPendingIntent(R.id.widget_root, appOpenPendingIntent(context))
             manager.updateAppWidget(id, v)
         }
     }
 }
-
 class CampusScheduleWidgetProvider : android.appwidget.AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: android.appwidget.AppWidgetManager, ids: IntArray) { ids.forEach { update(context, manager, it) } }
     companion object {
         fun update(context: Context, manager: android.appwidget.AppWidgetManager, id: Int) {
             val v = android.widget.RemoteViews(context.packageName, R.layout.widget_schedule)
             val day = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date())
-            val rows = mergeAdjacentWidgetClasses(
-                LocalStore(context).get("schedule")
-                    .filter { it.day.equals(day, true) }
-            )
-                .take(5)
-                .joinToString("\n") { it.startTime + "–" + it.endTime + "  " + it.title + " (" + it.classType + ")" }
-            v.setTextViewText(R.id.widget_title, "Today's Class Schedule")
-            v.setTextViewText(R.id.widget_main, if (rows.isBlank()) "No classes today" else rows)
-            v.setTextViewText(R.id.widget_secondary, day)
-            v.setOnClickPendingIntent(R.id.widget_root, appOpenPendingIntent(context))
+            val nowMinutes = Calendar.getInstance().let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) }
+            val classes = mergeAdjacentWidgetClasses(
+                LocalStore(context).get("schedule").filter { it.day.equals(day, true) }
+            ).sortedBy { widgetMinutes(it.startTime) ?: Int.MAX_VALUE }
+            val rows = classes.take(6).joinToString("\n") { r ->
+                val start = widgetMinutes(r.startTime)
+                val end = widgetMinutes(r.endTime)
+                when {
+                    start != null && end != null && nowMinutes >= end -> "✓ " + r.startTime + "–" + r.endTime + "  " + r.title
+                    start != null && end != null && nowMinutes in start until end -> "▶ " + r.startTime + "–" + r.endTime + "  " + r.title + " • " + (end - nowMinutes) + " min remaining"
+                    start != null -> r.startTime + "–" + r.endTime + "  " + r.title + " • Starts in " + widgetCountdownMinutes(start - nowMinutes)
+                    else -> r.startTime + "–" + r.endTime + "  " + r.title
+                }
+            }
+            v.setTextViewText(R.id.widget_title, "Today's Schedule")
+            v.setTextViewText(R.id.widget_main, if (rows.isBlank()) "No classes scheduled today" else rows)
+            v.setTextViewText(R.id.widget_secondary, day + " • Tap to open Schedule")
+            v.setOnClickPendingIntent(R.id.widget_root, appOpenPendingIntent(context, "SCHEDULE"))
             manager.updateAppWidget(id, v)
         }
     }
 }
-
 class CampusTaskWidgetProvider : android.appwidget.AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: android.appwidget.AppWidgetManager, ids: IntArray) { ids.forEach { update(context, manager, it) } }
     companion object {
@@ -434,6 +460,25 @@ private fun widgetEndOccurrenceMillis(record: Record, startMillis: Long): Long? 
         set(Calendar.SECOND, 0)
         set(Calendar.MILLISECOND, 0)
     }.timeInMillis
+}
+
+private fun widgetCountdownMinutes(minutes: Int): String {
+    val safe = minutes.coerceAtLeast(0)
+    return if (safe < 60) safe.toString() + " min" else {
+        val h = safe / 60
+        val m = safe % 60
+        if (m == 0) h.toString() + " hr" else h.toString() + " hr " + m + " min"
+    }
+}
+
+private fun nextWidgetClassAfter(store: LocalStore, afterMillis: Long): WidgetClassState? {
+    val now = Calendar.getInstance()
+    val records = mergeAdjacentWidgetClasses(store.get("schedule"))
+    return records.mapNotNull { r ->
+        val start = widgetOccurrenceMillis(r, now, true) ?: return@mapNotNull null
+        val end = widgetEndOccurrenceMillis(r, start) ?: return@mapNotNull null
+        if (start >= afterMillis) WidgetClassState(r, start, end, false) else null
+    }.minByOrNull { it.startMillis }
 }
 
 private fun widgetCountdownMillis(millis: Long, roundRemainingUp: Boolean): String {
