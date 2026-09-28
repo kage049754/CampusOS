@@ -395,7 +395,7 @@ class LocalStore(context: Context) {
             root.put("subjectFiles", files)
         }
         if ("homepage" in selected) {
-            root.put("theme", theme()); root.put("lock", lockEnabled()); root.put("lockMethod", authMethod())
+            root.put("theme", theme()); root.put("dynamicColor", dynamicColorEnabled()); root.put("lock", lockEnabled()); root.put("lockMethod", authMethod())
             root.put("profileName", profileName()); root.put("profileStudentId", profileStudentId()); root.put("profileSection", profileSection())
             root.put("homeLayoutOrder", prefs.getString("home_layout_order", ""))
             root.put("homeHiddenTiles", prefs.getString("home_hidden_tiles", ""))
@@ -431,6 +431,7 @@ class LocalStore(context: Context) {
         }
         if ("homepage" in selected) {
             if (root.has("theme")) e.putString("theme", root.getString("theme"))
+            if (root.has("dynamicColor")) e.putBoolean("dynamic_color_enabled", root.getBoolean("dynamicColor"))
             if (root.has("lock")) e.putBoolean("lock", root.getBoolean("lock"))
             if (root.has("lockMethod") && listOf("none","pin","pattern").contains(root.optString("lockMethod"))) e.putString("lock_method", root.getString("lockMethod"))
             if (root.has("profileName")) e.putString("profile_name", root.getString("profileName"))
