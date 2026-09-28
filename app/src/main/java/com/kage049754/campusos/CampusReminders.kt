@@ -295,9 +295,8 @@ class CampusNextClassWidgetProvider : android.appwidget.AppWidgetProvider() {
                 }
                 val nextAfter = nextWidgetClassAfter(store, end)
                 val afterText = nextAfter?.let {
-                    "Next: " + it.record.title +
-                        if (it.record.subtitle.isNotBlank()) " • " + it.record.subtitle else "" +
-                        " • " + it.record.startTime + "–" + it.record.endTime
+                    val name = if (it.record.subtitle.isNotBlank()) " • " + it.record.subtitle else ""
+                    "Next: " + it.record.title + name + " • " + it.record.startTime + "–" + it.record.endTime
                 } ?: "No more classes after this one"
                 v.setTextViewText(R.id.widget_title, if (state.current) "Current Class" else "Next Class")
                 v.setTextViewText(R.id.widget_main, r.title)
