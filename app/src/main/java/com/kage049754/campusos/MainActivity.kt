@@ -693,26 +693,57 @@ fun HomeSettingsDialog(
     openAppLock:()->Unit,
     openBackupRecovery:()->Unit
 ) {
-    AlertDialog(
-        onDismissRequest=done,
-        title={Text("CampusOS Settings")},
-        text={
-            Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                Text("Choose a module",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
-                Text("Open the dedicated settings for each part of CampusOS.",color=MaterialTheme.colorScheme.onSurfaceVariant)
-                listOf("Homepage" to Icons.Default.Home,"Schedule" to Icons.Default.CalendarMonth,"Notes" to Icons.Default.CheckCircle,"Academics" to Icons.Default.School).forEach{(name,icon)->
-                    OutlinedButton({onModule(name)},Modifier.fillMaxWidth()){Icon(icon,null);Spacer(Modifier.width(8.dp));Text(name)}
+    Dialog(onDismissRequest = done) {
+        Surface(Modifier.fillMaxWidth().padding(12.dp), shape = MaterialTheme.shapes.extraLarge, tonalElevation = 8.dp, color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 720.dp).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("CampusOS Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Text("Manage each part of the app in one place.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    IconButton(onClick = done) { Icon(Icons.Default.Close, "Close") }
                 }
-                HorizontalDivider()
-                OutlinedButton(onAppearance,Modifier.fillMaxWidth()){Icon(Icons.Default.Palette,null);Spacer(Modifier.width(8.dp));Text("Appearance & Design")}
-                OutlinedButton(openAppLock,Modifier.fillMaxWidth()){Icon(Icons.Default.Lock,null);Spacer(Modifier.width(8.dp));Text("App Lock")}
-                OutlinedButton(openBackupRecovery,Modifier.fillMaxWidth()){Icon(Icons.Default.Backup,null);Spacer(Modifier.width(8.dp));Text("Backup & Recovery")}
-                Text("CampusOS 1.0.0 • Offline-first",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                SettingsGroupTitle("CampusOS")
+                SettingsRow(Icons.Default.Person, "Profile", "Name, student ID, section and photo") { onModule("Homepage") }
+                SettingsRow(Icons.Default.Home, "Homepage", "Dashboard layout and home tiles") { onModule("Homepage") }
+                SettingsRow(Icons.Default.CalendarMonth, "Schedule", "Class days, timetable and class editing") { onModule("Schedule") }
+                SettingsRow(Icons.Default.CheckCircle, "Tasks", "Calendar, tasks and deadlines") { onModule("Tasks") }
+                SettingsRow(Icons.Default.School, "Academics", "Subjects, Notepad and Lecture Files") { onModule("Academics") }
+                SettingsGroupTitle("App")
+                SettingsRow(Icons.Default.Notifications, "Notifications", "Next-class and deadline reminders") { onModule("Notifications") }
+                SettingsRow(Icons.Default.Palette, "Appearance", "Light, dark and system theme") { onAppearance() }
+                SettingsRow(Icons.Default.Backup, "Data & Backup", "Backup or recover selected modules") { openBackupRecovery() }
+                SettingsRow(Icons.Default.Lock, "App Lock", "PIN or pattern protection") { openAppLock() }
+                SettingsRow(Icons.Default.Info, "About", "CampusOS 1.0.0 • Offline-first") { done() }
+                Spacer(Modifier.height(4.dp))
+                TextButton(onClick = done, modifier = Modifier.align(Alignment.End)) { Text("Done") }
             }
-        },
-        confirmButton={TextButton(done){Text("Close")}}
-    )
+        }
+    }
 }
+
+@Composable
+private fun SettingsGroupTitle(text: String) {
+    Text(text, Modifier.padding(top = 12.dp, bottom = 4.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+}
+
+@Composable
+private fun SettingsRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+    Surface(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).background(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.shapes.small), contentAlignment = Alignment.Center) {
+                Icon(icon, null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.SemiBold)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
 @Composable
 fun AppLockSettingsDialog(store: LocalStore, done: () -> Unit, lockNow: () -> Unit) {
     var method by remember { mutableStateOf(store.authMethod()) }
@@ -894,169 +925,96 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit, editRequest: Int = 0) {
     val studentId = store.profileStudentId()
     val section = store.profileSection()
     val photoPath = store.profilePhotoPath()
-    val date = SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date())
     val todayName = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date())
-    val mergedSchedule = remember(schedule) {
-        schedule.groupBy { it.day.trim().lowercase(Locale.getDefault()) }
-            .values
-            .flatMap { mergeTodayClasses(it) }
-    }
     val todaySchedule = remember(schedule, todayName) { mergeTodayClasses(schedule.filter { it.day.equals(todayName, true) }) }
-    val pendingTasks = remember(tasks) { tasks.filter { !it.done }.sortedWith(compareBy({ it.dueDate }, { it.dueTime })).take(5) }
-    val pinnedTasks = remember(tasks) { tasks.filter { !it.done && taskPinned(it) }.sortedWith(compareBy({ it.dueDate }, { it.dueTime })).take(5) }
+    val pendingTasks = remember(tasks) {
+        tasks.filter { !it.done }.sortedWith(compareBy<Record>({ it.dueDate.ifBlank { "9999-99-99" } }, { it.dueTime }, { it.title.lowercase(Locale.getDefault()) })).take(4)
+    }
+    val todayKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+    val dueToday = remember(tasks, todayKey) { tasks.filter { !it.done && it.dueDate == todayKey } }
     val photo = remember(photoPath, revision) { if (photoPath.isNotBlank()) runCatching { BitmapFactory.decodeFile(photoPath) }.getOrNull() else null }
-    val defaultOrder = listOf("profile", "stats", "classes", "pinned", "tasks")
-    val savedOrder = store.homeLayoutOrder()
-    var tileOrder by remember(revision) { mutableStateOf((savedOrder + defaultOrder).distinct().filter { it in defaultOrder }) }
-    var editMode by remember { mutableStateOf(false) }
-    var hiddenTiles by remember(revision) { mutableStateOf(store.homeHiddenTiles()) }
-    val listState = rememberLazyListState()
-    var draggedKey by remember { mutableStateOf<String?>(null) }
-    var dragOffset by remember { mutableFloatStateOf(0f) }
-    val visibleOrder = tileOrder.filter { it !in hiddenTiles }
 
-    LaunchedEffect(editRequest) {
-        if (editRequest > 0) {
-            editMode = true
-            tileOrder = (store.homeLayoutOrder() + defaultOrder).distinct().filter { it in defaultOrder }
-        }
-    }
+    LaunchedEffect(editRequest) { if (editRequest > 0) { /* existing editor entry point remains available from settings */ } }
 
-    fun moveTile(key: String, targetKey: String) {
-        val from = tileOrder.indexOf(key)
-        val to = tileOrder.indexOf(targetKey)
-        if (from >= 0 && to >= 0 && from != to) {
-            tileOrder = tileOrder.toMutableList().apply {
-                val item = removeAt(from)
-                add(to, item)
-            }
-        }
-    }
-
-    Column(Modifier.fillMaxSize()) {
-        if (editMode) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "Drag tiles to arrange your Home screen",
-                    Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                IconButton(onClick = {
-                    editMode = false
-                    store.setHomeLayoutOrder(tileOrder)
-                    store.setHomeHiddenTiles(hiddenTiles)
-                }) {
-                    Icon(Icons.Default.Check, "Done")
+    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(top = 10.dp, bottom = 18.dp)) {
+        item {
+            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (photo != null) Image(photo.asImageBitmap(), "Profile photo", Modifier.size(62.dp), contentScale = ContentScale.Crop)
+                    else Box(Modifier.size(62.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50)), contentAlignment = Alignment.Center) {
+                        Text(profileName.take(1).uppercase(), color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Good " + if (Calendar.getInstance().get(Calendar.HOUR_OF_DAY) < 12) "morning" else "day", style = MaterialTheme.typography.labelLarge)
+                        Text(profileName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        val details = listOf(studentId, section).filter { it.isNotBlank() }.joinToString(" • ")
+                        if (details.isNotBlank()) Text(details, style = MaterialTheme.typography.bodyMedium)
+                        Text(SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
                 }
             }
         }
-
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            items(items = visibleOrder, key = { tile -> tile }) { tileKey ->
-                val isDragged = draggedKey == tileKey
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .graphicsLayer { translationY = if (isDragged) dragOffset else 0f; alpha = if (isDragged) 0.82f else 1f }
-                        .then(
-                            if (editMode) Modifier.pointerInput(tileKey, tileOrder) {
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = { draggedKey = tileKey; dragOffset = 0f },
-                                    onDragCancel = { draggedKey = null; dragOffset = 0f },
-                                    onDragEnd = {
-                                        draggedKey = null
-                                        dragOffset = 0f
-                                        store.setHomeLayoutOrder(tileOrder)
-                                    },
-                                    onDrag = { change, amount ->
-                                        change.consume()
-                                        dragOffset += amount.y
-                                        val visible: List<androidx.compose.foundation.lazy.LazyListItemInfo> = listState.layoutInfo.visibleItemsInfo
-                                        val firstIndex = listState.firstVisibleItemIndex
-                                        val draggedIndex = tileOrder.indexOf(tileKey)
-                                        val draggedPosition = draggedIndex - firstIndex
-                                        val draggedInfo = visible.getOrNull(draggedPosition)
-                                        val center = draggedInfo?.let { it.offset + it.size / 2 } ?: 0
-                                        val pointerCenter = center.toFloat() + dragOffset
-                                        var targetPosition = -1
-                                        var targetDistance = Float.MAX_VALUE
-                                        for (position in visible.indices) {
-                                            val itemIndex = firstIndex + position
-                                            if (itemIndex == draggedIndex) continue
-                                            val item = visible[position]
-                                            val distance = kotlin.math.abs((item.offset + item.size / 2).toFloat() - pointerCenter)
-                                            if (distance < targetDistance) {
-                                                targetDistance = distance
-                                                targetPosition = position
-                                            }
-                                        }
-                                        if (targetPosition >= 0) {
-                                            val targetIndex = firstIndex + targetPosition
-                                            val targetKey = tileOrder.getOrNull(targetIndex)
-                                            val targetItem = visible[targetPosition]
-                                            if (targetKey != null && targetDistance < targetItem.size / 2) {
-                                                moveTile(tileKey, targetKey)
-                                                dragOffset = 0f
-                                            }
-                                        }
-                                    }
-                                )
-                            } else Modifier
-                        )
-                ) {
-                    when (tileKey) {
-                        "profile" -> Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                            Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                                if (photo != null) Image(photo.asImageBitmap(), "Profile photo", Modifier.size(64.dp), contentScale = ContentScale.Crop)
-                                else Box(Modifier.size(64.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50)), contentAlignment = Alignment.Center) { Text(profileName.take(1).uppercase(), color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
-                                Spacer(Modifier.width(14.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text("Welcome back", style = MaterialTheme.typography.labelLarge)
-                                    Text(profileName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                                    val details = listOf(studentId, section).filter { it.isNotBlank() }.joinToString(" • ")
-                                    if (details.isNotBlank()) Text(details, style = MaterialTheme.typography.bodyMedium)
-                                    Text(date, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                                }
-                            }
+        item {
+            Text("Next class", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            HomeClassesTile(todaySchedule)
+        }
+        item {
+            Text("Quick access", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HomeQuickAction(Icons.Default.CalendarMonth, "Schedule") { go(Screen.SCHEDULE) }
+                HomeQuickAction(Icons.Default.CheckCircle, "Tasks") { go(Screen.TASKS) }
+                HomeQuickAction(Icons.Default.School, "Academics") { go(Screen.ACADEMICS) }
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Today's tasks", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                if (dueToday.isNotEmpty()) Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.errorContainer) {
+                    Text(dueToday.size.toString() + " due", Modifier.padding(horizontal = 9.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            if (pendingTasks.isEmpty()) EmptyCard("No pending tasks. You're all caught up.")
+            else pendingTasks.forEach { task ->
+                Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.EventNote, null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(task.title, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            if (task.subtitle.isNotBlank()) Text(task.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            if (task.dueDate.isNotBlank()) Text("Due " + task.dueDate + if (task.dueTime.isNotBlank()) " • " + task.dueTime else "", style = MaterialTheme.typography.labelSmall, color = if (task.dueDate == todayKey) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        "stats" -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            val now = Calendar.getInstance()
-                            val currentDayIndex = now.get(Calendar.DAY_OF_WEEK) - Calendar.SUNDAY
-                            val currentMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
-                            val weeklyClasses = schedule.groupBy { it.day.trim().lowercase(Locale.getDefault()) }
-                                .values
-                                .flatMap { mergeTodayClasses(it) }
-                            val completedThisWeek = weeklyClasses.count { r ->
-                                val dayIndex = listOf("sunday","monday","tuesday","wednesday","thursday","friday","saturday")
-                                    .indexOf(r.day.trim().lowercase(Locale.getDefault()))
-                                when {
-                                    dayIndex < 0 -> false
-                                    dayIndex < currentDayIndex -> true
-                                    dayIndex > currentDayIndex -> false
-                                    else -> (r.endTime.toMinutesOrNull() ?: Int.MAX_VALUE) <= currentMinutes
-                                }
-                            }
-                            StatCard("Classes", completedThisWeek.toString() + "/" + weeklyClasses.size, Modifier.weight(1f))
-                            StatCard("Subjects", subjects.size.toString(), Modifier.weight(1f))
-                            StatCard("Notes", tasks.count { !it.done }.toString(), Modifier.weight(1f))
-                        }
-                        "classes" -> HomeClassesTile(todaySchedule)
-                        "pinned" -> HomePinnedTile(pinnedTasks)
-                        "tasks" -> HomeTasksTile(pendingTasks)
                     }
+                }
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Column(Modifier.weight(1f)) { Text("Subjects", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(subjects.size.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                    Column(Modifier.weight(1f)) { Text("Today", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(todaySchedule.size.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                    Column(Modifier.weight(1f)) { Text("Pending", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(tasks.count { !it.done }.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
                 }
             }
         }
     }
 }
+
+@Composable
+private fun HomeQuickAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    Surface(Modifier.weight(1f).clickable(onClick = onClick), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Column(Modifier.padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(4.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
 @Composable
 fun HomeTileSettingsDialog(
     defaultOrder: List<String>,
@@ -1232,16 +1190,10 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
     var refresh by remember { mutableIntStateOf(0) }
     var showAdd by remember { mutableStateOf(false) }
     var showDaySetup by remember { mutableStateOf(!store.scheduleDaysConfigured()) }
-    var showDetails by remember { mutableStateOf(false) }
-    var showScheduleSettings by remember { mutableStateOf(false) }
     var nowTick by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var dayPage by rememberSaveable { mutableIntStateOf(0) }
 
-    LaunchedEffect(Unit) {
-        while (true) {
-            nowTick = System.currentTimeMillis()
-            kotlinx.coroutines.delay(30000)
-        }
-    }
+    LaunchedEffect(Unit) { while (true) { nowTick = System.currentTimeMillis(); delay(30_000) } }
     LaunchedEffect(query) { if (query == "__ADD__") showAdd = true }
 
     val all = remember(refresh, revision, query) {
@@ -1250,104 +1202,128 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                 (it.title + " " + it.subtitle + " " + it.extra + " " + it.day + " " + it.room + " " + it.professor).contains(query, true)
         }
     }
-
-    val scheduleDays = store.scheduleDays()
+    val scheduleDays = store.scheduleDays().distinct()
     val startHour = store.scheduleStartHour().coerceIn(0, 23)
-    val endHour = store.scheduleEndHour().coerceIn(startHour, 23)
-    val hours = if (endHour > startHour) (startHour until endHour).toList() else listOf(startHour)
+    val endHour = store.scheduleEndHour().coerceIn(startHour + 1, 24)
+    val hours = (startHour until endHour).toList()
     val calendar = remember(nowTick) { Calendar.getInstance() }
     val today = SimpleDateFormat("EEEE", Locale.getDefault()).format(calendar.time)
-    val currentHour = calendar.get(Calendar.HOUR_OF_DAY)
+    val currentMinutes = calendar.get(Calendar.HOUR_OF_DAY) * 60 + calendar.get(Calendar.MINUTE)
+    val dayOrder = listOf("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday")
+    fun dayIndex(name: String) = dayOrder.indexOfFirst { it.equals(name, true) }.let { if (it < 0) 99 else it }
+    val todayIndex = dayIndex(today)
+    val orderedDays = remember(scheduleDays, today) {
+        scheduleDays.sortedWith(compareBy<String> {
+            val idx = dayIndex(it)
+            when { idx == todayIndex -> 0; idx > todayIndex -> idx - todayIndex; else -> 7 + idx - todayIndex }
+        })
+    }
+    LaunchedEffect(orderedDays.size) { dayPage = dayPage.coerceIn(0, ((orderedDays.size - 1).coerceAtLeast(0) / 3)) }
+    val pageCount = ((orderedDays.size - 1).coerceAtLeast(0) / 3) + 1
+    val visibleDays = if (orderedDays.size <= 3) orderedDays else orderedDays.drop((dayPage * 3).coerceAtMost(orderedDays.size - 1)).take(3)
     val dayHighlight = Color(store.scheduleDayHighlight())
     val timeHighlight = Color(store.scheduleTimeHighlight())
     val tableBgValue = store.scheduleTableBackground()
     val tableBg = if (tableBgValue == 0L) Color.Transparent else Color(tableBgValue)
     val tableBorder = Color(store.scheduleTableBorder())
-    val horizontalScrollEnabled = remember(revision) { store.scheduleTableHorizontalScroll() }
-    val verticalScrollEnabled = remember(revision) { store.scheduleTableVerticalScroll() }
     val tableFontSize = remember(revision) { store.scheduleTableFontSize() }
     val customDayWidth = remember(revision) { store.scheduleTableDayWidth() }
     val customRowHeight = remember(revision) { store.scheduleTableRowHeight() }
     var zoom by remember(revision) { mutableFloatStateOf(1f) }
 
-    val dayOrder = listOf("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday")
-    fun dayIndex(name: String) = dayOrder.indexOfFirst { it.equals(name, true) }.let { if (it < 0) 99 else it }
-    val todayIndex = dayIndex(today)
-    val orderedDays = remember(scheduleDays, today) {
-        val configured = scheduleDays.distinct()
-        configured.sortedWith(compareBy<String> {
-            val idx = dayIndex(it)
-            when {
-                idx == todayIndex -> 0
-                idx > todayIndex -> idx - todayIndex
-                else -> 7 + idx - todayIndex
+    fun changePage(delta: Int) { if (orderedDays.size > 3) dayPage = (dayPage + delta).coerceIn(0, pageCount - 1) }
+
+    Column(Modifier.fillMaxSize().pointerInput(orderedDays, dayPage) {
+        var dragTotal = 0f
+        detectHorizontalDragGestures(
+            onHorizontalDrag = { _, amount -> dragTotal += amount },
+            onDragEnd = { if (dragTotal < -70f) changePage(1) else if (dragTotal > 70f) changePage(-1); dragTotal = 0f },
+            onDragCancel = { dragTotal = 0f }
+        )
+    }) {
+        if (orderedDays.isEmpty()) {
+            Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) { EmptyCard("No class days configured yet. Open Schedule Settings to choose your class days.") }
+        } else {
+            Surface(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(enabled = orderedDays.size > 3 && dayPage > 0, onClick = { changePage(-1) }) { Icon(Icons.Default.ChevronLeft, "Previous days") }
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(if (orderedDays.size <= 3) "Class days" else "Class days " + (dayPage + 1) + "/" + pageCount, fontWeight = FontWeight.Bold)
+                        if (orderedDays.size > 3) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            repeat(pageCount) { page -> Box(Modifier.size(if (page == dayPage) 8.dp else 6.dp).background(if (page == dayPage) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(50))) }
+                        } else Text("Today first • swipe for more when needed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    IconButton(enabled = orderedDays.size > 3 && dayPage < pageCount - 1, onClick = { changePage(1) }) { Icon(Icons.Default.ChevronRight, "Next days") }
+                }
             }
-        })
-    }
-
-    Column(Modifier.fillMaxSize()) {
-        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 4.dp)) {
-            val visibleDayCount = orderedDays.size.coerceAtMost(3).coerceAtLeast(1)
-            val baseDayWidth = if (customDayWidth > 0f) customDayWidth.dp else (maxWidth - 56.dp).coerceAtLeast(0.dp) / visibleDayCount
-            val dayWidth = baseDayWidth * zoom
-            val headerHeight = 34.dp
-            val baseRowHeight = if (customRowHeight > 0f) customRowHeight.dp else ((maxHeight - headerHeight).coerceAtLeast(0.dp) / hours.size.coerceAtLeast(1)).coerceAtLeast(30.dp)
-            val rowHeight = baseRowHeight * zoom
-            val needsDaySwipe = orderedDays.size >= 4
-            val dayScroll = rememberScrollState()
-
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                if (horizontalScrollEnabled || verticalScrollEnabled) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Zoom ${zoom.toInt()}x", style = MaterialTheme.typography.labelSmall)
-                        Spacer(Modifier.width(8.dp))
-                        TextButton(onClick = { zoom = (zoom - 0.25f).coerceAtLeast(1f) }) { Text("−") }
-                        TextButton(onClick = { zoom = (zoom + 0.25f).coerceAtMost(3f) }) { Text("+") }
-                        TextButton(onClick = { zoom = 1f }) { Text("Reset") }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                visibleDays.forEach { day ->
+                    Surface(shape = RoundedCornerShape(50), color = if (day.equals(today, true)) dayHighlight else MaterialTheme.colorScheme.surfaceContainerLow) {
+                        Text(day.take(3), Modifier.padding(horizontal = 12.dp, vertical = 7.dp), fontWeight = FontWeight.Bold, color = if (day.equals(today, true)) readableContentColor(dayHighlight) else MaterialTheme.colorScheme.onSurface)
                     }
                 }
-                if (needsDaySwipe) {
-                    Text("Swipe left or right to see more days • Time stays fixed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+            }
+            if (store.scheduleTableHorizontalScroll() || store.scheduleTableVerticalScroll()) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Zoom " + zoom.toInt() + "x", style = MaterialTheme.typography.labelSmall)
+                    TextButton({ zoom = (zoom - .25f).coerceAtLeast(1f) }) { Text("−") }
+                    TextButton({ zoom = (zoom + .25f).coerceAtMost(3f) }) { Text("+") }
+                    TextButton({ zoom = 1f }) { Text("Reset") }
                 }
-                Row(Modifier.height(headerHeight)) {
-                    Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) {
-                        Text("Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
-                    }
-                    Row(Modifier.weight(1f).then(if (needsDaySwipe) Modifier.horizontalScroll(dayScroll) else Modifier)) {
-                        orderedDays.forEach { d ->
-                            val isToday = d.equals(today, true)
-                            Box(Modifier.width(dayWidth).fillMaxHeight().background(if (isToday) dayHighlight.copy(alpha = 0.16f) else tableBg).border(if (isToday) 2.dp else 1.dp, if (isToday) dayHighlight else tableBorder), contentAlignment = Alignment.Center) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    if (isToday) Box(Modifier.size(6.dp).background(dayHighlight, RoundedCornerShape(50)))
-                                    Text(d.take(3), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
+            }
+            AnimatedContent(targetState = dayPage, transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) }, label = "schedule day transition") {
+                BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 4.dp)) {
+                    val baseDayWidth = if (customDayWidth > 0f) customDayWidth.dp else (maxWidth - 56.dp).coerceAtLeast(0.dp) / visibleDays.size.coerceAtLeast(1)
+                    val dayWidth = baseDayWidth * zoom
+                    val headerHeight = 38.dp
+                    val baseRowHeight = if (customRowHeight > 0f) customRowHeight.dp else ((maxHeight - headerHeight).coerceAtLeast(0.dp) / hours.size.coerceAtLeast(1)).coerceAtLeast(38.dp)
+                    val rowHeight = baseRowHeight * zoom
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                        Row(Modifier.height(headerHeight)) {
+                            Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) { Text("Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp)) }
+                            visibleDays.forEach { day ->
+                                val isToday = day.equals(today, true)
+                                Box(Modifier.width(dayWidth).fillMaxHeight().background(if (isToday) dayHighlight.copy(alpha = .16f) else tableBg).border(if (isToday) 2.dp else 1.dp, if (isToday) dayHighlight else tableBorder), contentAlignment = Alignment.Center) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        if (isToday) Box(Modifier.size(6.dp).background(dayHighlight, RoundedCornerShape(50)))
+                                        Text(day.take(3), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
+                                    }
                                 }
                             }
                         }
-                    }
-                }
-                hours.forEach { h ->
-                    val isCurrentHour = h == currentHour
-                    Row(Modifier.height(rowHeight)) {
-                        Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder).then(if (isCurrentHour) Modifier.border(2.dp, timeHighlight) else Modifier), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                if (isCurrentHour) Box(Modifier.size(6.dp).background(timeHighlight, RoundedCornerShape(50)))
-                                Text(formatHourRange(h, h + 1), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
-                            }
-                        }
-                        Row(Modifier.weight(1f).then(if (needsDaySwipe) Modifier.horizontalScroll(dayScroll) else Modifier)) {
-                            orderedDays.forEach { day ->
-                                val classes = all.filter { it.day.equals(day, true) && it.startTime.toHourOrNull() == h }
-                                Box(Modifier.width(dayWidth).fillMaxHeight().background(if (day.equals(today, true) && isCurrentHour) timeHighlight.copy(alpha = 0.10f) else tableBg).border(if (day.equals(today, true) && isCurrentHour) 2.dp else 1.dp, if (day.equals(today, true) && isCurrentHour) timeHighlight else tableBorder).padding(1.dp)) {
-                                    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                                        classes.groupBy { it.title.trim().uppercase(Locale.getDefault()) }.values.take(2).forEach { subjectClasses ->
-                                            val r = subjectClasses.first()
-                                            val types = subjectClasses.map { if (it.classType.equals("Lecture", true)) "Lec" else "Lab" }.distinct().joinToString(" + ")
-                                            val rooms = subjectClasses.map { it.room.trim() }.filter { it.isNotBlank() }.distinct().joinToString(" / ")
-                                            val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
-                                            Card(Modifier.fillMaxWidth().weight(1f, fill = false), colors = CardDefaults.cardColors(containerColor = bg, contentColor = readableContentColor(bg)), shape = RoundedCornerShape(6.dp)) {
-                                                Column(Modifier.fillMaxSize().padding(horizontal = 4.dp, vertical = 2.dp), verticalArrangement = Arrangement.Center) {
-                                                    Text("${r.title} - ${types.ifBlank { "Class" }}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                                                    if (rooms.isNotBlank()) Text(rooms, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 3, softWrap = true, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        hours.forEach { hour ->
+                            val rowStart = hour * 60
+                            Row(Modifier.height(rowHeight)) {
+                                Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) { Text(formatHourRange(hour, hour + 1), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp)) }
+                                visibleDays.forEach { day ->
+                                    val cell = all.filter { it.day.equals(day, true) && it.startTime.toHourOrNull() == hour }
+                                    val groups = cell.groupBy { it.title.trim().uppercase(Locale.getDefault()) }.values.take(2)
+                                    val isCurrent = day.equals(today, true) && groups.any { g -> val r = g.first(); val st = r.startTime.toMinutesOrNull() ?: -1; val en = r.endTime.toMinutesOrNull() ?: -1; currentMinutes in st until en }
+                                    val isPassed = day.equals(today, true) && groups.isNotEmpty() && groups.all { g -> (g.maxOfOrNull { it.endTime.toMinutesOrNull() ?: -1 } ?: -1) <= currentMinutes }
+                                    Box(Modifier.width(dayWidth).fillMaxHeight().background(if (isCurrent) timeHighlight.copy(alpha = .14f) else tableBg).border(if (isCurrent) 2.dp else 1.dp, if (isCurrent) timeHighlight else tableBorder).padding(2.dp)) {
+                                        if (groups.isEmpty()) Text("—", Modifier.align(Alignment.CenterHorizontally), color = MaterialTheme.colorScheme.outlineVariant, style = MaterialTheme.typography.labelSmall)
+                                        else Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            groups.forEach { group ->
+                                                val r = group.first()
+                                                val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
+                                                val lab = r.classType.equals("Lab", true)
+                                                val typeContainer = if (lab) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer
+                                                val alpha = if (isPassed) .62f else 1f
+                                                Card(Modifier.fillMaxWidth().weight(1f, fill = false), colors = CardDefaults.cardColors(containerColor = bg.copy(alpha = alpha)), shape = RoundedCornerShape(8.dp)) {
+                                                    Column(Modifier.fillMaxSize().padding(horizontal = 5.dp, vertical = 3.dp), verticalArrangement = Arrangement.Center) {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Surface(shape = RoundedCornerShape(50), color = typeContainer) { Text(if (lab) "LAB" else "LEC", Modifier.padding(horizontal = 5.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
+                                                            Spacer(Modifier.width(4.dp))
+                                                            Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = alpha })
+                                                        }
+                                                        if (r.subtitle.isNotBlank()) Text(r.subtitle, style = MaterialTheme.typography.labelSmall.copy(fontSize = (tableFontSize - 1).coerceAtLeast(8f).sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = alpha })
+                                                        if (r.room.isNotBlank()) Text(r.room, style = MaterialTheme.typography.labelSmall.copy(fontSize = (tableFontSize - 1).coerceAtLeast(8f).sp), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = alpha })
+                                                        if (isCurrent) {
+                                                            val st = r.startTime.toMinutesOrNull() ?: rowStart
+                                                            val en = r.endTime.toMinutesOrNull() ?: rowStart + 60
+                                                            LinearProgressIndicator(progress = { ((currentMinutes - st).toFloat() / (en - st).coerceAtLeast(1)).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().padding(top = 2.dp))
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -1360,10 +1336,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
             }
         }
     }
-
     if (showAdd) ScheduleDialog(store) { showAdd = false; clear(); refresh++ }
-    if (showDetails) SubjectDetailsDialog(all, { showDetails = false })
-    if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
     if (showDaySetup) ScheduleDaySetupDialog(store) { showDaySetup = false }
 }
 
