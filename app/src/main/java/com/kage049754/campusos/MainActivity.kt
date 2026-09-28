@@ -1979,23 +1979,63 @@ fun TaskCalendar(selectedDate:String,onSelect:(String)->Unit){
             },
         verticalArrangement=Arrangement.spacedBy(6.dp)
     ) {
-        Text(SimpleDateFormat("MMMM yyyy",Locale.getDefault()).format(first.time),Modifier.weight(1f),textAlign=androidx.compose.ui.text.style.TextAlign.Center,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
-            
-        Row(Modifier.fillMaxWidth()){
-            listOf("M","T","W","T","F","S","S").forEach{Text(it,Modifier.weight(1f),textAlign=androidx.compose.ui.text.style.TextAlign.Center,style=MaterialTheme.typography.labelSmall)}
-        }
-        for(row in 0..5) Row(Modifier.fillMaxWidth()){
-            for(col in 0..6){
-                val n=row*7+col-offset+1
-                if(n in 1..max){
-                    val d=(first.clone() as Calendar).apply{set(Calendar.DAY_OF_MONTH,n)}
-                    val k=sdf.format(d.time);val selected=k==selectedDate;val today=k==todayKey
-                    Box(Modifier.weight(1f).padding(2.dp).height(40.dp)
-                        .background(if(selected)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,RoundedCornerShape(8.dp))
-                        .then(if(today)Modifier.border(2.dp,MaterialTheme.colorScheme.primary,RoundedCornerShape(8.dp))else Modifier)
-                        .clickable{onSelect(k)},contentAlignment=Alignment.Center
-                    ){Text(n.toString(),fontWeight=if(selected||today)FontWeight.Bold else FontWeight.Normal)}
-                }else Box(Modifier.weight(1f).height(44.dp))
+        AnimatedContent(
+            targetState = monthOffset,
+            transitionSpec = {
+                fadeIn(animationSpec = tween(150)) togetherWith
+                    fadeOut(animationSpec = tween(100))
+            },
+            label = "calendar month transition"
+        ) { offsetState ->
+            val animatedFirst = Calendar.getInstance().apply {
+                set(Calendar.DAY_OF_MONTH, 1)
+                add(Calendar.MONTH, -offsetState)
+            }
+            val animatedOffset = ((animatedFirst.get(Calendar.DAY_OF_WEEK) - Calendar.MONDAY + 7) % 7)
+            val animatedMax = animatedFirst.getActualMaximum(Calendar.DAY_OF_MONTH)
+
+            Column(Modifier.fillMaxWidth().animateContentSize()) {
+                Text(
+                    SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(animatedFirst.time),
+                    Modifier.fillMaxWidth(),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(Modifier.fillMaxWidth()) {
+                    listOf("M","T","W","T","F","S","S").forEach {
+                        Text(it, Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+                for (row in 0..5) Row(Modifier.fillMaxWidth()) {
+                    for (col in 0..6) {
+                        val n = row * 7 + col - animatedOffset + 1
+                        if (n in 1..animatedMax) {
+                            val d = (animatedFirst.clone() as Calendar).apply { set(Calendar.DAY_OF_MONTH, n) }
+                            val k = sdf.format(d.time)
+                            val selected = k == selectedDate
+                            val today = k == todayKey
+                            Box(
+                                Modifier.weight(1f).padding(2.dp).height(40.dp)
+                                    .background(
+                                        if (selected) MaterialTheme.colorScheme.primaryContainer
+                                        else MaterialTheme.colorScheme.surface,
+                                        MaterialTheme.shapes.small
+                                    )
+                                    .then(
+                                        if (today) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.small)
+                                        else Modifier
+                                    )
+                                    .clickable { onSelect(k) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(n.toString(), fontWeight = if (selected || today) FontWeight.Bold else FontWeight.Normal)
+                            }
+                        } else {
+                            Box(Modifier.weight(1f).height(44.dp))
+                        }
+                    }
+                }
             }
         }
     }
