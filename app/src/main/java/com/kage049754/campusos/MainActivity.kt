@@ -2506,6 +2506,7 @@ private fun lectureFolders(context: Context, subjectId: Long): MutableList<Strin
 private fun lectureFolder(context: Context, subjectId: Long, file: File): String = lectureMetaPrefs(context, subjectId).getString("folder_" + file.name, "Lecture 1") ?: "Lecture 1"
 private fun lectureFavorite(context: Context, subjectId: Long, file: File): Boolean = lectureMetaPrefs(context, subjectId).getBoolean("favorite_" + file.name, false)
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubjectLectureFilesPage(subject: Record, openFile: (String) -> Unit, done: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
