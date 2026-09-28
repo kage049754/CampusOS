@@ -472,7 +472,10 @@ fun CampusOSApp(activity: Activity) {
     val store = remember { LocalStore(activity) }
     var theme by remember { mutableStateOf(store.theme()) }
     var locked by remember { mutableStateOf(store.lockEnabled() && store.authMethod() != "none") }
-    var screenName by rememberSaveable { mutableStateOf(Screen.HOME.name) }
+    var screenName by rememberSaveable {
+        mutableStateOf(activity.intent.getStringExtra("widget_open_screen")?.let { runCatching { Screen.valueOf(it) }.getOrNull()?.name } ?: Screen.HOME.name)
+    }
+    var widgetSubjectId by rememberSaveable { mutableLongStateOf(activity.intent.getLongExtra("widget_subject_id", 0L)) }
     val screen = Screen.valueOf(screenName)
     var search by rememberSaveable { mutableStateOf("") }
     var showHomeAdd by remember { mutableStateOf(false) }
@@ -540,6 +543,14 @@ fun CampusOSApp(activity: Activity) {
     }
 
     if (locked) { LockScreen(store) { locked = false }; return }
+
+    LaunchedEffect(widgetSubjectId) {
+        if (widgetSubjectId > 0L && store.get("subjects").any { it.id == widgetSubjectId }) {
+            subjectPageId = widgetSubjectId
+            subjectPageMode = 0
+            widgetSubjectId = 0L
+        }
+    }
 
     val dark = when (theme) {
         "dark" -> true
