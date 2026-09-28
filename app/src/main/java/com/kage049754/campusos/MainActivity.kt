@@ -1257,13 +1257,6 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                     IconButton(enabled = orderedDays.size > 3 && dayPage < pageCount - 1, onClick = { changePage(1) }) { Icon(Icons.Default.ChevronRight, "Next days") }
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                visibleDays.forEach { day ->
-                    Surface(shape = RoundedCornerShape(50), color = if (day.equals(today, true)) dayHighlight else MaterialTheme.colorScheme.surfaceContainerLow) {
-                        Text(day.take(3), Modifier.padding(horizontal = 12.dp, vertical = 7.dp), fontWeight = FontWeight.Bold, color = if (day.equals(today, true)) readableContentColor(dayHighlight) else MaterialTheme.colorScheme.onSurface)
-                    }
-                }
-            }
             if (store.scheduleTableHorizontalScroll() || store.scheduleTableVerticalScroll()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Zoom " + zoom.toInt() + "x", style = MaterialTheme.typography.labelSmall)
