@@ -1,4 +1,5 @@
 name: Build CampusOS APK
+# UI redesign build verification
 
 on:
   push:
