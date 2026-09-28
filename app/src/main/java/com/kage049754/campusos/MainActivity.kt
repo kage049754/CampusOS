@@ -964,9 +964,9 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit, editRequest: Int = 0) {
             Text("Quick access", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                HomeQuickAction(Icons.Default.CalendarMonth, "Schedule") { go(Screen.SCHEDULE) }
-                HomeQuickAction(Icons.Default.CheckCircle, "Tasks") { go(Screen.TASKS) }
-                HomeQuickAction(Icons.Default.School, "Academics") { go(Screen.ACADEMICS) }
+                HomeQuickAction(Icons.Default.CalendarMonth, "Schedule", Modifier.weight(1f)) { go(Screen.SCHEDULE) }
+                HomeQuickAction(Icons.Default.CheckCircle, "Tasks", Modifier.weight(1f)) { go(Screen.TASKS) }
+                HomeQuickAction(Icons.Default.School, "Academics", Modifier.weight(1f)) { go(Screen.ACADEMICS) }
             }
         }
         item {
@@ -1005,8 +1005,8 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit, editRequest: Int = 0) {
 }
 
 @Composable
-private fun HomeQuickAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
-    Surface(Modifier.weight(1f).clickable(onClick = onClick), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+private fun HomeQuickAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Surface(modifier.clickable(onClick = onClick), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.height(4.dp))
@@ -1301,20 +1301,20 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                                     val isCurrent = day.equals(today, true) && groups.any { g -> val r = g.first(); val st = r.startTime.toMinutesOrNull() ?: -1; val en = r.endTime.toMinutesOrNull() ?: -1; currentMinutes in st until en }
                                     val isPassed = day.equals(today, true) && groups.isNotEmpty() && groups.all { g -> (g.maxOfOrNull { it.endTime.toMinutesOrNull() ?: -1 } ?: -1) <= currentMinutes }
                                     Box(Modifier.width(dayWidth).fillMaxHeight().background(if (isCurrent) timeHighlight.copy(alpha = .14f) else tableBg).border(if (isCurrent) 2.dp else 1.dp, if (isCurrent) timeHighlight else tableBorder).padding(2.dp)) {
-                                        if (groups.isEmpty()) Text("—", Modifier.align(Alignment.CenterHorizontally), color = MaterialTheme.colorScheme.outlineVariant, style = MaterialTheme.typography.labelSmall)
+                                        if (groups.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("—", color = MaterialTheme.colorScheme.outlineVariant, style = MaterialTheme.typography.labelSmall) }
                                         else Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                             groups.forEach { group ->
                                                 val r = group.first()
                                                 val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
                                                 val lab = r.classType.equals("Lab", true)
                                                 val typeContainer = if (lab) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer
-                                                val alpha = if (isPassed) .62f else 1f
-                                                Card(Modifier.fillMaxWidth().weight(1f, fill = false), colors = CardDefaults.cardColors(containerColor = bg.copy(alpha = alpha)), shape = RoundedCornerShape(8.dp)) {
+                                                val contentAlpha = if (isPassed) .62f else 1f
+                                                Card(Modifier.fillMaxWidth().weight(1f, fill = false), colors = CardDefaults.cardColors(containerColor = bg.copy(alpha = contentAlpha)), shape = RoundedCornerShape(8.dp)) {
                                                     Column(Modifier.fillMaxSize().padding(horizontal = 5.dp, vertical = 3.dp), verticalArrangement = Arrangement.Center) {
                                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                                             Surface(shape = RoundedCornerShape(50), color = typeContainer) { Text(if (lab) "LAB" else "LEC", Modifier.padding(horizontal = 5.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
                                                             Spacer(Modifier.width(4.dp))
-                                                            Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = alpha })
+                                                            Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = contentAlpha })
                                                         }
                                                         if (r.subtitle.isNotBlank()) Text(r.subtitle, style = MaterialTheme.typography.labelSmall.copy(fontSize = (tableFontSize - 1).coerceAtLeast(8f).sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = alpha })
                                                         if (r.room.isNotBlank()) Text(r.room, style = MaterialTheme.typography.labelSmall.copy(fontSize = (tableFontSize - 1).coerceAtLeast(8f).sp), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = alpha })
