@@ -11,6 +11,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
@@ -70,6 +75,61 @@ data class Record(
 data class FileRecord(val name: String, val size: Long, val file: File? = null)
 
 data class SubjectNote(val id: Long, val title: String, val body: String, val updatedAt: Long, val favorite: Boolean = false, val order: Long = 0L)
+
+private val CampusShapes = Shapes(
+    extraSmall = RoundedCornerShape(10.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(20.dp),
+    extraLarge = RoundedCornerShape(24.dp)
+)
+
+private val CampusLightColors = lightColorScheme(
+    primary = Color(0xFF1565C0),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFD6E8FF),
+    onPrimaryContainer = Color(0xFF001D36),
+    secondary = Color(0xFF4F5F72),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFD9E4F7),
+    onSecondaryContainer = Color(0xFF0C1C2B),
+    background = Color(0xFFF7F9FC),
+    onBackground = Color(0xFF191C20),
+    surface = Color(0xFFFFFFFF),
+    onSurface = Color(0xFF191C20),
+    surfaceVariant = Color(0xFFE0E4EA),
+    onSurfaceVariant = Color(0xFF43474E),
+    outline = Color(0xFF73777F),
+    outlineVariant = Color(0xFFC3C7CF)
+)
+
+private val CampusDarkColors = darkColorScheme(
+    primary = Color(0xFFA8C8FF),
+    onPrimary = Color(0xFF00315C),
+    primaryContainer = Color(0xFF174A7A),
+    onPrimaryContainer = Color(0xFFD6E8FF),
+    secondary = Color(0xFFBBC7D9),
+    onSecondary = Color(0xFF253140),
+    secondaryContainer = Color(0xFF354253),
+    onSecondaryContainer = Color(0xFFD9E4F7),
+    tertiary = Color(0xFFC5C0E8),
+    onTertiary = Color(0xFF2C2942),
+    tertiaryContainer = Color(0xFF44405D),
+    onTertiaryContainer = Color(0xFFE6E0FF),
+    background = Color(0xFF121417),
+    onBackground = Color(0xFFE3E6EA),
+    surface = Color(0xFF1A1D21),
+    onSurface = Color(0xFFE3E6EA),
+    surfaceVariant = Color(0xFF292D33),
+    onSurfaceVariant = Color(0xFFC3C7CF),
+    surfaceContainerLowest = Color(0xFF0D0F12),
+    surfaceContainerLow = Color(0xFF20242A),
+    surfaceContainer = Color(0xFF252A30),
+    surfaceContainerHigh = Color(0xFF2B3037),
+    surfaceContainerHighest = Color(0xFF353A42),
+    outline = Color(0xFF8D929A),
+    outlineVariant = Color(0xFF444950)
+)
 
 private fun readableContentColor(background: Color): Color {
     val luminance = 0.299f * background.red + 0.587f * background.green + 0.114f * background.blue
@@ -237,6 +297,11 @@ class LocalStore(context: Context) {
     fun profileStudentId() = prefs.getString("profile_student_id", "") ?: ""
     fun profileSection() = prefs.getString("profile_section", "") ?: ""
     fun profilePhotoPath() = prefs.getString("profile_photo_path", "") ?: ""
+    fun subjectFavorite(subjectId: Long): Boolean = prefs.getBoolean("subject_favorite_$subjectId", false)
+    fun setSubjectFavorite(subjectId: Long, favorite: Boolean) {
+        prefs.edit().putBoolean("subject_favorite_$subjectId", favorite).apply()
+        revision++
+    }
     fun subjectNotes(subjectId: Long): List<SubjectNote> = runCatching {
         val raw = prefs.getString("subject_notes_$subjectId", "[]") ?: "[]"
         val a = JSONArray(raw)
@@ -316,6 +381,7 @@ class LocalStore(context: Context) {
             val notes = JSONObject()
             prefs.all.filterKeys { it.startsWith("subject_notes_") }.forEach { (k,v) -> if (v is String) notes.put(k.removePrefix("subject_notes_"), v) }
             root.put("subjectNotes", notes)
+            val favorites = JSONObject(); prefs.all.filterKeys { it.startsWith("subject_favorite_") }.forEach { (k,v) -> if (v is Boolean && v) favorites.put(k.removePrefix("subject_favorite_"), true) }; root.put("subjectFavorites", favorites)
             val files = JSONArray(); val dir = File(appContext.filesDir, "subject_files")
             dir.walkTopDown().filter { it.isFile }.forEach { file ->
                 files.put(JSONObject().apply { put("path", file.relativeTo(dir).path); put("data", Base64.encodeToString(file.readBytes(), Base64.NO_WRAP)) })
@@ -355,6 +421,7 @@ class LocalStore(context: Context) {
         if ("academics" in selected) {
             if (root.has("subjects")) e.putString("subjects", root.getString("subjects"))
             root.optJSONObject("subjectNotes")?.let { notes -> notes.keys().forEach { id -> e.putString("subject_notes_$id", notes.getString(id)) } }
+            root.optJSONObject("subjectFavorites")?.let { favorites -> favorites.keys().forEach { id -> e.putBoolean("subject_favorite_$id", favorites.optBoolean(id, false)) } }
         }
         if ("homepage" in selected) {
             if (root.has("theme")) e.putString("theme", root.getString("theme"))
@@ -476,7 +543,7 @@ fun CampusOSApp(activity: Activity) {
         else -> androidx.compose.foundation.isSystemInDarkTheme()
     }
 
-    MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
+    MaterialTheme(colorScheme = if (dark) CampusDarkColors else CampusLightColors, shapes = CampusShapes) {
         if (subjectPageId != 0L) {
             val subject = store.get("subjects").firstOrNull { it.id == subjectPageId }
             if (subject == null) {
@@ -539,19 +606,28 @@ fun CampusOSApp(activity: Activity) {
                     .padding(padding)
                     .imePadding()
             ) {
-                when (screen) {
-                    Screen.HOME -> HomeScreen(store, { screenName = it.name }, homeEditRequest)
-                    Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }, { showScheduleDetails = true }) { search = "" }
-                    Screen.TASKS -> TasksScreen(store, search, { search = "" }, { id -> subjectPageId = id; subjectPageMode = 0 })
-                    Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 })
-                    Screen.FILES -> FilesScreen()
-                    Screen.SETTINGS -> SettingsScreen(
-                        store, theme,
-                        { theme = it; store.setTheme(it) },
-                        { locked = true },
-                        { showScheduleSettings = true },
-                        { showScheduleManager = true }
-                    )
+                AnimatedContent(
+                    targetState = screenName,
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(180)) togetherWith
+                            fadeOut(animationSpec = tween(120))
+                    },
+                    label = "CampusOS screen transition"
+                ) { targetScreen ->
+                    when (Screen.valueOf(targetScreen)) {
+                        Screen.HOME -> HomeScreen(store, { screenName = it.name }, homeEditRequest)
+                        Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }, { showScheduleDetails = true }) { search = "" }
+                        Screen.TASKS -> TasksScreen(store, search, { search = "" }, { id -> subjectPageId = id; subjectPageMode = 0 })
+                        Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 })
+                        Screen.FILES -> FilesScreen()
+                        Screen.SETTINGS -> SettingsScreen(
+                            store, theme,
+                            { theme = it; store.setTheme(it) },
+                            { locked = true },
+                            { showScheduleSettings = true },
+                            { showScheduleManager = true }
+                        )
+                    }
                 }
                 if (!scheduleFullscreen && screen != Screen.HOME && screen != Screen.SETTINGS && screen != Screen.FILES && screen != Screen.TASKS) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
@@ -2067,42 +2143,208 @@ fun AcademicsScreen(
     val keys = listOf("subjects", "reviewers")
     val list = remember(refresh, revision, query, tab) {
         store.get(keys[tab]).filter {
-            query.isBlank() || query == "__ADD__" || (it.title + " " + it.subtitle + " " + it.extra).contains(query, true)
+            query.isBlank() || query == "__ADD__" ||
+                (it.title + " " + it.subtitle + " " + it.extra).contains(query, true)
         }
     }
+
     Column(Modifier.fillMaxSize()) {
-        Text("Academics", Modifier.padding(16.dp), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        ScrollableTabRow(selectedTabIndex = tab, edgePadding = 12.dp) {
-            labels.forEachIndexed { i, label -> Tab(tab == i, { tab = i }, text = { Text(label) }) }
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Text("Academics", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(
+                if (tab == 0) "Your subjects, notes, and lecture files"
+                else "Reviewers and study tools",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
+
+        ScrollableTabRow(
+            selectedTabIndex = tab,
+            edgePadding = 16.dp,
+            containerColor = Color.Transparent
+        ) {
+            labels.forEachIndexed { i, label ->
+                Tab(tab == i, { tab = i }, text = { Text(label) })
+            }
+        }
+
         if (tab == 1) {
-            Card(Modifier.fillMaxWidth().padding(horizontal=16.dp, vertical=8.dp)) {
-                Column(Modifier.padding(14.dp), verticalArrangement=Arrangement.spacedBy(5.dp)) {
-                    Row(verticalAlignment=Alignment.CenterVertically) { Icon(Icons.Default.Construction, null); Spacer(Modifier.width(8.dp)); Text("Feature development", fontWeight=FontWeight.Bold) }
-                    Text("Reviewer tools are still being developed. Planned functions include question-bank management, reviewer categories, quiz/practice mode, search and sorting, and import/export.", style=MaterialTheme.typography.bodySmall, color=MaterialTheme.colorScheme.onSurfaceVariant)
+            Card(
+                Modifier.fillMaxWidth().padding(16.dp),
+                shape = MaterialTheme.shapes.medium,
+                colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerLow)
+            ) {
+                Column(
+                    Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            modifier = Modifier.size(42.dp),
+                            shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Construction, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                            }
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("Feature development", fontWeight = FontWeight.Bold)
+                            Text("Reviewer tools", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Text(
+                        "Reviewer categories, question banks, practice mode, search, sorting, and import/export can be added here.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
+
         if (list.isEmpty()) {
-            EmptyCard("No " + labels[tab].lowercase() + " yet. Add classes from Home Settings or use your existing data.")
+            Box(
+                Modifier.fillMaxSize().padding(16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerLow)
+                ) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(28.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(58.dp),
+                            shape = MaterialTheme.shapes.medium,
+                            color = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    if (tab == 0) Icons.Default.School else Icons.Default.MenuBook,
+                                    null,
+                                    Modifier.size(30.dp),
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
+                        Text(
+                            if (query.isNotBlank()) "No matching " + labels[tab].lowercase()
+                            else "No " + labels[tab].lowercase() + " yet",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            if (tab == 0) "Add a class from Schedule to create a subject here."
+                            else "Your reviewer tools will appear here when available.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         } else {
-            LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(list, key = { it.id }) { r ->
-                    Card(Modifier.fillMaxWidth()) {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(r.title, fontWeight = FontWeight.SemiBold)
-                                if (r.subtitle.isNotBlank()) Text(r.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            val sortedList = list.sortedWith(
+                compareByDescending<Record> { store.subjectFavorite(it.id) }
+                    .thenBy { it.title.trim().lowercase(Locale.getDefault()) }
+            )
+
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (tab == 0 && sortedList.any { store.subjectFavorite(it.id) }) {
+                    item {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(bottom = 1.dp)
+                        ) {
+                            Icon(Icons.Default.Star, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Favorites", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                items(sortedList, key = { it.id }) { r ->
+                    val favorite = tab == 0 && store.subjectFavorite(r.id)
+                    Card(
+                        onClick = { if (tab == 0) openNotepad(r) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (favorite)
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+                            else
+                                MaterialTheme.colorScheme.surfaceContainerLow
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 16.dp, top = 14.dp, bottom = 14.dp, end = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        r.title.ifBlank { "Untitled subject" },
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (favorite) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (favorite) {
+                                        Spacer(Modifier.width(6.dp))
+                                        Icon(
+                                            Icons.Default.Star,
+                                            "Favorite",
+                                            Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                                if (r.subtitle.isNotBlank()) {
+                                    Text(
+                                        r.subtitle,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (favorite) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f)
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                }
+                                if (r.professor.isNotBlank()) {
+                                    Text(
+                                        r.professor,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = if (favorite) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f)
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
+                                    )
+                                }
                             }
-                            TextButton(onClick = { openNotepad(r) }) {
-                                Icon(Icons.Default.StickyNote2, null)
-                                Spacer(Modifier.width(4.dp))
-                                Text("Notepad")
-                            }
-                            TextButton(onClick = { openLectureFiles(r) }) {
-                                Icon(Icons.Default.Folder, null)
-                                Spacer(Modifier.width(4.dp))
-                                Text("Lecture Files")
+
+                            if (tab == 0) {
+                                IconButton(onClick = {
+                                    store.setSubjectFavorite(r.id, !favorite)
+                                    refresh++
+                                }) {
+                                    Icon(
+                                        if (favorite) Icons.Default.Star else Icons.Default.StarBorder,
+                                        if (favorite) "Unfavorite subject" else "Favorite subject",
+                                        tint = if (favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                IconButton(onClick = { openNotepad(r) }) {
+                                    Icon(Icons.Default.StickyNote2, "Notepad")
+                                }
+                                IconButton(onClick = { openLectureFiles(r) }) {
+                                    Icon(Icons.Default.Folder, "Lecture Files")
+                                }
                             }
                         }
                     }
@@ -2110,7 +2352,13 @@ fun AcademicsScreen(
             }
         }
     }
-    if (query == "__ADD__") AddRecordDialog(labels[tab], keys[tab], store, done={ clear(); refresh++ })
+
+    if (query == "__ADD__") AddRecordDialog(
+        labels[tab],
+        keys[tab],
+        store,
+        done = { clear(); refresh++ }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
