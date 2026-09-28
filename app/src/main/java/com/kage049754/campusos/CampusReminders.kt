@@ -341,8 +341,38 @@ private fun widgetMinutes(value: String): Int? {
     return hour * 60 + minute
 }
 
-private fun mergeAdjacentWidgetClasses(records: List<Record>): List<Record> =
-    mergeAdjacentClassRecords(records)
+private fun mergeAdjacentWidgetClasses(records: List<Record>): List<Record> {
+    fun normalized(value: String) = value.trim().replace(Regex("\\s+"), " ").lowercase(Locale.getDefault())
+
+    val sorted = records.sortedWith(
+        compareBy<Record>(
+            { widgetMinutes(it.startTime) ?: Int.MAX_VALUE },
+            { widgetMinutes(it.endTime) ?: Int.MAX_VALUE },
+            { normalized(it.title) },
+            { normalized(it.classType) },
+            { normalized(it.room) }
+        )
+    )
+    val out = mutableListOf<Record>()
+    for (r in sorted) {
+        val previous = out.lastOrNull()
+        val previousEnd = previous?.let { widgetMinutes(it.endTime) }
+        val start = widgetMinutes(r.startTime)
+        val sameSubject = previous != null && normalized(previous.title) == normalized(r.title)
+        val sameFullName = previous != null && normalized(previous.subtitle) == normalized(r.subtitle)
+        val sameType = previous != null && normalized(previous.classType) == normalized(r.classType)
+        val sameRoom = previous != null && normalized(previous.room) == normalized(r.room)
+        val sameProfessor = previous != null && normalized(previous.professor) == normalized(r.professor)
+        val consecutive = previousEnd != null && start != null && previousEnd == start
+
+        if (previous != null && sameSubject && sameFullName && sameType && sameRoom && sameProfessor && consecutive) {
+            out[out.lastIndex] = previous.copy(endTime = r.endTime)
+        } else {
+            out += r
+        }
+    }
+    return out
+}
 
 private data class WidgetClassState(
     val record: Record,
