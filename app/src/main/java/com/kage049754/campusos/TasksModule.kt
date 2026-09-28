@@ -107,55 +107,93 @@ fun TasksScreen(store: LocalStore, query: String, clear: () -> Unit, openSubject
     val revision = store.revision
     var selectedDate by rememberSaveable { mutableStateOf(taskDateFormat().format(Date())) }
     var shownMonth by rememberSaveable { mutableStateOf(SimpleDateFormat("yyyy-MM").format(Date())) }
-    var showDateWindow by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Record?>(null) }
+    var adding by remember { mutableStateOf(false) }
 
     LaunchedEffect(query) {
         if (query == "__ADD__") {
-            showDateWindow = true
+            adding = true
             editing = null
             clear()
         }
     }
 
     val allTasks = remember(revision) { store.get("tasks") }
-    val monthCalendar = remember(shownMonth) { parseDate(shownMonth + "-01") }
-    val todayKey = taskDateFormat().format(Date())
-
-    Column(Modifier.fillMaxSize()) {
-        CalendarMonthGrid(
-            month = monthCalendar,
-            selectedDate = selectedDate,
-            todayDate = todayKey,
-            tasks = allTasks,
-            onSwipeMonth = { delta ->
-                val c = monthCalendar.clone() as Calendar
-                c.add(Calendar.MONTH, delta)
-                shownMonth = SimpleDateFormat("yyyy-MM").format(c.time)
-            },
-            onSelectDate = { key ->
-                selectedDate = key
-                shownMonth = SimpleDateFormat("yyyy-MM").format(parseDate(key).time)
-                editing = null
-                showDateWindow = true
-            }
-        )
+    val selectedTasks = remember(selectedDate, revision) {
+        allTasks.filter { it.dueDate == selectedDate }
+            .sortedWith(compareByDescending<Record> { taskPinned(it) }.thenBy { taskDue(it) }.thenBy { it.title.lowercase(Locale.getDefault()) })
     }
+    val monthCalendar = remember(shownMonth) { parseDate(shownMonth + "-01") }
 
-    if (showDateWindow) {
-        TaskDateWindow(
-            selectedDate = selectedDate,
-            store = store,
-            openSubject = openSubject,
-            editing = editing,
-            onEdit = { task -> editing = task },
-            onAdd = { },
-            onDismiss = {
-                showDateWindow = false
+    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        AnimatedContent(
+            targetState = shownMonth,
+            transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(100)) },
+            label = "task month transition"
+        ) {
+            CalendarMonthGrid(
+                month = monthCalendar,
+                selectedDate = selectedDate,
+                todayDate = taskDateFormat().format(Date()),
+                tasks = allTasks,
+                onSwipeMonth = { delta ->
+                    val c = monthCalendar.clone() as Calendar
+                    c.add(Calendar.MONTH, delta)
+                    shownMonth = SimpleDateFormat("yyyy-MM").format(c.time)
+                },
+                onSelectDate = { key ->
+                    selectedDate = key
+                    shownMonth = SimpleDateFormat("yyyy-MM").format(parseDate(key).time)
+                    editing = null
+                    adding = false
+                }
+            )
+        }
+
+        Spacer(Modifier.height(4.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(dateLabel(selectedDate), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(selectedTasks.size.toString() + if (selectedTasks.size == 1) " task" else " tasks", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Button(onClick = { adding = true; editing = null }) {
+                Icon(Icons.Default.Add, null)
+                Spacer(Modifier.width(5.dp))
+                Text("Add")
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+
+        if (editing != null) {
+            SimpleTaskEditor(store = store, existing = editing, selectedDate = selectedDate) {
                 editing = null
-            },
-            onSaved = { editing = null }
-        )
+            }
+        } else if (adding) {
+            SimpleTaskEditor(store = store, existing = null, selectedDate = selectedDate) {
+                adding = false
+            }
+        } else if (selectedTasks.isEmpty()) {
+            Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                Column(Modifier.fillMaxWidth().padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.EventNote, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(7.dp))
+                    Text("No tasks for this date", fontWeight = FontWeight.SemiBold)
+                    Text("Tap Add to create a task or deadline.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        } else {
+            LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
+                items(selectedTasks, key = { it.id }) { task ->
+                    SimpleTaskCard(
+                        task = task,
+                        store = store,
+                        openSubject = openSubject,
+                        onEdit = { editing = task },
+                        onDelete = { store.put("tasks", store.get("tasks").filterNot { it.id == task.id }) }
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -247,28 +285,27 @@ private fun CalendarMonthGrid(
     var dragTotal by remember { mutableFloatStateOf(0f) }
 
     Column(
-        Modifier
-            .fillMaxWidth()
-            .pointerInput(month.timeInMillis) {
-                detectHorizontalDragGestures(
-                    onHorizontalDrag = { _, amount -> dragTotal += amount },
-                    onDragEnd = {
-                        if (dragTotal > 80f) onSwipeMonth(-1)
-                        else if (dragTotal < -80f) onSwipeMonth(1)
-                        dragTotal = 0f
-                    },
-                    onDragCancel = { dragTotal = 0f }
-                )
-            }
-            .padding(horizontal = 8.dp, vertical = 10.dp)
+        Modifier.fillMaxWidth().pointerInput(month.timeInMillis) {
+            detectHorizontalDragGestures(
+                onHorizontalDrag = { _, amount -> dragTotal += amount },
+                onDragEnd = {
+                    if (dragTotal > 80f) onSwipeMonth(-1)
+                    else if (dragTotal < -80f) onSwipeMonth(1)
+                    dragTotal = 0f
+                },
+                onDragCancel = { dragTotal = 0f }
+            )
+        }.padding(horizontal = 4.dp, vertical = 6.dp)
     ) {
-        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { onSwipeMonth(-1) }) { Icon(Icons.Default.ChevronLeft, "Previous month") }
             Text(monthTitle(month), Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Text("Swipe to change month", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextButton(onClick = { onSelectDate(todayDate) }) { Text("Today") }
+            IconButton(onClick = { onSwipeMonth(1) }) { Icon(Icons.Default.ChevronRight, "Next month") }
         }
-        Row(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
             listOf("S", "M", "T", "W", "T", "F", "S").forEach {
-                Box(Modifier.weight(1f).padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                     Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -279,7 +316,7 @@ private fun CalendarMonthGrid(
                     val index = row * 7 + column
                     val dayNumber = index - firstDay + 1
                     if (dayNumber !in 1..daysInMonth) {
-                        Box(Modifier.weight(1f).height(64.dp))
+                        Box(Modifier.weight(1f).height(58.dp))
                     } else {
                         val c = month.clone() as Calendar
                         c.set(Calendar.DAY_OF_MONTH, dayNumber)
@@ -287,14 +324,14 @@ private fun CalendarMonthGrid(
                         val dayTasks = tasks.filter { it.dueDate == key }
                         val selected = key == selectedDate
                         val today = key == todayDate
-                        Box(Modifier.weight(1f).height(64.dp).padding(2.dp).clickable { onSelectDate(key) }, contentAlignment = Alignment.TopCenter) {
+                        Box(Modifier.weight(1f).height(58.dp).padding(2.dp).clickable { onSelectDate(key) }, contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Surface(
                                     shape = RoundedCornerShape(50),
                                     color = when {
                                         selected -> MaterialTheme.colorScheme.primary
                                         today -> MaterialTheme.colorScheme.primaryContainer
-                                        else -> MaterialTheme.colorScheme.surface
+                                        else -> Color.Transparent
                                     }
                                 ) {
                                     Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
@@ -310,12 +347,12 @@ private fun CalendarMonthGrid(
                                     }
                                 }
                                 if (dayTasks.isNotEmpty()) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.height(7.dp)) {
                                         dayTasks.take(3).forEach { task ->
                                             Box(
                                                 Modifier.size(5.dp).background(
                                                     if (task.done) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary,
-                                                    RoundedCornerShape(50.dp)
+                                                    RoundedCornerShape(50)
                                                 )
                                             )
                                         }
