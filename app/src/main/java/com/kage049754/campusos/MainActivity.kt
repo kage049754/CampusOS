@@ -1294,10 +1294,21 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                             Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) { Text("Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp)) }
                             visibleDays.forEach { day ->
                                 val isToday = day.equals(today, true)
-                                Box(Modifier.width(dayWidth).fillMaxHeight().background(if (isToday) dayHighlight.copy(alpha = .16f) else tableBg).border(if (isToday) 2.dp else 1.dp, if (isToday) dayHighlight else tableBorder), contentAlignment = Alignment.Center) {
+                                Box(
+                                    Modifier.width(dayWidth).fillMaxHeight()
+                                        .background(if (isToday) dayHighlight.copy(alpha = .16f) else tableBg)
+                                        .border(
+                                            if (isToday || selectedDay?.equals(day, true) == true) 2.dp else 1.dp,
+                                            if (isToday || selectedDay?.equals(day, true) == true) dayHighlight else tableBorder
+                                        )
+                                        .clickable {
+                                            selectedDay = if (selectedDay?.equals(day, true) == true) null else day
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         if (isToday) Box(Modifier.size(6.dp).background(dayHighlight, RoundedCornerShape(50)))
-                                        Text(day.take(3), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp))
+                                        Text(day, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                     }
                                 }
                             }
