@@ -1274,18 +1274,6 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
         if (orderedDays.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) { EmptyCard("No class days configured yet. Open Schedule Settings to choose your class days.") }
         } else {
-            Surface(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(enabled = orderedDays.size > 3 && dayPage > 0, onClick = { changePage(-1) }) { Icon(Icons.Default.ChevronLeft, "Previous days") }
-                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(if (orderedDays.size <= 3) "Class days" else "Class days " + (dayPage + 1) + "/" + pageCount, fontWeight = FontWeight.Bold)
-                        if (orderedDays.size > 3) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            repeat(pageCount) { page -> Box(Modifier.size(if (page == dayPage) 8.dp else 6.dp).background(if (page == dayPage) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(50))) }
-                        } else Text("Today first • swipe for more when needed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    IconButton(enabled = orderedDays.size > 3 && dayPage < pageCount - 1, onClick = { changePage(1) }) { Icon(Icons.Default.ChevronRight, "Next days") }
-                }
-            }
             if (store.scheduleTableHorizontalScroll() || store.scheduleTableVerticalScroll()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Zoom " + zoom.toInt() + "x", style = MaterialTheme.typography.labelSmall)
