@@ -1220,6 +1220,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
     var showDaySetup by remember { mutableStateOf(!store.scheduleDaysConfigured()) }
     var nowTick by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var dayPage by rememberSaveable { mutableIntStateOf(0) }
+    var selectedDay by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { while (true) { nowTick = System.currentTimeMillis(); delay(30_000) } }
     LaunchedEffect(query) { if (query == "__ADD__") showAdd = true }
@@ -1248,7 +1249,8 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
     }
     LaunchedEffect(orderedDays.size) { dayPage = dayPage.coerceIn(0, ((orderedDays.size - 1).coerceAtLeast(0) / 3)) }
     val pageCount = ((orderedDays.size - 1).coerceAtLeast(0) / 3) + 1
-    val visibleDays = if (orderedDays.size <= 3) orderedDays else orderedDays.drop((dayPage * 3).coerceAtMost(orderedDays.size - 1)).take(3)
+    val pageDays = if (orderedDays.size <= 3) orderedDays else orderedDays.drop((dayPage * 3).coerceAtMost(orderedDays.size - 1)).take(3)
+    val visibleDays = selectedDay?.let { selected -> orderedDays.firstOrNull { it.equals(selected, true) }?.let { listOf(it) } } ?: pageDays
     val dayHighlight = Color(store.scheduleDayHighlight())
     val timeHighlight = Color(store.scheduleTimeHighlight())
     val tableBgValue = store.scheduleTableBackground()
