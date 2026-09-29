@@ -1333,13 +1333,13 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                                                 val contentAlpha = if (isPassed) .62f else 1f
                                                 Card(Modifier.fillMaxWidth().weight(1f, fill = false), colors = CardDefaults.cardColors(containerColor = bg.copy(alpha = contentAlpha)), shape = RoundedCornerShape(8.dp)) {
                                                     Column(Modifier.fillMaxSize().padding(horizontal = 5.dp, vertical = 3.dp), verticalArrangement = Arrangement.Center) {
-                                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                                            Surface(shape = RoundedCornerShape(50), color = typeContainer) { Text(if (lab) "LAB" else "LEC", Modifier.padding(horizontal = 5.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
-                                                            Spacer(Modifier.width(4.dp))
-                                                            Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = contentAlpha })
+                                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                                            Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f).graphicsLayer { alpha = contentAlpha })
+                                                            if (r.room.isNotBlank()) Text(r.room, style = MaterialTheme.typography.labelSmall.copy(fontSize = (tableFontSize - 1).coerceAtLeast(8f).sp), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = contentAlpha })
+                                                            Surface(shape = RoundedCornerShape(50), color = typeContainer) {
+                                                                Text(if (lab) "LAB" else "LEC", Modifier.padding(horizontal = 4.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                                            }
                                                         }
-                                                        if (r.subtitle.isNotBlank()) Text(r.subtitle, style = MaterialTheme.typography.labelSmall.copy(fontSize = (tableFontSize - 1).coerceAtLeast(8f).sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = alpha })
-                                                        if (r.room.isNotBlank()) Text(r.room, style = MaterialTheme.typography.labelSmall.copy(fontSize = (tableFontSize - 1).coerceAtLeast(8f).sp), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = alpha })
                                                         if (isCurrent) {
                                                             val st = r.startTime.toMinutesOrNull() ?: rowStart
                                                             val en = r.endTime.toMinutesOrNull() ?: rowStart + 60
