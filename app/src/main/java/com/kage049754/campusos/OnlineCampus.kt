@@ -161,7 +161,7 @@ class OnlineCampusClient(context: Context) {
             assignment?.optBoolean("page_enabled", false) == true,
             assignment?.optString("page_name").orEmpty(),
             assignment?.optString("page_photo_path").orEmpty(),
-            assignment?.optString("page_photo_path").takeIf { it.isNotBlank() }?.let { publicProfilePhotoUrl(it) }.orEmpty(),
+            assignment?.optString("page_photo_path")?.takeIf { it.isNotBlank() }?.let { publicProfilePhotoUrl(it) }.orEmpty(),
             assignment?.optString("organization_type").orEmpty(),
             assignment?.optString("organization_name").orEmpty()
         )
@@ -414,6 +414,8 @@ class OnlineCampusClient(context: Context) {
                     OnlineAnnouncementImage(it.optString("id"), it.optString("storage_path"))
                 } } ?: emptyList()
             OnlineAnnouncement(o.optString("id"), o.optString("author_id"), o.optString("author_name"), o.optString("author_title"),
+                o.optString("author_page_name"), o.optString("author_page_photo_path"),
+                o.optString("author_page_photo_path").takeIf { it.isNotBlank() }?.let { publicProfilePhotoUrl(it) }.orEmpty(),
                 o.optString("body"), links, imageMeta, parseIso(o.optString("created_at")),
                 o.optString("expires_at").takeIf { it.isNotBlank() }?.let(::parseIso))
         }
