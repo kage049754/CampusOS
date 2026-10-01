@@ -231,15 +231,34 @@ private fun PendingAccessCard(modifier: Modifier, profile: OnlineProfile, onAcco
 }
 
 @Composable
+private fun AnnouncementAuthorAvatar(item: OnlineAnnouncement) {
+    var bitmap by remember(item.authorPagePhotoUrl) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(item.authorPagePhotoUrl) {
+        if (item.authorPagePhotoUrl.isNotBlank()) {
+            bitmap = withContext(Dispatchers.IO) {
+                runCatching {
+                    URL(item.authorPagePhotoUrl).openStream().use { BitmapFactory.decodeStream(it) }
+                }.getOrNull()
+            }
+        }
+    }
+    Box(Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
+        if (bitmap != null) {
+            Image(bitmap!!.asImageBitmap(), "Page profile picture", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        } else {
+            Text(item.authorName.take(1).uppercase().ifBlank { "C" }, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+@Composable
 private fun OnlineAnnouncementCard(item: OnlineAnnouncement, canManage: Boolean, onEdit: () -> Unit, onDelete: () -> Unit) {
     val context = LocalContext.current
     var fullscreenUrl by remember { mutableStateOf<String?>(null) }
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(0.dp)) {
         Column {
             Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
-                    Text(item.authorName.take(1).uppercase().ifBlank { "C" }, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                }
+                AnnouncementAuthorAvatar(item)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(item.authorName.ifBlank { "Campus Leader" }, fontWeight = FontWeight.SemiBold)
