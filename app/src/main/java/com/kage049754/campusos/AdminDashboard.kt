@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -145,7 +146,7 @@ private fun AdminStudentsTab(users: List<OnlineUser>, client: OnlineCampusClient
         item {
             Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("pending", "approved", "denied", "suspended", "all").forEach { value ->
-                    FilterChip(filter == value, { filter = value }, label = { Text(value.replaceFirstChar { it.uppercase() }) })
+                    FilterChip(selected = filter == value, onClick = { filter = value }, label = { Text(value.replaceFirstChar { ch -> ch.uppercase() }) })
                 }
             }
         }
@@ -165,7 +166,7 @@ private fun AdminStudentsTab(users: List<OnlineUser>, client: OnlineCampusClient
                     Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Role", fontWeight = FontWeight.SemiBold)
                         listOf("student", "leader", "admin").forEach { role ->
-                            FilterChip(user.role == role, {
+                            FilterChip(selected = user.role == role, onClick = {
                                 scope.launch { client.updateUserRole(user.id, role).onSuccess { onMessage(user.fullName + " is now " + role) }.onFailure { onError(it.message ?: "Role update failed.") } }
                             }, label = { Text(role.replaceFirstChar { it.uppercase() }) })
                         }
