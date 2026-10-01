@@ -684,7 +684,7 @@ fun CampusOSApp(activity: Activity) {
                 }
             }
             if (showHomeSettings) {
-                HomeSettingsDialog(store, onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, onLockNow = { locked = true }, done = { showHomeSettings = false }, openAppLock = { showHomeSettings = false; showAppLock = true }, openBackupRecovery = { showHomeSettings = false; showBackupRecovery = true })
+                HomeSettingsDialog(store, onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, onLockNow = { locked = true }, done = { showHomeSettings = false }, openAppLock = { showHomeSettings = false; showAppLock = true }, openBackupRecovery = { showHomeSettings = false; showBackupRecovery = true }, openAdmin = { showHomeSettings = false; screenName = Screen.ADMIN.name })
             }
             if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
             if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }, dynamicColor, { dynamicColor = it; store.setDynamicColorEnabled(it) }) { showHomeColors = false }
@@ -718,7 +718,8 @@ fun HomeSettingsDialog(
     onLockNow:()->Unit,
     done:()->Unit,
     openAppLock:()->Unit,
-    openBackupRecovery:()->Unit
+    openBackupRecovery:()->Unit,
+    openAdmin:()->Unit
 ) {
     Dialog(onDismissRequest = done) {
         Surface(Modifier.fillMaxWidth().padding(12.dp), shape = MaterialTheme.shapes.extraLarge, tonalElevation = 8.dp, color = MaterialTheme.colorScheme.surface) {
@@ -736,6 +737,7 @@ fun HomeSettingsDialog(
                 SettingsRow(Icons.Default.CalendarMonth, "Schedule", "Class days, timetable and class editing") { onModule("Schedule") }
                 SettingsRow(Icons.Default.CheckCircle, "Tasks", "Calendar, tasks and deadlines") { onModule("Tasks") }
                 SettingsRow(Icons.Default.School, "Academics", "Subjects, Notepad and Lecture Files") { onModule("Academics") }
+                SettingsRow(Icons.Default.AdminPanelSettings, "Online & Administration", "Student approvals, roles, announcements and storage") { openAdmin() }
                 SettingsGroupTitle("App")
                 SettingsRow(Icons.Default.Notifications, "Notifications", "Next-class and deadline reminders") { onModule("Notifications") }
                 SettingsRow(Icons.Default.Palette, "Appearance", "Light, dark and system theme") { onAppearance() }
