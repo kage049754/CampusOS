@@ -467,7 +467,7 @@ class MainActivity : ComponentActivity() {
 
 enum class Screen(val label: String) {
     HOME("Home"), SCHEDULE("Schedule"), TASKS("Notes"), ACADEMICS("Academics"),
-    FILES("Files"), ANNOUNCEMENTS("Announcements"), SETTINGS("Settings")
+    FILES("Files"), ANNOUNCEMENTS("Announcements"), ADMIN("Admin"), SETTINGS("Settings")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -659,6 +659,7 @@ fun CampusOSApp(activity: Activity) {
                         Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 })
                         Screen.FILES -> FilesScreen()
                         Screen.ANNOUNCEMENTS -> AnnouncementsScreen { screenName = Screen.HOME.name }
+                        Screen.ADMIN -> AdminDashboardScreen { screenName = Screen.HOME.name }
                         Screen.SETTINGS -> SettingsScreen(
                             store, theme,
                             { theme = it; store.setTheme(it) },
@@ -704,6 +705,7 @@ fun CampusOSApp(activity: Activity) {
     Screen.ACADEMICS -> Icons.Default.School
     Screen.FILES -> Icons.Default.Folder
     Screen.ANNOUNCEMENTS -> Icons.Default.Campaign
+    Screen.ADMIN -> Icons.Default.AdminPanelSettings
     Screen.SETTINGS -> Icons.Default.Settings
 }
 
@@ -3002,7 +3004,7 @@ fun ModuleBackupDialog(title:String, selected:Set<String>, onSelected:(Set<Strin
 }
 
 @Composable
-fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit, lock: () -> Unit, openScheduleSettings: () -> Unit, openScheduleManager: () -> Unit) {
+fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit, lock: () -> Unit, openScheduleSettings: () -> Unit, openScheduleManager: () -> Unit, openAdmin: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var pin by remember { mutableStateOf(store.pin()) }
     var lockOn by remember { mutableStateOf(store.lockEnabled()) }
@@ -3060,6 +3062,20 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
                                 }
                             }
                         )
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Online & Administration", fontWeight = FontWeight.Bold)
+                    Text("Approve student registrations, manage roles, announcements, and announcement storage.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedButton(onClick = openAdmin, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.AdminPanelSettings, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Open Admin Dashboard")
                     }
                 }
             }
