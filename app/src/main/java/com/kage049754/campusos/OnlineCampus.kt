@@ -278,6 +278,14 @@ class OnlineCampusClient(context: Context) {
                     "Your account is not authorized to publish announcements."
                 }
                 require(imageUris.size <= 4) { "You can attach up to 4 images." }
+                // Keep a maximum of 10 active posts per publisher. Before creating the
+                // 11th post, remove that publisher's oldest post and its images.
+                while (countAuthorAnnouncements(profile.id) >= 10) {
+                    val oldest = oldestAuthorAnnouncementId(profile.id) ?: break
+                    val oldImages = listImagePaths(oldest)
+                    runCatching { deleteStorageObjects(oldImages) }
+                    requestText("DELETE", "/rest/v1/announcements?id=" + encode(oldest), null, "return=minimal")
+                }
                 val id = insertAnnouncement(profile, body, expiresAt)
                 insertLinks(id, links)
                 uploadImages(id, imageUris)
@@ -327,6 +335,26 @@ class OnlineCampusClient(context: Context) {
             lastError = e.message ?: "Could not delete announcement."
             Result.failure<Unit>(e)
         }
+    }
+
+    private fun countAuthorAnnouncements(authorId: String): Int {
+        val arr = JSONArray(requestText(
+            "GET",
+            "/rest/v1/announcements?author_id=eq." + encode(authorId) + "&select=id",
+            null,
+            null
+        ))
+        return arr.length()
+    }
+
+    private fun oldestAuthorAnnouncementId(authorId: String): String? {
+        val arr = JSONArray(requestText(
+            "GET",
+            "/rest/v1/announcements?author_id=eq." + encode(authorId) + "&select=id&order=created_at.asc&limit=1",
+            null,
+            null
+        ))
+        return arr.optJSONObject(0)?.optString("id")?.takeIf { it.isNotBlank() }
     }
 
     private fun insertAnnouncement(profile: OnlineProfile, body: String, expiresAt: Long?): String {
