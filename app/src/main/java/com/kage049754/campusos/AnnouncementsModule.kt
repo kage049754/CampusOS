@@ -36,6 +36,7 @@ fun AnnouncementsScreen(onBack: () -> Unit) {
     var error by remember { mutableStateOf("") }
     var showComposer by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
+    var showAdmin by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun refresh() {
@@ -133,7 +134,8 @@ fun AnnouncementsScreen(onBack: () -> Unit) {
         }
     )
 
-    if (showAccount) OnlineAccountDialog(client, profile, { showAccount = false }, { refresh() })
+    if (showAccount) OnlineAccountDialog(client, profile, { showAccount = false }, { refresh() }, { showAccount = false; showAdmin = true })
+    if (showAdmin && profile?.role == "admin") AdminControlDialog(client, { showAdmin = false })
 }
 
 @Composable
@@ -224,7 +226,7 @@ private fun OnlineAnnouncementComposer(onDismiss: () -> Unit, onSave: (String, L
 }
 
 @Composable
-private fun OnlineAccountDialog(client: OnlineCampusClient, profile: OnlineProfile?, onClose: () -> Unit, onChanged: () -> Unit) {
+private fun OnlineAccountDialog(client: OnlineCampusClient, profile: OnlineProfile?, onClose: () -> Unit, onChanged: () -> Unit, onAdmin: () -> Unit) {
     var mode by remember { mutableStateOf(if (profile == null) 0 else 2) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -247,6 +249,7 @@ private fun OnlineAccountDialog(client: OnlineCampusClient, profile: OnlineProfi
                     Text(profile.yearSection.ifBlank { "Year / Section not set" })
                     Text("Approval: " + profile.status.uppercase(), fontWeight = FontWeight.SemiBold)
                     Text(if (profile.canAnnounce || profile.role == "admin") "Announcement permission: ENABLED" else "Announcement permission: View only", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (profile.role == "admin") OutlinedButton(onClick = onAdmin) { Text("Admin controls") }
                     if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary)
                 } else {
                     if (mode == 1) {
@@ -292,3 +295,85 @@ private fun OnlineAccountDialog(client: OnlineCampusClient, profile: OnlineProfi
 }
 
 private fun formatAnnouncementDate(ms: Long): String = SimpleDateFormat("MMM d, yyyy • h:mm a", Locale.getDefault()).format(Date(ms))
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AdminControlDialog(client: OnlineCampusClient, onClose: () -> Unit) {
+    var users by remember { mutableStateOf<List<OnlineUser>>(emptyList()) }
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+
+    fun reload() {
+        scope.launch {
+            busy = true
+            runCatching { client.listUsers() }
+                .onSuccess { users = it; message = "" }
+                .onFailure { message = it.message ?: "Could not load accounts." }
+            busy = false
+        }
+    }
+    LaunchedEffect(Unit) { reload() }
+
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Admin controls") },
+        text = {
+            Column(Modifier.fillMaxWidth().heightIn(max = 620.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Approve student accounts and manage announcement leaders.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.error)
+                if (users.isEmpty() && !busy) Text("No registered accounts yet.")
+                users.forEach { user ->
+                    AdminUserRow(user, busy) { action ->
+                        scope.launch {
+                            busy = true
+                            val result = when (action) {
+                                "approve" -> client.updateUserStatus(user.id, "approved")
+                                "deny" -> client.updateUserStatus(user.id, "denied")
+                                "pending" -> client.updateUserStatus(user.id, "pending")
+                                "leader" -> client.setLeaderAssignment(user.id, user.title.ifBlank { "Campus Leader" }, true, true)
+                                "revoke" -> client.revokeLeaderAssignment(user.id)
+                                else -> Result.success(Unit)
+                            }
+                            result.onFailure { message = it.message ?: "Action failed." }
+                            busy = false
+                            if (result.isSuccess) reload()
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { reload() }) { Text("Refresh") } },
+        dismissButton = { TextButton(onClick = onClose) { Text("Close") } }
+    )
+}
+
+@Composable
+private fun AdminUserRow(user: OnlineUser, disabled: Boolean, onAction: (String) -> Unit) {
+    var editLeader by remember(user.id) { mutableStateOf(false) }
+    var title by remember(user.id, user.title) { mutableStateOf(user.title.ifBlank { "Campus Leader" }) }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(user.fullName.ifBlank { "Unnamed user" }, fontWeight = FontWeight.SemiBold)
+            Text(listOf(user.schoolId, user.yearSection).filter { it.isNotBlank() }.joinToString(" • ").ifBlank { "No school details" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Status: " + user.status.uppercase() + " • Role: " + user.role, style = MaterialTheme.typography.labelSmall)
+            if (user.canAnnounce && user.active) Text("Leader: " + user.title.ifBlank { "Campus Leader" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+                if (user.status != "approved") TextButton(enabled = !disabled, onClick = { onAction("approve") }) { Text("Approve") }
+                if (user.status != "denied") TextButton(enabled = !disabled, onClick = { onAction("deny") }) { Text("Deny") }
+                if (user.status != "pending") TextButton(enabled = !disabled, onClick = { onAction("pending") }) { Text("Pending") }
+                if (user.canAnnounce && user.active) TextButton(enabled = !disabled, onClick = { onAction("revoke") }) { Text("Revoke leader") }
+                else if (user.status == "approved") TextButton(enabled = !disabled, onClick = { editLeader = true }) { Text("Assign leader") }
+            }
+            if (editLeader) {
+                OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Leader title") })
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = { editLeader = false }) { Text("Cancel") }
+                    Button(enabled = title.isNotBlank() && !disabled, onClick = { onAction("leader"); editLeader = false }) { Text("Save") }
+                }
+            }
+        }
+    }
+}
