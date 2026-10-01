@@ -34,7 +34,13 @@ data class OnlineProfile(
     val title: String = "",
     val canAnnounce: Boolean = false,
     val profilePhotoPath: String = "",
-    val profilePhotoUrl: String = ""
+    val profilePhotoUrl: String = "",
+    val pageEnabled: Boolean = false,
+    val pageName: String = "",
+    val pagePhotoPath: String = "",
+    val pagePhotoUrl: String = "",
+    val organizationType: String = "",
+    val organizationName: String = ""
 )
 
 data class OnlineUser(
@@ -134,7 +140,7 @@ class OnlineCampusClient(context: Context) {
     suspend fun loadProfile(): OnlineProfile = withContext(Dispatchers.IO) {
         val id = userId()
         require(id.isNotBlank()) { "No signed-in user." }
-        val path = "/rest/v1/profiles?" + uuidFilter("id", id) + "&select=id,full_name,school_id,year_section,status,role,profile_photo_path,leader_assignments!leader_assignments_user_id_fkey(title,can_announce,active)"
+        val path = "/rest/v1/profiles?" + uuidFilter("id", id) + "&select=id,full_name,school_id,year_section,status,role,profile_photo_path,leader_assignments!leader_assignments_user_id_fkey(title,can_announce,active,page_enabled,page_name,page_photo_path,organization_type,organization_name)"
         val arr = JSONArray(requestText("GET", path, null, null))
         require(arr.length() > 0) { "Your account profile is not ready yet." }
         val o = arr.getJSONObject(0)
@@ -144,7 +150,13 @@ class OnlineCampusClient(context: Context) {
             o.optString("status"), o.optString("role"), assignment?.optString("title").orEmpty(),
             assignment?.optBoolean("can_announce", false) == true && assignment.optBoolean("active", false),
             o.optString("profile_photo_path"),
-            o.optString("profile_photo_path").takeIf { it.isNotBlank() }?.let { publicProfilePhotoUrl(it) }.orEmpty()
+            o.optString("profile_photo_path").takeIf { it.isNotBlank() }?.let { publicProfilePhotoUrl(it) }.orEmpty(),
+            assignment?.optBoolean("page_enabled", false) == true,
+            assignment?.optString("page_name").orEmpty(),
+            assignment?.optString("page_photo_path").orEmpty(),
+            assignment?.optString("page_photo_path").takeIf { it.isNotBlank() }?.let { publicProfilePhotoUrl(it) }.orEmpty(),
+            assignment?.optString("organization_type").orEmpty(),
+            assignment?.optString("organization_name").orEmpty()
         )
     }
 
@@ -209,8 +221,52 @@ class OnlineCampusClient(context: Context) {
         SUPABASE_URL + "/storage/v1/object/public/" + PROFILE_BUCKET + "/" +
             path.split('/').joinToString("/") { encodePath(it) }
 
+    suspend fun updateOwnPage(pageName: String, photoUri: Uri?): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val profile = loadProfile()
+            require(profile.pageEnabled) { "This account has not been granted a CampusOS page." }
+            require(pageName.trim().isNotBlank()) { "Page name is required." }
+            var path = profile.pagePhotoPath
+            if (photoUri != null) {
+                val bytes = compressImage(photoUri).also { require(it.size <= 2 * 1024 * 1024) { "Page photo must be 2 MB or smaller." } }
+                path = userId() + "/page/page.jpg"
+                val url = SUPABASE_URL + "/storage/v1/object/" + PROFILE_BUCKET + "/" + encodePath(userId()) + "/page/page.jpg"
+                val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"; connectTimeout = 15000; readTimeout = 30000; doOutput = true
+                    setRequestProperty("apikey", SUPABASE_KEY)
+                    setRequestProperty("Authorization", "Bearer " + accessToken())
+                    setRequestProperty("Content-Type", "image/jpeg")
+                    setRequestProperty("Cache-Control", "3600")
+                    setRequestProperty("x-upsert", "true")
+                }
+                connection.outputStream.use { it.write(bytes) }
+                val code = connection.responseCode
+                val errorBody = if (code !in 200..299) connection.errorStream?.let { BufferedReader(InputStreamReader(it)).use { r -> r.readText() } }.orEmpty() else ""
+                connection.disconnect()
+                if (code !in 200..299) error("Page photo upload failed: HTTP $code " + errorBody.take(200))
+            }
+            requestText("POST", "/rest/v1/rpc/update_own_page", JSONObject().put("p_page_name", pageName.trim()).put("p_page_photo_path", if (path.isBlank()) JSONObject.NULL else path).toString(), null)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            lastError = e.message ?: "Could not update page."
+            Result.failure(e)
+        }
+    }
+
+    suspend fun grantPage(userId: String, orgType: String, orgName: String, title: String, enabled: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            requestText("POST", "/rest/v1/rpc/grant_page_to_user",
+                JSONObject().put("p_user_id", userId).put("p_org_type", orgType).put("p_org_name", orgName)
+                    .put("p_title", title).put("p_page_enabled", enabled).toString(), null)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            lastError = e.message ?: "Could not grant page permission."
+            Result.failure(e)
+        }
+    }
+
     suspend fun listUsers(): List<OnlineUser> = withContext(Dispatchers.IO) {
-        val path = "/rest/v1/profiles?select=id,full_name,school_id,year_section,status,role,leader_assignments!leader_assignments_user_id_fkey(title,can_announce,active)&order=created_at.desc"
+        val path = "/rest/v1/profiles?select=id,full_name,school_id,year_section,status,role,leader_assignments!leader_assignments_user_id_fkey(title,can_announce,active,page_enabled,page_name,organization_type,organization_name)&order=created_at.desc"
         val arr = JSONArray(requestText("GET", path, null, null))
         (0 until arr.length()).map { i ->
             val o = arr.getJSONObject(i)
@@ -235,7 +291,7 @@ class OnlineCampusClient(context: Context) {
     suspend fun updateUserRole(userId: String, role: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             require(role in listOf("student", "leader", "admin"))
-            requestText("PATCH", "/rest/v1/profiles?id=" + encode(userId), JSONObject().put("role", role).toString(), "return=minimal")
+            requestText("PATCH", "/rest/v1/profiles?" + uuidFilter("id", userId), JSONObject().put("role", role).toString(), "return=minimal")
             Result.success(Unit)
         } catch (e: Exception) {
             lastError = e.message ?: "Could not update account role."
