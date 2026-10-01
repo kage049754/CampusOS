@@ -203,6 +203,17 @@ private fun AdminStorageTab(items: List<AdminStorageItem>, client: OnlineCampusC
     val total = items.sumOf { it.size }
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
+            Text("Usage", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text("CampusOS Supabase project usage", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        item { AdminUsageCard("Egress", "0.02", "5 GB") }
+        item { AdminUsageCard("Database size", "27", "500 MB") }
+        item { AdminUsageCard("Monthly active users", "3", "50,000") }
+        item { AdminUsageCard("File storage", "0.00", "1 GB") }
+        item { AdminUsageCard("Log Ingestion", "0.00", "1 GB") }
+        item { AdminUsageCard("Log Query", "0.16", "100 GB") }
+        item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp)) {
                     Text("Announcement storage", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -226,6 +237,20 @@ private fun AdminStorageTab(items: List<AdminStorageItem>, client: OnlineCampusC
                     IconButton(onClick = { scope.launch { client.deleteAnnouncementStorage(file.name).onSuccess { onMessage("File deleted.") }.onFailure { onError(it.message ?: "Storage delete failed.") } } }) { Icon(Icons.Default.Delete, "Delete file") }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AdminUsageCard(label: String, used: String, limit: String) {
+    Card(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(2.dp))
+                Text("$used/$limit", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.Default.Analytics, null, tint = MaterialTheme.colorScheme.primary)
         }
     }
 }
