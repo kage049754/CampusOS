@@ -933,6 +933,8 @@ fun ProfileDialog(store: LocalStore, done: () -> Unit) {
     var showAccount by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
+    var pagePhotoPath by remember { mutableStateOf("") }
+    var pageBusy by remember { mutableStateOf(false) }
 
     fun syncAccountProfile(profile: OnlineProfile?) {
         onlineProfile = profile
@@ -940,6 +942,10 @@ fun ProfileDialog(store: LocalStore, done: () -> Unit) {
             name = profile.fullName
             studentId = profile.schoolId
             section = profile.yearSection
+            scope.launch {
+                val pageTarget = File(context.filesDir, "campus_page_photo")
+                client.syncOwnPagePhotoToFile(pageTarget).onSuccess { path -> if (path.isNotBlank()) pagePhotoPath = path }
+            }
             scope.launch {
                 val target = File(context.filesDir, "profile_photo")
                 client.syncOwnProfilePhotoToFile(target).onSuccess { path ->
@@ -987,6 +993,23 @@ fun ProfileDialog(store: LocalStore, done: () -> Unit) {
         }
     }
 
+    val pagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        if (onlineProfile?.pageEnabled != true) return@rememberLauncherForActivityResult
+        scope.launch {
+            pageBusy = true
+            client.updateOwnPage(onlineProfile!!.pageName.ifBlank { name }, uri)
+                .onSuccess {
+                    message = "CampusOS page updated."
+                    val target = File(context.filesDir, "campus_page_photo")
+                    client.syncOwnPagePhotoToFile(target).onSuccess { path -> if (path.isNotBlank()) pagePhotoPath = path }
+                    client.restoreSession().onSuccess { onlineProfile = it }
+                }
+                .onFailure { message = it.message ?: "Page update failed." }
+            pageBusy = false
+        }
+    }
+
     val bitmap = remember(photoPath) {
         if (photoPath.isNotBlank()) runCatching { BitmapFactory.decodeFile(photoPath) }.getOrNull() else null
     }
@@ -1006,6 +1029,39 @@ fun ProfileDialog(store: LocalStore, done: () -> Unit) {
                     Box(Modifier.size(96.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(50)), contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Person, null, Modifier.size(48.dp))
                     }
+                }
+
+                if (onlineProfile?.pageEnabled == true && onlineProfile?.status == "approved") {
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("CampusOS Page", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(
+                                onlineProfile?.pageName?.ifBlank { "Set your page name" } ?: "Set your page name",
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                listOf(onlineProfile?.organizationType.orEmpty(), onlineProfile?.organizationName.orEmpty(), onlineProfile?.title.orEmpty())
+                                    .filter { it.isNotBlank() }.joinToString(" • "),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (pagePhotoPath.isNotBlank()) {
+                                Image(BitmapFactory.decodeFile(pagePhotoPath).asImageBitmap(), "Page photo", Modifier.size(72.dp), contentScale = ContentScale.Crop)
+                            }
+                            OutlinedButton(onClick = { pagePicker.launch(arrayOf("image/*")) }, enabled = !pageBusy) {
+                                Icon(Icons.Default.PhotoCamera, null)
+                                Spacer(Modifier.width(6.dp))
+                                Text(if (pageBusy) "Saving page…" else "Change page photo")
+                            }
+                            Text("When you publish announcements, this page identity can be shown instead of your personal name and position.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    OutlinedTextField(
+                        value = onlineProfile?.pageName.orEmpty(),
+                        onValueChange = { },
+                        modifier = Modifier.fillMaxWidth(),
+                        readOnly = true,
+                        label = { Text("Page name") }
+                    )
                 }
 
                 if (onlineProfile?.role in listOf("leader", "admin") && onlineProfile?.status == "approved") {
