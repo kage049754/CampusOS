@@ -414,7 +414,7 @@ private fun OnlineAnnouncementEditDialog(item: OnlineAnnouncement, onDismiss: ()
 }
 
 @Composable
-private fun OnlineAccountDialog(client: OnlineCampusClient, profile: OnlineProfile?, onClose: () -> Unit, onChanged: () -> Unit, onAdmin: () -> Unit) {
+fun OnlineAccountDialog(client: OnlineCampusClient, profile: OnlineProfile?, onClose: () -> Unit, onChanged: () -> Unit, onAdmin: () -> Unit) {
     var mode by remember { mutableStateOf(if (profile == null) 0 else 2) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
