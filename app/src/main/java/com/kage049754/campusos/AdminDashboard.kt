@@ -137,12 +137,18 @@ private data class AdminLoad(
 private fun AdminStudentsTab(users: List<OnlineUser>, client: OnlineCampusClient, scope: CoroutineScope, onMessage: (String) -> Unit, onError: (String) -> Unit) {
     var filter by rememberSaveable { mutableStateOf("pending") }
     var search by rememberSaveable { mutableStateOf("") }
+    var leaderEditor by remember { mutableStateOf<OnlineUser?>(null) }
+    var leaderTitle by remember { mutableStateOf("") }
+
     val filtered = users.filter {
         (filter == "all" || it.status == filter) &&
             (search.isBlank() || it.fullName.contains(search, true) || it.schoolId.contains(search, true) || it.yearSection.contains(search, true))
     }
+
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Search students") }, leadingIcon = { Icon(Icons.Default.Search, null) }) }
+        item {
+            OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Search students") }, leadingIcon = { Icon(Icons.Default.Search, null) })
+        }
         item {
             Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("pending", "approved", "denied", "suspended", "all").forEach { value ->
@@ -151,29 +157,78 @@ private fun AdminStudentsTab(users: List<OnlineUser>, client: OnlineCampusClient
             }
         }
         item { Text(filtered.size.toString() + " account(s)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+
         items(filtered, key = { it.id }) { user ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(user.fullName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(listOf(user.schoolId, user.yearSection, user.role).filter { it.isNotBlank() }.joinToString(" • "), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("Status: " + user.status)
+                    if (user.canAnnounce && user.active) {
+                        Text("Leader permission: " + user.title.ifBlank { "Campus Leader" }, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                    }
+
                     Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (user.status != "approved") Button(onClick = { scope.launch { client.updateUserStatus(user.id, "approved").onSuccess { onMessage("Approved " + user.fullName) }.onFailure { onError(it.message ?: "Approval failed.") } } }) { Text("Approve") }
                         if (user.status == "approved") OutlinedButton(onClick = { scope.launch { client.updateUserStatus(user.id, "suspended").onSuccess { onMessage("Suspended " + user.fullName) }.onFailure { onError(it.message ?: "Suspend failed.") } } }) { Text("Suspend") }
                         if (user.status == "suspended") OutlinedButton(onClick = { scope.launch { client.updateUserStatus(user.id, "approved").onSuccess { onMessage("Restored " + user.fullName) }.onFailure { onError(it.message ?: "Restore failed.") } } }) { Text("Restore") }
                         if (user.status != "denied") TextButton(onClick = { scope.launch { client.updateUserStatus(user.id, "denied").onSuccess { onMessage("Denied " + user.fullName) }.onFailure { onError(it.message ?: "Deny failed.") } } }) { Text("Deny") }
                     }
+
                     Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Role", fontWeight = FontWeight.SemiBold)
                         listOf("student", "leader", "admin").forEach { role ->
-                            FilterChip(selected = user.role == role, onClick = {
-                                scope.launch { client.updateUserRole(user.id, role).onSuccess { onMessage(user.fullName + " is now " + role) }.onFailure { onError(it.message ?: "Role update failed.") } }
-                            }, label = { Text(role.replaceFirstChar { it.uppercase() }) })
+                            FilterChip(
+                                selected = user.role == role,
+                                onClick = {
+                                    scope.launch {
+                                        client.updateUserRole(user.id, role)
+                                            .onSuccess { onMessage(user.fullName + " is now " + role) }
+                                            .onFailure { onError(it.message ?: "Role update failed.") }
+                                    }
+                                },
+                                label = { Text(role.replaceFirstChar { it.uppercase() }) }
+                            )
+                        }
+                    }
+
+                    if (user.status == "approved" && user.role != "admin") {
+                        OutlinedButton(onClick = {
+                            leaderTitle = user.title.ifBlank { "Campus Leader" }
+                            leaderEditor = user
+                        }) {
+                            Icon(Icons.Default.Badge, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (user.canAnnounce && user.active) "Edit leader title" else "Give leader permission")
                         }
                     }
                 }
             }
         }
+    }
+
+    leaderEditor?.let { user ->
+        AlertDialog(
+            onDismissRequest = { leaderEditor = null },
+            title = { Text("Give leader permission") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(user.fullName, fontWeight = FontWeight.Bold)
+                    Text("The account will become a Leader and can be given a title such as President, Vice President, Secretary, Treasurer, or Campus Leader.")
+                    OutlinedTextField(leaderTitle, { leaderTitle = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Leader / position title") })
+                }
+            },
+            confirmButton = {
+                Button(enabled = leaderTitle.isNotBlank(), onClick = {
+                    scope.launch {
+                        client.setLeaderAssignment(user.id, leaderTitle.trim(), true, true)
+                            .onSuccess { leaderEditor = null; onMessage(user.fullName + " is now " + leaderTitle.trim()) }
+                            .onFailure { onError(it.message ?: "Could not assign leader permission.") }
+                    }
+                }) { Text("Give permission") }
+            },
+            dismissButton = { TextButton(onClick = { leaderEditor = null }) { Text("Cancel") } }
+        )
     }
 }
 
