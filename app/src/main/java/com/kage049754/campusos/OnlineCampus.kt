@@ -158,7 +158,7 @@ class OnlineCampusClient(context: Context) {
     suspend fun updateUserStatus(userId: String, status: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             require(status in listOf("pending", "approved", "denied", "suspended"))
-            requestText("PATCH", "/rest/v1/profiles?id=" + encode(userId), JSONObject().put("status", status).toString(), "return=minimal")
+            requestText("PATCH", "/rest/v1/profiles?" + uuidFilter("id", userId), JSONObject().put("status", status).toString(), "return=minimal")
             Result.success(Unit)
         } catch (e: Exception) {
             lastError = e.message ?: "Could not update account status."
@@ -240,7 +240,7 @@ class OnlineCampusClient(context: Context) {
 
     suspend fun revokeLeaderAssignment(userId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            requestText("DELETE", "/rest/v1/leader_assignments?user_id=" + encode(userId), null, "return=minimal")
+            requestText("DELETE", "/rest/v1/leader_assignments?" + uuidFilter("user_id", userId), null, "return=minimal")
             Result.success(Unit)
         } catch (e: Exception) {
             lastError = e.message ?: "Could not revoke leader assignment."
@@ -333,7 +333,7 @@ class OnlineCampusClient(context: Context) {
         try {
             val old = listImagePaths(id)
             deleteStorageObjects(old)
-            requestText("DELETE", "/rest/v1/announcements?id=" + encode(id), null, "return=minimal")
+            requestText("DELETE", "/rest/v1/announcements?" + uuidFilter("id", id), null, "return=minimal")
             Result.success(Unit)
         } catch (e: Exception) {
             lastError = e.message ?: "Could not delete announcement."
