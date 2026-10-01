@@ -126,7 +126,7 @@ class OnlineCampusClient(context: Context) {
 
     suspend fun listAnnouncements(): List<OnlineAnnouncement> = withContext(Dispatchers.IO) {
         val path = "/rest/v1/announcements?select=id,author_id,author_name,author_title,body,created_at,expires_at,announcement_links(url,sort_order)&order=created_at.desc"
-        val arr = JSONArray(requestText("GET", path, null))
+        val arr = JSONArray(requestText("GET", path, null, null))
         (0 until arr.length()).map { i ->
             val o = arr.getJSONObject(i)
             val links = o.optJSONArray("announcement_links")
@@ -165,7 +165,7 @@ class OnlineCampusClient(context: Context) {
                 requestText("POST", "/rest/v1/announcement_links", linkBody.toString(), "return=minimal")
             }
             Unit
-        }.onFailure { lastError = it.message ?: "Could not publish announcement." }
+        }.map { Unit }.onFailure { lastError = it.message ?: "Could not publish announcement." }
     }
 
     suspend fun deleteAnnouncement(id: String): Result<Unit> = withContext(Dispatchers.IO) {
