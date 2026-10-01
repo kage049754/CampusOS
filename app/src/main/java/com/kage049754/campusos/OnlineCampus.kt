@@ -22,6 +22,7 @@ import java.util.UUID
 private const val SUPABASE_URL = "https://pgniovlvofvkwjhyoqcg.supabase.co"
 private const val SUPABASE_KEY = "sb_publishable_UghfMQF0mqMdDL3-i8TvUQ_t3pWFwoe"
 private const val ANNOUNCEMENT_BUCKET = "campus-announcements"
+private const val PROFILE_BUCKET = "campus-profiles"
 
 data class OnlineProfile(
     val id: String,
@@ -31,7 +32,9 @@ data class OnlineProfile(
     val status: String,
     val role: String,
     val title: String = "",
-    val canAnnounce: Boolean = false
+    val canAnnounce: Boolean = false,
+    val profilePhotoPath: String = "",
+    val profilePhotoUrl: String = ""
 )
 
 data class OnlineUser(
@@ -131,7 +134,7 @@ class OnlineCampusClient(context: Context) {
     suspend fun loadProfile(): OnlineProfile = withContext(Dispatchers.IO) {
         val id = userId()
         require(id.isNotBlank()) { "No signed-in user." }
-        val path = "/rest/v1/profiles?" + uuidFilter("id", id) + "&select=id,full_name,school_id,year_section,status,role,leader_assignments!leader_assignments_user_id_fkey(title,can_announce,active)"
+        val path = "/rest/v1/profiles?" + uuidFilter("id", id) + "&select=id,full_name,school_id,year_section,status,role,profile_photo_path,leader_assignments!leader_assignments_user_id_fkey(title,can_announce,active)"
         val arr = JSONArray(requestText("GET", path, null, null))
         require(arr.length() > 0) { "Your account profile is not ready yet." }
         val o = arr.getJSONObject(0)
@@ -139,9 +142,72 @@ class OnlineCampusClient(context: Context) {
         OnlineProfile(
             o.optString("id"), o.optString("full_name"), o.optString("school_id"), o.optString("year_section"),
             o.optString("status"), o.optString("role"), assignment?.optString("title").orEmpty(),
-            assignment?.optBoolean("can_announce", false) == true && assignment.optBoolean("active", false)
+            assignment?.optBoolean("can_announce", false) == true && assignment.optBoolean("active", false),
+            o.optString("profile_photo_path"),
+            o.optString("profile_photo_path").takeIf { it.isNotBlank() }?.let { publicProfilePhotoUrl(it) }.orEmpty()
         )
     }
+
+    suspend fun uploadProfilePhoto(uri: Uri): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val profile = loadProfile()
+            require(profile.status == "approved" && profile.role in listOf("leader", "admin")) {
+                "Only approved leaders and admins can upload a profile photo."
+            }
+            val bytes = compressImage(uri).also { require(it.size <= 2 * 1024 * 1024) { "Profile photo must be 2 MB or smaller." } }
+            val path = userId() + "/profile.jpg"
+            val url = SUPABASE_URL + "/storage/v1/object/" + PROFILE_BUCKET + "/" + encodePath(userId()) + "/profile.jpg"
+            val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 15_000
+                readTimeout = 30_000
+                doOutput = true
+                setRequestProperty("apikey", SUPABASE_KEY)
+                setRequestProperty("Authorization", "Bearer " + accessToken())
+                setRequestProperty("Content-Type", "image/jpeg")
+                setRequestProperty("Cache-Control", "3600")
+                setRequestProperty("x-upsert", "true")
+            }
+            connection.outputStream.use { it.write(bytes) }
+            val code = connection.responseCode
+            val errorBody = if (code !in 200..299) connection.errorStream?.let { BufferedReader(InputStreamReader(it)).use { reader -> reader.readText() } }.orEmpty() else ""
+            connection.disconnect()
+            if (code !in 200..299) error("Profile photo upload failed: HTTP " + code + " " + errorBody.take(200))
+            requestText("POST", "/rest/v1/rpc/set_own_profile_photo_path", JSONObject().put("new_path", path).toString(), null)
+            Result.success(path)
+        } catch (e: Exception) {
+            lastError = e.message ?: "Could not upload profile photo."
+            Result.failure(e)
+        }
+    }
+
+    suspend fun syncOwnProfilePhotoToFile(target: java.io.File): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val profile = loadProfile()
+            val path = profile.profilePhotoPath
+            if (path.isBlank()) return@withContext Result.success("")
+            val url = publicProfilePhotoUrl(path)
+            val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 15_000
+                readTimeout = 30_000
+            }
+            try {
+                require(connection.responseCode in 200..299) { "Could not download profile photo." }
+                val bytes = connection.inputStream.use { it.readBytes() }
+                target.outputStream().use { it.write(bytes) }
+            } finally {
+                connection.disconnect()
+            }
+            Result.success(target.absolutePath)
+        } catch (e: Exception) {
+            lastError = e.message ?: "Could not sync profile photo."
+            Result.failure(e)
+        }
+    }
+
+    private fun publicProfilePhotoUrl(path: String): String =
+        SUPABASE_URL + "/storage/v1/object/public/" + PROFILE_BUCKET + "/" +
+            path.split('/').joinToString("/") { encodePath(it) }
 
     suspend fun listUsers(): List<OnlineUser> = withContext(Dispatchers.IO) {
         val path = "/rest/v1/profiles?select=id,full_name,school_id,year_section,status,role,leader_assignments!leader_assignments_user_id_fkey(title,can_announce,active)&order=created_at.desc"
@@ -231,6 +297,7 @@ class OnlineCampusClient(context: Context) {
                 put("assigned_by", this@OnlineCampusClient.userId().ifBlank { JSONObject.NULL })
             }
             requestText("POST", "/rest/v1/leader_assignments?on_conflict=user_id", body.toString(), "resolution=merge-duplicates,return=minimal")
+            requestText("PATCH", "/rest/v1/profiles?" + uuidFilter("id", userId), JSONObject().put("role", "leader").toString(), "return=minimal")
             Result.success(Unit)
         } catch (e: Exception) {
             lastError = e.message ?: "Could not update leader assignment."
@@ -241,6 +308,7 @@ class OnlineCampusClient(context: Context) {
     suspend fun revokeLeaderAssignment(userId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             requestText("DELETE", "/rest/v1/leader_assignments?" + uuidFilter("user_id", userId), null, "return=minimal")
+            requestText("PATCH", "/rest/v1/profiles?" + uuidFilter("id", userId), JSONObject().put("role", "student").toString(), "return=minimal")
             Result.success(Unit)
         } catch (e: Exception) {
             lastError = e.message ?: "Could not revoke leader assignment."
