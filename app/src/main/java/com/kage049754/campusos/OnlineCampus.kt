@@ -157,11 +157,66 @@ class OnlineCampusClient(context: Context) {
 
     suspend fun updateUserStatus(userId: String, status: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            require(status in listOf("pending", "approved", "denied"))
+            require(status in listOf("pending", "approved", "denied", "suspended"))
             requestText("PATCH", "/rest/v1/profiles?id=" + encode(userId), JSONObject().put("status", status).toString(), "return=minimal")
             Result.success(Unit)
         } catch (e: Exception) {
             lastError = e.message ?: "Could not update account status."
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateUserRole(userId: String, role: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            require(role in listOf("student", "leader", "admin"))
+            requestText("PATCH", "/rest/v1/profiles?id=" + encode(userId), JSONObject().put("role", role).toString(), "return=minimal")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            lastError = e.message ?: "Could not update account role."
+            Result.failure(e)
+        }
+    }
+
+    suspend fun listAnnouncementStorage(): List<AdminStorageItem> = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("prefix", "")
+            put("limit", 100)
+            put("offset", 0)
+            put("sortBy", JSONObject().put("column", "created_at").put("order", "desc"))
+        }
+        val arr = JSONArray(requestText("POST", "/storage/v1/object/list/" + ANNOUNCEMENT_BUCKET, body.toString(), null))
+        (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val name = o.optString("name")
+            if (name.isBlank() || o.optString("id").isBlank()) return@mapNotNull null
+            val metadata = o.optJSONObject("metadata")
+            AdminStorageItem(
+                name = name,
+                id = o.optString("id"),
+                size = metadata?.optLong("size", 0L) ?: 0L,
+                createdAt = o.optString("created_at")
+            )
+        }
+    }
+
+    suspend fun adminUploadImage(uri: Uri): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val bytes = compressImage(uri)
+            val path = userId() + "/admin/" + UUID.randomUUID() + ".jpg"
+            uploadObject(path, bytes)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            lastError = e.message ?: "Could not upload image."
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteAnnouncementStorage(path: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            deleteStorageObjects(listOf(path))
+            Result.success(Unit)
+        } catch (e: Exception) {
+            lastError = e.message ?: "Could not delete storage file."
             Result.failure(e)
         }
     }
