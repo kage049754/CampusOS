@@ -131,7 +131,7 @@ class OnlineCampusClient(context: Context) {
     suspend fun loadProfile(): OnlineProfile = withContext(Dispatchers.IO) {
         val id = userId()
         require(id.isNotBlank()) { "No signed-in user." }
-        val path = "/rest/v1/profiles?id=eq." + encode(id) + "&select=id,full_name,school_id,year_section,status,role,leader_assignments(title,can_announce,active)"
+        val path = "/rest/v1/profiles?id=eq." + encode(id) + "&select=id,full_name,school_id,year_section,status,role,leader_assignments!leader_assignments_user_id_fkey(title,can_announce,active)"
         val arr = JSONArray(requestText("GET", path, null, null))
         require(arr.length() > 0) { "Your account profile is not ready yet." }
         val o = arr.getJSONObject(0)
@@ -144,7 +144,7 @@ class OnlineCampusClient(context: Context) {
     }
 
     suspend fun listUsers(): List<OnlineUser> = withContext(Dispatchers.IO) {
-        val path = "/rest/v1/profiles?select=id,full_name,school_id,year_section,status,role,leader_assignments(title,can_announce,active)&order=created_at.desc"
+        val path = "/rest/v1/profiles?select=id,full_name,school_id,year_section,status,role,leader_assignments!leader_assignments_user_id_fkey(title,can_announce,active)&order=created_at.desc"
         val arr = JSONArray(requestText("GET", path, null, null))
         (0 until arr.length()).map { i ->
             val o = arr.getJSONObject(i)
