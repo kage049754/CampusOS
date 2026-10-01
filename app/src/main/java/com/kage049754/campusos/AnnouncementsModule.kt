@@ -292,7 +292,7 @@ private fun AnnouncementFullscreenImage(url: String, onDismiss: () -> Unit) {
         }
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim), contentAlignment = Alignment.Center) {
             bitmap?.let { Image(it.asImageBitmap(), "Announcement image", Modifier.fillMaxWidth().padding(16.dp), contentScale = ContentScale.Fit) } ?: CircularProgressIndicator()
-            IconButton(Modifier.align(Alignment.TopEnd).padding(8.dp), onClick = onDismiss) { Icon(Icons.Default.Close, "Close") }
+            IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) { Icon(Icons.Default.Close, "Close") }
         }
     }
 }
