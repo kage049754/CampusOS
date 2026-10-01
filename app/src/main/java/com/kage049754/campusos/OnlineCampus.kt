@@ -257,6 +257,26 @@ class OnlineCampusClient(context: Context) {
         }
     }
 
+    suspend fun syncOwnPagePhotoToFile(target: java.io.File): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val profile = loadProfile()
+            val path = profile.pagePhotoPath
+            if (path.isBlank()) return@withContext Result.success("")
+            val connection = (URL(publicProfilePhotoUrl(path)).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 15000
+                readTimeout = 30000
+            }
+            try {
+                require(connection.responseCode in 200..299) { "Could not download page photo." }
+                target.outputStream().use { output -> connection.inputStream.use { it.copyTo(output) } }
+            } finally { connection.disconnect() }
+            Result.success(target.absolutePath)
+        } catch (e: Exception) {
+            lastError = e.message ?: "Could not sync page photo."
+            Result.failure(e)
+        }
+    }
+
     suspend fun grantPage(userId: String, orgType: String, orgName: String, title: String, enabled: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             requestText("POST", "/rest/v1/rpc/grant_page_to_user",
