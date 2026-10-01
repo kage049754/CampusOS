@@ -167,7 +167,7 @@ class OnlineCampusClient(context: Context) {
             Result.success(Unit)
         } catch (e: Exception) {
             lastError = e.message ?: "Could not publish announcement."
-            Result.failure(e)
+            Result.failure<Unit>(e)
         }
     }
 
