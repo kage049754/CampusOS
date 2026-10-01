@@ -284,7 +284,7 @@ class OnlineCampusClient(context: Context) {
                     val oldest = oldestAuthorAnnouncementId(profile.id) ?: break
                     val oldImages = listImagePaths(oldest)
                     runCatching { deleteStorageObjects(oldImages) }
-                    requestText("DELETE", "/rest/v1/announcements?id=" + encode(oldest), null, "return=minimal")
+                    requestText("DELETE", "/rest/v1/announcements?" + uuidFilter("id", oldest), null, "return=minimal")
                 }
                 val id = insertAnnouncement(profile, body, expiresAt)
                 insertLinks(id, links)
@@ -309,13 +309,13 @@ class OnlineCampusClient(context: Context) {
                     put("body", body.trim())
                     if (expiresAt == null) put("expires_at", JSONObject.NULL) else put("expires_at", iso(expiresAt))
                 }
-                requestText("PATCH", "/rest/v1/announcements?id=eq." + encode(id), patch.toString(), "return=minimal")
-                requestText("DELETE", "/rest/v1/announcement_links?announcement_id=eq." + encode(id), null, "return=minimal")
+                requestText("PATCH", "/rest/v1/announcements?" + uuidFilter("id", id), patch.toString(), "return=minimal")
+                requestText("DELETE", "/rest/v1/announcement_links?" + uuidFilter("announcement_id", id), null, "return=minimal")
                 insertLinks(id, links)
                 if (replaceImages) {
                     val old = listImagePaths(id)
                     deleteStorageObjects(old)
-                    requestText("DELETE", "/rest/v1/announcement_images?announcement_id=eq." + encode(id), null, "return=minimal")
+                    requestText("DELETE", "/rest/v1/announcement_images?" + uuidFilter("announcement_id", id), null, "return=minimal")
                     if (!imageUris.isNullOrEmpty()) uploadImages(id, imageUris)
                 }
                 Result.success(Unit)
@@ -337,10 +337,18 @@ class OnlineCampusClient(context: Context) {
         }
     }
 
+    private fun normalizedUuid(value: String): String {
+        val cleaned = value.trim()
+        return UUID.fromString(cleaned).toString()
+    }
+
+    private fun uuidFilter(column: String, value: String): String =
+        column + "=eq." + encode(normalizedUuid(value))
+
     private fun countAuthorAnnouncements(authorId: String): Int {
         val arr = JSONArray(requestText(
             "GET",
-            "/rest/v1/announcements?author_id=eq." + encode(authorId) + "&select=id",
+            "/rest/v1/announcements?" + uuidFilter("author_id", authorId) + "&select=id",
             null,
             null
         ))
@@ -350,7 +358,7 @@ class OnlineCampusClient(context: Context) {
     private fun oldestAuthorAnnouncementId(authorId: String): String? {
         val arr = JSONArray(requestText(
             "GET",
-            "/rest/v1/announcements?author_id=eq." + encode(authorId) + "&select=id&order=created_at.asc&limit=1",
+            "/rest/v1/announcements?" + uuidFilter("author_id", authorId) + "&select=id&order=created_at.asc&limit=1",
             null,
             null
         ))
