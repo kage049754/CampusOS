@@ -22,7 +22,6 @@ import java.util.UUID
 private const val SUPABASE_URL = "https://pgniovlvofvkwjhyoqcg.supabase.co"
 private const val SUPABASE_KEY = "sb_publishable_UghfMQF0mqMdDL3-i8TvUQ_t3pWFwoe"
 private const val ANNOUNCEMENT_BUCKET = "campus-announcements"
-private const val AUTH_REDIRECT_URI = "campusos://auth/callback"
 
 data class OnlineProfile(
     val id: String,
@@ -90,7 +89,7 @@ class OnlineCampusClient(context: Context) {
                     put("year_section", yearSection.trim())
                 })
             }
-            val json = request("POST", "/auth/v1/signup?redirect_to=" + encode(AUTH_REDIRECT_URI), body.toString(), null, false)
+            val json = request("POST", "/auth/v1/signup", body.toString(), null, false)
             val token = json.optString("access_token")
             val refresh = json.optString("refresh_token")
             val user = json.optJSONObject("user")
