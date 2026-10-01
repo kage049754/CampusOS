@@ -466,7 +466,7 @@ class MainActivity : ComponentActivity() {
 
 enum class Screen(val label: String) {
     HOME("Home"), SCHEDULE("Schedule"), TASKS("Notes"), ACADEMICS("Academics"),
-    FILES("Files"), SETTINGS("Settings")
+    FILES("Files"), ANNOUNCEMENTS("Announcements"), SETTINGS("Settings")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -657,6 +657,7 @@ fun CampusOSApp(activity: Activity) {
                         Screen.TASKS -> TasksScreen(store, search, { search = "" }, { id -> subjectPageId = id; subjectPageMode = 0 })
                         Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 })
                         Screen.FILES -> FilesScreen()
+                        Screen.ANNOUNCEMENTS -> AnnouncementsScreen { screenName = Screen.HOME.name }
                         Screen.SETTINGS -> SettingsScreen(
                             store, theme,
                             { theme = it; store.setTheme(it) },
@@ -666,7 +667,7 @@ fun CampusOSApp(activity: Activity) {
                         )
                     }
                 }
-                if (!scheduleFullscreen && screen != Screen.HOME && screen != Screen.SETTINGS && screen != Screen.FILES && screen != Screen.TASKS) {
+                if (!scheduleFullscreen && screen != Screen.HOME && screen != Screen.SETTINGS && screen != Screen.FILES && screen != Screen.TASKS && screen != Screen.ANNOUNCEMENTS) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                         OutlinedTextField(
                             value = search.takeUnless { it == "__ADD__" } ?: "",
@@ -701,6 +702,7 @@ fun CampusOSApp(activity: Activity) {
     Screen.TASKS -> Icons.Default.CheckCircle
     Screen.ACADEMICS -> Icons.Default.School
     Screen.FILES -> Icons.Default.Folder
+    Screen.ANNOUNCEMENTS -> Icons.Default.Campaign
     Screen.SETTINGS -> Icons.Default.Settings
 }
 
@@ -973,6 +975,25 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit, editRequest: Int = 0) {
                         if (details.isNotBlank()) Text(details, style = MaterialTheme.typography.bodyMedium)
                         Text(SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
+                }
+            }
+        }
+        item {
+            Card(
+                Modifier.fillMaxWidth().clickable { go(Screen.ANNOUNCEMENTS) },
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+            ) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(44.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(50)), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Campaign, "Announcements", tint = MaterialTheme.colorScheme.primary)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Campus announcements", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Official updates from approved campus leaders", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Icon(Icons.Default.ChevronRight, null)
                 }
             }
         }
