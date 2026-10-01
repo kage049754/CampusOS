@@ -141,7 +141,7 @@ class OnlineCampusClient(context: Context) {
     }
 
     suspend fun createAnnouncement(body: String, links: List<String>, expiresAt: Long?): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
+        try {
             val profile = loadProfile()
             require(profile.status == "approved" && (profile.canAnnounce || profile.role == "admin")) {
                 "Your account is not authorized to publish announcements."
@@ -164,8 +164,11 @@ class OnlineCampusClient(context: Context) {
                 }
                 requestText("POST", "/rest/v1/announcement_links", linkBody.toString(), "return=minimal")
             }
-            Unit
-        }.map { Unit }.onFailure { lastError = it.message ?: "Could not publish announcement." }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            lastError = e.message ?: "Could not publish announcement."
+            Result.failure(e)
+        }
     }
 
     suspend fun deleteAnnouncement(id: String): Result<Unit> = withContext(Dispatchers.IO) {
