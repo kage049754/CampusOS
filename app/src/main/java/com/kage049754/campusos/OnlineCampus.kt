@@ -52,7 +52,11 @@ data class OnlineUser(
     val role: String,
     val title: String = "",
     val canAnnounce: Boolean = false,
-    val active: Boolean = false
+    val active: Boolean = false,
+    val pageEnabled: Boolean = false,
+    val pageName: String = "",
+    val organizationType: String = "",
+    val organizationName: String = ""
 )
 
 data class OnlineAnnouncementImage(
@@ -273,7 +277,9 @@ class OnlineCampusClient(context: Context) {
             val a = o.optJSONArray("leader_assignments")?.optJSONObject(0)
             OnlineUser(o.optString("id"), o.optString("full_name"), o.optString("school_id"), o.optString("year_section"),
                 o.optString("status"), o.optString("role"), a?.optString("title").orEmpty(),
-                a?.optBoolean("can_announce", false) == true, a?.optBoolean("active", false) == true)
+                a?.optBoolean("can_announce", false) == true, a?.optBoolean("active", false) == true,
+                a?.optBoolean("page_enabled", false) == true, a?.optString("page_name").orEmpty(),
+                a?.optString("organization_type").orEmpty(), a?.optString("organization_name").orEmpty())
         }
     }
 
