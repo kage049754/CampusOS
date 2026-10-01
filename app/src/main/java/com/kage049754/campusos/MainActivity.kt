@@ -459,28 +459,9 @@ class LocalStore(context: Context) {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        handleAuthIntent(intent)
         setContent { CampusOSApp(this) }
         CampusReminders.reschedule(this)
         CampusWidgets.updateAll(this)
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        handleAuthIntent(intent)
-    }
-
-    private fun handleAuthIntent(intent: Intent?) {
-        val uri = intent?.data ?: return
-        if (intent.action != Intent.ACTION_VIEW || uri.scheme != "campusos" || uri.host != "auth" || uri.path != "/callback") return
-        val result = OnlineCampusClient(this).handleAuthCallback(uri)
-        Toast.makeText(
-            this,
-            if (result.isSuccess) "Email confirmed. Your CampusOS account is now signed in."
-            else "Email confirmation failed: " + (result.exceptionOrNull()?.message ?: "Please try again."),
-            Toast.LENGTH_LONG
-        ).show()
     }
 }
 
