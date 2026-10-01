@@ -131,7 +131,7 @@ class OnlineCampusClient(context: Context) {
     suspend fun loadProfile(): OnlineProfile = withContext(Dispatchers.IO) {
         val id = userId()
         require(id.isNotBlank()) { "No signed-in user." }
-        val path = "/rest/v1/profiles?id=eq." + encode(id) + "&select=id,full_name,school_id,year_section,status,role,leader_assignments!leader_assignments_user_id_fkey(title,can_announce,active)"
+        val path = "/rest/v1/profiles?" + uuidFilter("id", id) + "&select=id,full_name,school_id,year_section,status,role,leader_assignments!leader_assignments_user_id_fkey(title,can_announce,active)"
         val arr = JSONArray(requestText("GET", path, null, null))
         require(arr.length() > 0) { "Your account profile is not ready yet." }
         val o = arr.getJSONObject(0)
@@ -391,7 +391,7 @@ class OnlineCampusClient(context: Context) {
     }
 
     private fun listImagePaths(id: String): List<String> {
-        val arr = JSONArray(requestText("GET", "/rest/v1/announcement_images?announcement_id=eq." + encode(id) + "&select=storage_path&order=sort_order.asc", null, null))
+        val arr = JSONArray(requestText("GET", "/rest/v1/announcement_images?" + uuidFilter("announcement_id", id) + "&select=storage_path&order=sort_order.asc", null, null))
         return (0 until arr.length()).map { arr.getJSONObject(it).optString("storage_path") }.filter { it.isNotBlank() }
     }
 
