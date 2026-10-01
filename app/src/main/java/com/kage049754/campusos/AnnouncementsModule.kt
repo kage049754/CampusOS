@@ -332,7 +332,7 @@ private fun AdminControlDialog(client: OnlineCampusClient, onClose: () -> Unit) 
                                 "approve" -> client.updateUserStatus(user.id, "approved")
                                 "deny" -> client.updateUserStatus(user.id, "denied")
                                 "pending" -> client.updateUserStatus(user.id, "pending")
-                                "leader" -> client.setLeaderAssignment(user.id, user.title.ifBlank { "Campus Leader" }, true, true)
+                                action.takeIf { it.startsWith("leader|") }?.let { client.setLeaderAssignment(user.id, it.removePrefix("leader|"), true, true) } ?: Result.success(Unit)
                                 "revoke" -> client.revokeLeaderAssignment(user.id)
                                 else -> Result.success(Unit)
                             }
@@ -371,7 +371,7 @@ private fun AdminUserRow(user: OnlineUser, disabled: Boolean, onAction: (String)
                 OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Leader title") })
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                     TextButton(onClick = { editLeader = false }) { Text("Cancel") }
-                    Button(enabled = title.isNotBlank() && !disabled, onClick = { onAction("leader"); editLeader = false }) { Text("Save") }
+                    Button(enabled = title.isNotBlank() && !disabled, onClick = { onAction("leader|" + title); editLeader = false }) { Text("Save") }
                 }
             }
         }
