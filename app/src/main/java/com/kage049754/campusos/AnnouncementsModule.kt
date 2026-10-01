@@ -332,7 +332,7 @@ private fun AdminControlDialog(client: OnlineCampusClient, onClose: () -> Unit) 
                                 "approve" -> client.updateUserStatus(user.id, "approved")
                                 "deny" -> client.updateUserStatus(user.id, "denied")
                                 "pending" -> client.updateUserStatus(user.id, "pending")
-                                action.takeIf { it.startsWith("leader|") }?.let { client.setLeaderAssignment(user.id, it.removePrefix("leader|"), true, true) } ?: Result.success(Unit)
+                                action.startsWith("leader|") -> client.setLeaderAssignment(user.id, action.removePrefix("leader|"), true, true)
                                 "revoke" -> client.revokeLeaderAssignment(user.id)
                                 else -> Result.success(Unit)
                             }
