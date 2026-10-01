@@ -34,6 +34,24 @@ object CampusReminders {
     fun notificationsEnabled(context: Context): Boolean =
         NotificationManagerCompat.from(context).areNotificationsEnabled()
 
+    fun notifyNewAnnouncement(context: Context, announcement: OnlineAnnouncement) {
+        val app = context.applicationContext
+        ensureChannel(app)
+        if (!notificationsEnabled(app)) return
+        val launch = PendingIntent.getActivity(app, 0, Intent(app, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val text = announcement.body.replace("\n", " ").trim().take(180)
+        val notification = NotificationCompat.Builder(app, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("CampusOS • New announcement")
+            .setContentText(announcement.authorName + " — " + text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(launch)
+            .build()
+        NotificationManagerCompat.from(app).notify(("announcement-" + announcement.id).hashCode(), notification)
+    }
+
     fun reschedule(context: Context) {
         val app = context.applicationContext
         ensureChannel(app)
