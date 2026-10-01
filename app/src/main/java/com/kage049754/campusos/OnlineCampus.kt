@@ -108,7 +108,7 @@ class OnlineCampusClient(context: Context) {
         val id = userId()
         require(id.isNotBlank()) { "No signed-in user." }
         val path = "/rest/v1/profiles?id=eq." + encode(id) + "&select=id,full_name,school_id,year_section,status,role,leader_assignments(title,can_announce,active)"
-        val arr = JSONArray(requestText("GET", path, null))
+        val arr = JSONArray(requestText("GET", path, null, null))
         require(arr.length() > 0) { "Your account profile is not ready yet." }
         val o = arr.getJSONObject(0)
         val assignment = o.optJSONArray("leader_assignments")?.optJSONObject(0)
@@ -164,6 +164,7 @@ class OnlineCampusClient(context: Context) {
                 }
                 requestText("POST", "/rest/v1/announcement_links", linkBody.toString(), "return=minimal")
             }
+            Unit
         }.onFailure { lastError = it.message ?: "Could not publish announcement." }
     }
 
