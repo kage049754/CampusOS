@@ -28,6 +28,18 @@ data class OnlineProfile(
     val canAnnounce: Boolean = false
 )
 
+data class OnlineUser(
+    val id: String,
+    val fullName: String,
+    val schoolId: String,
+    val yearSection: String,
+    val status: String,
+    val role: String,
+    val title: String = "",
+    val canAnnounce: Boolean = false,
+    val active: Boolean = false
+)
+
 data class OnlineAnnouncement(
     val id: String,
     val authorId: String,
@@ -122,6 +134,65 @@ class OnlineCampusClient(context: Context) {
             title = assignment?.optString("title").orEmpty(),
             canAnnounce = assignment?.optBoolean("can_announce", false) == true && assignment.optBoolean("active", false)
         )
+    }
+
+    suspend fun listUsers(): List<OnlineUser> = withContext(Dispatchers.IO) {
+        val path = "/rest/v1/profiles?select=id,full_name,school_id,year_section,status,role,leader_assignments(title,can_announce,active)&order=created_at.desc"
+        val arr = JSONArray(requestText("GET", path, null, null))
+        (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            val a = o.optJSONArray("leader_assignments")?.optJSONObject(0)
+            OnlineUser(
+                id = o.optString("id"),
+                fullName = o.optString("full_name"),
+                schoolId = o.optString("school_id"),
+                yearSection = o.optString("year_section"),
+                status = o.optString("status"),
+                role = o.optString("role"),
+                title = a?.optString("title").orEmpty(),
+                canAnnounce = a?.optBoolean("can_announce", false) == true,
+                active = a?.optBoolean("active", false) == true
+            )
+        }
+    }
+
+    suspend fun updateUserStatus(userId: String, status: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            require(status in listOf("pending", "approved", "denied"))
+            val body = JSONObject().put("status", status)
+            requestText("PATCH", "/rest/v1/profiles?id=" + encode(userId), body.toString(), "return=minimal")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            lastError = e.message ?: "Could not update account status."
+            Result.failure(e)
+        }
+    }
+
+    suspend fun setLeaderAssignment(userId: String, title: String, canAnnounce: Boolean, active: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val body = JSONObject().apply {
+                put("user_id", userId)
+                put("title", title.trim())
+                put("can_announce", canAnnounce)
+                put("active", active)
+                put("assigned_by", userId().ifBlank { JSONObject.NULL })
+            }
+            requestText("POST", "/rest/v1/leader_assignments?on_conflict=user_id", body.toString(), "resolution=merge-duplicates,return=minimal")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            lastError = e.message ?: "Could not update leader assignment."
+            Result.failure(e)
+        }
+    }
+
+    suspend fun revokeLeaderAssignment(userId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            requestText("DELETE", "/rest/v1/leader_assignments?user_id=" + encode(userId), null, "return=minimal")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            lastError = e.message ?: "Could not revoke leader assignment."
+            Result.failure(e)
+        }
     }
 
     suspend fun listAnnouncements(): List<OnlineAnnouncement> = withContext(Dispatchers.IO) {
