@@ -266,7 +266,11 @@ class OnlineCampusClient(context: Context) {
         }
         result.map { announcement ->
             val signed = if (announcement.images.isEmpty()) emptyMap() else createSignedUrls(announcement.images.map { it.storagePath })
-            announcement.copy(images = announcement.images.map { it.copy(signedUrl = signed[it.storagePath].orEmpty()) })
+            announcement.copy(
+                images = announcement.images.mapNotNull { image ->
+                    signed[image.storagePath]?.takeIf { it.isNotBlank() }?.let { image.copy(signedUrl = it) }
+                }
+            )
         }
     }
 
@@ -465,16 +469,18 @@ class OnlineCampusClient(context: Context) {
     private fun createSignedUrls(paths: List<String>): Map<String, String> {
         val result = mutableMapOf<String, String>()
         paths.forEach { path ->
-            val encodedPath = path.split('/').joinToString("/") { encodePath(it) }
-            val json = request(
-                "POST",
-                "/storage/v1/object/sign/" + ANNOUNCEMENT_BUCKET + "/" + encodedPath,
-                JSONObject().put("expiresIn", 3600).toString(),
-                null
-            )
-            val signed = json.optString("signedURL").ifBlank { json.optString("signedUrl") }
-            if (signed.isNotBlank()) {
-                result[path] = if (signed.startsWith("http")) signed else SUPABASE_URL + "/storage/v1" + signed
+            runCatching {
+                val encodedPath = path.split('/').joinToString("/") { encodePath(it) }
+                val json = request(
+                    "POST",
+                    "/storage/v1/object/sign/" + ANNOUNCEMENT_BUCKET + "/" + encodedPath,
+                    JSONObject().put("expiresIn", 3600).toString(),
+                    null
+                )
+                val signed = json.optString("signedURL").ifBlank { json.optString("signedUrl") }
+                if (signed.isNotBlank()) {
+                    result[path] = if (signed.startsWith("http")) signed else SUPABASE_URL + "/storage/v1" + signed
+                }
             }
         }
         return result
