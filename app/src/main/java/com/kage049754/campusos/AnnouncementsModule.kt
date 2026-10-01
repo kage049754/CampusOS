@@ -382,14 +382,13 @@ private fun OnlineAccountDialog(client: OnlineCampusClient, profile: OnlineProfi
     var schoolId by remember { mutableStateOf("") }
     var yearSection by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
-    var otp by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text(if (mode == 1) "Create CampusOS account" else if (mode == 2) "Online account" else if (mode == 3) "Confirm your email" else "CampusOS online access") },
+        title = { Text(if (mode == 1) "Create CampusOS account" else if (mode == 2) "Online account" else "CampusOS online access") },
         text = {
             Column(Modifier.fillMaxWidth().heightIn(max = 560.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (mode == 2 && profile != null) {
@@ -400,15 +399,6 @@ private fun OnlineAccountDialog(client: OnlineCampusClient, profile: OnlineProfi
                     Text(if (profile.canAnnounce || profile.role == "admin") "Announcement permission: ENABLED" else "Announcement permission: View only", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (profile.role == "admin") OutlinedButton(onClick = onAdmin) { Text("Admin controls") }
                     if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary)
-                } else if (mode == 3) {
-                    Text("We sent a 6-digit confirmation code to " + email, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    OutlinedTextField(
-                        otp, { otp = it.filter(Char::isDigit).take(6) },
-                        Modifier.fillMaxWidth(),
-                        label = { Text("Confirmation code") },
-                        singleLine = true
-                    )
-                    if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.error)
                 } else {
                     if (mode == 1) {
                         OutlinedTextField(fullName, { fullName = it }, Modifier.fillMaxWidth(), label = { Text("Full name") })
@@ -424,21 +414,12 @@ private fun OnlineAccountDialog(client: OnlineCampusClient, profile: OnlineProfi
         },
         confirmButton = {
             when (mode) {
-                3 -> Button(enabled = !busy && otp.length == 6, onClick = {
-                    busy = true
-                    scope.launch {
-                        client.verifySignupOtp(email, otp)
-                            .onSuccess { onClose(); onChanged() }
-                            .onFailure { message = it.message ?: "Email verification failed." }
-                        busy = false
-                    }
-                }) { Text(if (busy) "Verifying…" else "Verify email") }
                 2 -> Button(onClick = { client.signOut(); onClose(); onChanged() }) { Text("Sign out") }
                 1 -> Button(enabled = !busy && fullName.isNotBlank() && schoolId.isNotBlank() && yearSection.isNotBlank() && email.contains("@") && password.length >= 8 && password == confirmPassword, onClick = {
                     busy = true
                     scope.launch {
                         client.signUp(email, password, fullName, schoolId, yearSection)
-                            .onSuccess { message = it; otp = ""; mode = 3 }
+                            .onSuccess { onClose(); onChanged() }
                             .onFailure { message = it.message ?: "Registration failed." }
                         busy = false
                     }
@@ -456,20 +437,6 @@ private fun OnlineAccountDialog(client: OnlineCampusClient, profile: OnlineProfi
         },
         dismissButton = {
             when {
-                mode == 3 -> {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = {
-                            busy = true
-                            scope.launch {
-                                client.resendSignupConfirmation(email)
-                                    .onSuccess { message = "A new 6-digit confirmation code was sent." }
-                                    .onFailure { message = it.message ?: "Could not resend confirmation code." }
-                                busy = false
-                            }
-                        }, enabled = !busy) { Text("Resend code") }
-                        TextButton(onClick = { mode = 1; message = "" }, enabled = !busy) { Text("Back") }
-                    }
-                }
                 mode != 2 -> TextButton(onClick = { mode = if (mode == 1) 0 else 1 }) { Text(if (mode == 1) "Already have an account" else "Create account") }
                 else -> TextButton(onClick = onClose) { Text("Close") }
             }
