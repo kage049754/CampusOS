@@ -175,7 +175,7 @@ class OnlineCampusClient(context: Context) {
                 put("title", title.trim())
                 put("can_announce", canAnnounce)
                 put("active", active)
-                put("assigned_by", userId().ifBlank { JSONObject.NULL })
+                put("assigned_by", this@OnlineCampusClient.userId().ifBlank { JSONObject.NULL })
             }
             requestText("POST", "/rest/v1/leader_assignments?on_conflict=user_id", body.toString(), "resolution=merge-duplicates,return=minimal")
             Result.success(Unit)
