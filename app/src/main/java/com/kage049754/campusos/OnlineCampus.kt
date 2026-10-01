@@ -70,6 +70,9 @@ data class OnlineAnnouncement(
     val authorId: String,
     val authorName: String,
     val authorTitle: String,
+    val authorPageName: String = "",
+    val authorPagePhotoPath: String = "",
+    val authorPagePhotoUrl: String = "",
     val body: String,
     val links: List<String>,
     val images: List<OnlineAnnouncementImage>,
@@ -399,7 +402,7 @@ class OnlineCampusClient(context: Context) {
     }
 
     suspend fun listAnnouncements(): List<OnlineAnnouncement> = withContext(Dispatchers.IO) {
-        val path = "/rest/v1/announcements?select=id,author_id,author_name,author_title,body,created_at,expires_at,announcement_links(url,sort_order),announcement_images(id,storage_path,sort_order)&order=created_at.desc"
+        val path = "/rest/v1/announcements?select=id,author_id,author_name,author_title,author_page_name,author_page_photo_path,body,created_at,expires_at,announcement_links(url,sort_order),announcement_images(id,storage_path,sort_order)&order=created_at.desc"
         val arr = JSONArray(requestText("GET", path, null, null))
         val result = (0 until arr.length()).map { i ->
             val o = arr.getJSONObject(i)
@@ -523,8 +526,10 @@ class OnlineCampusClient(context: Context) {
         require(body.isNotBlank()) { "Announcement cannot be empty." }
         val o = JSONObject().apply {
             put("author_id", profile.id)
-            put("author_name", profile.fullName)
-            put("author_title", profile.title.ifBlank { if (profile.role == "admin") "Campus Admin" else "Campus Leader" })
+            put("author_name", if (profile.pageEnabled && profile.pageName.isNotBlank()) profile.pageName else profile.fullName)
+            put("author_title", if (profile.pageEnabled && profile.pageName.isNotBlank()) "" else profile.title.ifBlank { if (profile.role == "admin") "Campus Admin" else "Campus Leader" })
+            put("author_page_name", if (profile.pageEnabled) profile.pageName else "")
+            put("author_page_photo_path", if (profile.pageEnabled) profile.pagePhotoPath else "")
             put("body", body.trim())
             if (expiresAt != null) put("expires_at", iso(expiresAt))
         }
