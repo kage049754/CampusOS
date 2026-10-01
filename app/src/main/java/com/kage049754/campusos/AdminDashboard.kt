@@ -139,6 +139,8 @@ private fun AdminStudentsTab(users: List<OnlineUser>, client: OnlineCampusClient
     var search by rememberSaveable { mutableStateOf("") }
     var leaderEditor by remember { mutableStateOf<OnlineUser?>(null) }
     var leaderTitle by remember { mutableStateOf("") }
+    var orgType by remember { mutableStateOf("Club") }
+    var orgName by remember { mutableStateOf("") }
 
     val filtered = users.filter {
         (filter == "all" || it.status == filter) &&
@@ -194,12 +196,14 @@ private fun AdminStudentsTab(users: List<OnlineUser>, client: OnlineCampusClient
 
                     if (user.status == "approved" && user.role != "admin") {
                         OutlinedButton(onClick = {
-                            leaderTitle = user.title.ifBlank { "Campus Leader" }
+                            leaderTitle = user.title.ifBlank { "President" }
+                            orgType = user.organizationType.ifBlank { "Club" }
+                            orgName = user.organizationName
                             leaderEditor = user
                         }) {
                             Icon(Icons.Default.Badge, null)
                             Spacer(Modifier.width(6.dp))
-                            Text(if (user.canAnnounce && user.active) "Edit leader title" else "Give leader permission")
+                            Text(if (user.canAnnounce && user.active) "Edit position / page" else "Give leader permission")
                         }
                     }
                 }
@@ -214,15 +218,19 @@ private fun AdminStudentsTab(users: List<OnlineUser>, client: OnlineCampusClient
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(user.fullName, fontWeight = FontWeight.Bold)
-                    Text("The account will become a Leader and can be given a title such as President, Vice President, Secretary, Treasurer, or Campus Leader.")
-                    OutlinedTextField(leaderTitle, { leaderTitle = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Leader / position title") })
+                    Text("Give this student a position and optionally a public CampusOS page. The page uses the page name/photo instead of the student’s personal name/title on announcements.")
+                    OutlinedTextField(leaderTitle, { leaderTitle = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Position (President, Secretary, etc.)") })
+                    OutlinedTextField(orgName, { orgName = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Club / Group / Organization name") })
+                    Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("Club", "Group", "Organization").forEach { type -> FilterChip(selected = orgType == type, onClick = { orgType = type }, label = { Text(type) }) }
+                    }
                 }
             },
             confirmButton = {
                 Button(enabled = leaderTitle.isNotBlank(), onClick = {
                     scope.launch {
-                        client.setLeaderAssignment(user.id, leaderTitle.trim(), true, true)
-                            .onSuccess { leaderEditor = null; onMessage(user.fullName + " is now " + leaderTitle.trim()) }
+                        client.grantPage(user.id, orgType, orgName.trim(), leaderTitle.trim(), true)
+                            .onSuccess { leaderEditor = null; onMessage(user.fullName + " is now " + leaderTitle.trim() + " for " + orgName.trim()) }
                             .onFailure { onError(it.message ?: "Could not assign leader permission.") }
                     }
                 }) { Text("Give permission") }
