@@ -329,7 +329,7 @@ class OnlineCampusClient(context: Context) {
         if (scaled !== bitmap) scaled.recycle()
         bitmap.recycle()
         val bytes = out.toByteArray()
-        require(bytes.size <= 8 * 1024 * 1024) { "An image is still too large after compression." }
+        require(bytes.size <= 6 * 1024 * 1024) { "An image is still too large after compression. Please choose a smaller image." }
         return bytes
     }
 
@@ -372,18 +372,17 @@ class OnlineCampusClient(context: Context) {
     }
 
     private fun createSignedUrls(paths: List<String>): Map<String, String> {
-        val body = JSONObject().apply {
-            put("expiresIn", 3600)
-            put("paths", JSONArray(paths))
-        }
-        val json = request("POST", "/storage/v1/object/sign/" + ANNOUNCEMENT_BUCKET, body.toString(), null)
-        val arr = json.optJSONArray("signedURLs") ?: json.optJSONArray("signedUrls") ?: JSONArray()
         val result = mutableMapOf<String, String>()
-        for (i in 0 until arr.length()) {
-            val o = arr.optJSONObject(i) ?: continue
-            val path = o.optString("path")
-            val signed = o.optString("signedURL").ifBlank { o.optString("signedUrl") }
-            if (path.isNotBlank() && signed.isNotBlank()) {
+        paths.forEach { path ->
+            val encodedPath = path.split('/').joinToString("/") { encodePath(it) }
+            val json = request(
+                "POST",
+                "/storage/v1/object/sign/" + ANNOUNCEMENT_BUCKET + "/" + encodedPath,
+                JSONObject().put("expiresIn", 3600).toString(),
+                null
+            )
+            val signed = json.optString("signedURL").ifBlank { json.optString("signedUrl") }
+            if (signed.isNotBlank()) {
                 result[path] = if (signed.startsWith("http")) signed else SUPABASE_URL + "/storage/v1" + signed
             }
         }
