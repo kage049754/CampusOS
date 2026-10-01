@@ -172,9 +172,13 @@ class OnlineCampusClient(context: Context) {
     }
 
     suspend fun deleteAnnouncement(id: String): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
+        try {
             requestText("DELETE", "/rest/v1/announcements?id=" + encode(id), null, "return=minimal")
-        }.onFailure { lastError = it.message ?: "Could not delete announcement." }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            lastError = e.message ?: "Could not delete announcement."
+            Result.failure<Unit>(e)
+        }
     }
 
     fun signOut() {
