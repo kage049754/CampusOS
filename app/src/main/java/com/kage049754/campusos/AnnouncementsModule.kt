@@ -147,7 +147,8 @@ fun AnnouncementsScreen(onBack: () -> Unit) {
     }
 
     if (showComposer) OnlineAnnouncementComposer(
-        onDismiss = { showComposer = false },
+        saving = busy,
+        onDismiss = { if (!busy) showComposer = false },
         onSave = { body, links, expiry, images ->
             scope.launch {
                 busy = true
@@ -299,10 +300,15 @@ private fun AnnouncementFullscreenImage(url: String, onDismiss: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun OnlineAnnouncementComposer(onDismiss: () -> Unit, onSave: (String, List<String>, Long?, List<Uri>) -> Unit) {
+private fun OnlineAnnouncementComposer(
+    saving: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (String, List<String>, Long?, List<Uri>) -> Unit
+) {
     var body by remember { mutableStateOf("") }
     var linksText by remember { mutableStateOf("") }
-    var expires by remember { mutableStateOf("") }
+    var expiryDays by remember { mutableStateOf<Int?>(null) }
+    var expiryExpanded by remember { mutableStateOf(false) }
     var selectedImages by remember { mutableStateOf<List<Uri>>(emptyList()) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> selectedImages = uris.distinct().take(4) }
     AlertDialog(
@@ -313,21 +319,55 @@ private fun OnlineAnnouncementComposer(onDismiss: () -> Unit, onSave: (String, L
                 Text("Up to 4 images. Images are resized and compressed before upload.", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 OutlinedTextField(body, { body = it }, Modifier.fillMaxWidth().heightIn(min = 120.dp), label = { Text("Announcement") })
                 OutlinedTextField(linksText, { linksText = it }, Modifier.fillMaxWidth(), minLines = 2, label = { Text("Links (one per line)") })
-                OutlinedTextField(expires, { expires = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Expire date (optional)") }, placeholder = { Text("yyyy-MM-dd HH:mm") })
-                OutlinedButton(onClick = { launcher.launch(arrayOf("image/*")) }) {
+                Box {
+                    OutlinedButton(
+                        onClick = { expiryExpanded = true },
+                        enabled = !saving,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Schedule, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (expiryDays == null) "No expiry" else "Expires after " + expiryDays + " day" + if (expiryDays == 1) "" else "s")
+                    }
+                    DropdownMenu(
+                        expanded = expiryExpanded,
+                        onDismissRequest = { expiryExpanded = false },
+                        modifier = Modifier.heightIn(max = 360.dp)
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("No expiry") },
+                            onClick = { expiryDays = null; expiryExpanded = false }
+                        )
+                        (1..31).forEach { days ->
+                            DropdownMenuItem(
+                                text = { Text("$days day" + if (days == 1) "" else "s") },
+                                onClick = { expiryDays = days; expiryExpanded = false }
+                            )
+                        }
+                    }
+                }
+                OutlinedButton(onClick = { launcher.launch(arrayOf("image/*")) }, enabled = !saving) {
                     Icon(Icons.Default.AddPhotoAlternate, null); Spacer(Modifier.width(6.dp)); Text("Choose images (" + selectedImages.size + "/4)")
                 }
                 if (selectedImages.isNotEmpty()) Text(selectedImages.joinToString("\n") { it.lastPathSegment ?: "Selected image" }, style = MaterialTheme.typography.bodySmall)
-                Text("Expired posts are removed automatically by the server.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Expired posts are removed automatically. You can choose 1–31 days or keep the post permanently.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         confirmButton = {
             Button(onClick = {
-                val expiry = expires.trim().takeIf { it.isNotBlank() }?.let { runCatching { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).parse(it)?.time }.getOrNull() }
+                val expiry = expiryDays?.let { System.currentTimeMillis() + it.toLong() * 24L * 60L * 60L * 1000L }
                 onSave(body.trim(), linksText.lines().map { it.trim() }.filter { it.startsWith("http://") || it.startsWith("https://") }, expiry, selectedImages)
-            }, enabled = body.isNotBlank()) { Text("Post") }
+            }, enabled = body.isNotBlank() && !saving) {
+                if (saving) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Posting…")
+                } else {
+                    Text("Post")
+                }
+            }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !saving) { Text("Cancel") } }
     )
 }
 
