@@ -922,26 +922,165 @@ fun ScheduleTableSettingsDialog(store: LocalStore, done: () -> Unit) {
 @Composable
 fun ProfileDialog(store: LocalStore, done: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val client = remember { OnlineCampusClient(context) }
+    val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf(store.profileName()) }
     var studentId by remember { mutableStateOf(store.profileStudentId()) }
     var section by remember { mutableStateOf(store.profileSection()) }
     var photoPath by remember { mutableStateOf(store.profilePhotoPath()) }
+    var onlineProfile by remember { mutableStateOf<OnlineProfile?>(null) }
+    var showAccount by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf("") }
+
+    fun syncAccountProfile(profile: OnlineProfile?) {
+        onlineProfile = profile
+        if (profile != null) {
+            name = profile.fullName
+            studentId = profile.schoolId
+            section = profile.yearSection
+            scope.launch {
+                val target = File(context.filesDir, "profile_photo")
+                client.syncOwnProfilePhotoToFile(target).onSuccess { path ->
+                    if (path.isNotBlank()) {
+                        photoPath = path
+                        store.setProfile(name.trim(), studentId.trim(), section.trim(), path)
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (client.isSignedIn()) {
+            client.restoreSession().onSuccess { syncAccountProfile(it) }
+        }
+    }
+
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         val target = File(context.filesDir, "profile_photo")
-        runCatching { context.contentResolver.openInputStream(uri)?.use { input -> target.outputStream().use { output -> input.copyTo(output) } }; photoPath = target.absolutePath }
-    }
-    val bitmap = remember(photoPath) { if (photoPath.isNotBlank()) runCatching { BitmapFactory.decodeFile(photoPath) }.getOrNull() else null }
-    AlertDialog(onDismissRequest = done, title = { Text("Profile") }, text = {
-        Column(Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (bitmap != null) Image(bitmap.asImageBitmap(), "Profile photo", Modifier.size(96.dp), contentScale = ContentScale.Crop)
-            else Box(Modifier.size(96.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(50)), contentAlignment = Alignment.Center) { Icon(Icons.Default.Person, null, Modifier.size(48.dp)) }
-            OutlinedButton(onClick = { picker.launch(arrayOf("image/*")) }) { Icon(Icons.Default.PhotoCamera, null); Spacer(Modifier.width(6.dp)); Text("Upload profile photo") }
-            OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Name") })
-            OutlinedTextField(studentId, { studentId = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Student ID") })
-            OutlinedTextField(section, { section = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Section") })
+        val copied = runCatching {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
+            }
+            target.absolutePath
+        }.getOrNull()
+        if (copied == null) {
+            message = "Could not read the selected photo."
+            return@rememberLauncherForActivityResult
         }
-    }, confirmButton = { Button(onClick = { store.setProfile(name.trim(), studentId.trim(), section.trim(), photoPath); done() }) { Text("Save") } }, dismissButton = { TextButton(done) { Text("Cancel") } })
+        photoPath = copied
+        store.setProfile(name.trim(), studentId.trim(), section.trim(), copied)
+        if (onlineProfile?.role in listOf("leader", "admin") && onlineProfile?.status == "approved") {
+            scope.launch {
+                busy = true
+                client.uploadProfilePhoto(uri)
+                    .onSuccess {
+                        message = "Profile photo uploaded and synced to your CampusOS account."
+                        client.restoreSession().onSuccess { onlineProfile = it }
+                    }
+                    .onFailure { message = it.message ?: "Profile photo upload failed." }
+                busy = false
+            }
+        }
+    }
+
+    val bitmap = remember(photoPath) {
+        if (photoPath.isNotBlank()) runCatching { BitmapFactory.decodeFile(photoPath) }.getOrNull() else null
+    }
+
+    AlertDialog(
+        onDismissRequest = done,
+        title = { Text("Profile") },
+        text = {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 680.dp).verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (bitmap != null) {
+                    Image(bitmap.asImageBitmap(), "Profile photo", Modifier.size(96.dp), contentScale = ContentScale.Crop)
+                } else {
+                    Box(Modifier.size(96.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(50)), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Person, null, Modifier.size(48.dp))
+                    }
+                }
+
+                if (onlineProfile?.role in listOf("leader", "admin") && onlineProfile?.status == "approved") {
+                    OutlinedButton(onClick = { picker.launch(arrayOf("image/*")) }, enabled = !busy) {
+                        Icon(Icons.Default.PhotoCamera, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (busy) "Syncing photo…" else "Upload & sync profile photo")
+                    }
+                }
+
+                Text(
+                    if (onlineProfile == null) "CampusOS account not connected" else "CampusOS account connected",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+
+                if (onlineProfile == null) {
+                    Text("Register or sign in here. Your registered name, student number and section will automatically fill this profile.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(onClick = { showAccount = true }) {
+                        Icon(Icons.Default.AccountCircle, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Sign in / Register")
+                    }
+                } else {
+                    Text(onlineProfile!!.fullName.ifBlank { "CampusOS user" }, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        listOf(onlineProfile!!.schoolId, onlineProfile!!.yearSection).filter { it.isNotBlank() }.joinToString(" • "),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text("Role: " + onlineProfile!!.role.replaceFirstChar { it.uppercase() } +
+                        if (onlineProfile!!.title.isNotBlank()) " • " + onlineProfile!!.title else "")
+                    Text("Status: " + onlineProfile!!.status.uppercase(), fontWeight = FontWeight.SemiBold)
+                    if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { showAccount = true }) { Text("Account") }
+                        TextButton(onClick = {
+                            client.signOut()
+                            onlineProfile = null
+                            message = "Signed out."
+                        }) { Text("Log out") }
+                    }
+                }
+
+                OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Profile name") }, enabled = onlineProfile == null)
+                OutlinedTextField(studentId, { studentId = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Student number") }, enabled = onlineProfile == null)
+                OutlinedTextField(section, { section = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Section") }, enabled = onlineProfile == null)
+
+                if (onlineProfile == null) {
+                    Text("You can still use a local/offline profile without an online account.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Text("These details are synced from your registered CampusOS account.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                store.setProfile(name.trim(), studentId.trim(), section.trim(), photoPath)
+                done()
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(done) { Text("Close") } }
+    )
+
+    if (showAccount) {
+        OnlineAccountDialog(
+            client = client,
+            profile = onlineProfile,
+            onClose = { showAccount = false },
+            onChanged = {
+                scope.launch {
+                    client.restoreSession().onSuccess { syncAccountProfile(it) }
+                }
+            },
+            onAdmin = { showAccount = false }
+        )
+    }
 }
 
 @Composable
