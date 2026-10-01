@@ -665,7 +665,8 @@ fun CampusOSApp(activity: Activity) {
                             { theme = it; store.setTheme(it) },
                             { locked = true },
                             { showScheduleSettings = true },
-                            { showScheduleManager = true }
+                            { showScheduleManager = true },
+                            { screenName = Screen.ADMIN.name }
                         )
                     }
                 }
