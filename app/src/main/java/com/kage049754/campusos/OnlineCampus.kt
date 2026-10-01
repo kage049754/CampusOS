@@ -96,62 +96,8 @@ class OnlineCampusClient(context: Context) {
             val user = json.optJSONObject("user")
             val id = user?.optString("id").orEmpty()
             if (token.isNotBlank() && refresh.isNotBlank() && id.isNotBlank()) saveSession(AuthSession(token, refresh, id))
-            "A 6-digit confirmation code was sent to your email. Enter it in CampusOS to verify your account."
+            "Registration successful. Your account must be approved by a CampusOS administrator before online announcements are available."
         }.onFailure { lastError = it.message ?: "Registration failed." }
-    }
-
-    suspend fun verifySignupOtp(email: String, token: String): Result<OnlineProfile> = withContext(Dispatchers.IO) {
-        runCatching {
-            require(token.trim().matches(Regex("\\d{6}"))) { "Enter the 6-digit confirmation code." }
-            val body = JSONObject().apply {
-                put("type", "email")
-                put("email", email.trim())
-                put("token", token.trim())
-            }
-            val json = request("POST", "/auth/v1/verify", body.toString(), null, false)
-            val access = json.optString("access_token")
-            val refresh = json.optString("refresh_token")
-            val user = json.optJSONObject("user")
-            val id = user?.optString("id").orEmpty()
-            require(access.isNotBlank() && refresh.isNotBlank() && id.isNotBlank()) { "Email verification did not return a valid session." }
-            saveSession(AuthSession(access, refresh, id))
-            loadProfile()
-        }.onFailure { lastError = it.message ?: "Email verification failed." }
-    }
-
-    suspend fun resendSignupConfirmation(email: String): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
-            val body = JSONObject().apply {
-                put("type", "signup")
-                put("email", email.trim())
-            }
-            request("POST", "/auth/v1/resend", body.toString(), null, false)
-        }.onFailure { lastError = it.message ?: "Could not resend confirmation code." }.map { Unit }
-    }
-
-    fun handleAuthCallback(uri: Uri): Result<Unit> {
-        return runCatching {
-            val fragment = uri.fragment.orEmpty()
-            val fragmentUri = if (fragment.isBlank()) null else Uri.parse("https://campusos.local/?" + fragment.removePrefix("#"))
-            val access = uri.getQueryParameter("access_token")
-                ?: fragmentUri?.getQueryParameter("access_token").orEmpty()
-            val refresh = uri.getQueryParameter("refresh_token")
-                ?: fragmentUri?.getQueryParameter("refresh_token").orEmpty()
-            val error = uri.getQueryParameter("error")
-                ?: fragmentUri?.getQueryParameter("error").orEmpty()
-            val errorDescription = uri.getQueryParameter("error_description")
-                ?: fragmentUri?.getQueryParameter("error_description").orEmpty()
-            if (error.isNotBlank()) error(errorDescription.ifBlank { error })
-            require(access.isNotBlank() && refresh.isNotBlank()) { "Email confirmation did not return a valid session." }
-            val id = runCatching {
-                val payload = access.split(".").getOrNull(1).orEmpty()
-                val padded = payload + "=".repeat((4 - payload.length % 4) % 4)
-                val json = String(android.util.Base64.decode(padded, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP), Charsets.UTF_8)
-                JSONObject(json).optString("sub")
-            }.getOrDefault("")
-            require(id.isNotBlank()) { "Email confirmation returned an invalid access token." }
-            saveSession(AuthSession(access, refresh, id))
-        }.onFailure { lastError = it.message ?: "Email confirmation failed." }.map { Unit }
     }
 
     suspend fun signIn(email: String, password: String): Result<OnlineProfile> = withContext(Dispatchers.IO) {
