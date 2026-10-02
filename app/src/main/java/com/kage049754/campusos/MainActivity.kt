@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -466,7 +468,7 @@ class MainActivity : ComponentActivity() {
 
 enum class Screen(val label: String) {
     HOME("Home"), SCHEDULE("Class Schedule"), TASKS("Notes"), ACADEMICS("Subjects"),
-    FILES("Files"), SETTINGS("Settings")
+    FILES("Files"), CHAT("Chats"), SETTINGS("Settings")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -620,6 +622,7 @@ fun CampusOSApp(activity: Activity) {
                     NavigationBar {
                         listOf(
                             Screen.HOME,
+                            Screen.CHAT,
                             Screen.SCHEDULE,
                             Screen.TASKS,
                             Screen.ACADEMICS
@@ -653,6 +656,7 @@ fun CampusOSApp(activity: Activity) {
                 ) { targetScreen ->
                     when (Screen.valueOf(targetScreen)) {
                         Screen.HOME -> HomeScreen(store, { screenName = it.name }, homeEditRequest)
+                        Screen.CHAT -> PrivateGcAndroidScreen()
                         Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }, { showScheduleDetails = true }) { search = "" }
                         Screen.TASKS -> TasksScreen(store, search, { search = "" }, { id -> subjectPageId = id; subjectPageMode = 0 })
                         Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 })
@@ -697,6 +701,7 @@ fun CampusOSApp(activity: Activity) {
     }
 }private fun iconFor(s: Screen) = when(s) {
     Screen.HOME -> Icons.Default.Home
+    Screen.CHAT -> Icons.Default.Chat
     Screen.SCHEDULE -> Icons.Default.CalendarMonth
     Screen.TASKS -> Icons.Default.CheckCircle
     Screen.ACADEMICS -> Icons.Default.School
@@ -3315,3 +3320,25 @@ fun HomeTasksTile(pendingTasks: List<Record>) {
     }
 }
 
+
+
+@Composable
+fun PrivateGcAndroidScreen() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    AndroidView(
+        modifier = Modifier.fillMaxSize(),
+        factory = {
+            WebView(context).apply {
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.allowFileAccess = false
+                settings.allowContentAccess = false
+                webViewClient = WebViewClient()
+                loadUrl("https://kage049754.github.io/CampusOS-Web/#chat")
+            }
+        },
+        update = { webView ->
+            if (webView.url == null) webView.loadUrl("https://kage049754.github.io/CampusOS-Web/#chat")
+        }
+    )
+}
