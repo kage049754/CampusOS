@@ -20,6 +20,12 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <activity-alias android:name=".ForestLauncher" android:enabled="false" android:exported="true" android:icon="@mipmap/ic_launcher_forest" android:roundIcon="@mipmap/ic_launcher_forest" android:targetActivity=".MainActivity">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".SunsetLauncher" android:enabled="false" android:exported="true" android:icon="@mipmap/ic_launcher_sunset" android:roundIcon="@mipmap/ic_launcher_sunset" android:targetActivity=".MainActivity">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
         <receiver android:name=".CampusReminderReceiver" android:exported="false"/>
         <receiver android:name=".CampusWidgetTickReceiver" android:exported="false"/>
         <receiver android:name=".CampusBootReceiver" android:exported="false">
