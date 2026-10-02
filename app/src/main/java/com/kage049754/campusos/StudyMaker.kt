@@ -351,6 +351,9 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                 }
             }
             "result" -> Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+                if (busy) {
+                    LaunchedEffect(resultTitle) { generate(resultTitle) }
+                }
                 if (busy) Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(); Spacer(Modifier.height(12.dp)); Text("Creating " + resultTitle + "…") }
                 } else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
