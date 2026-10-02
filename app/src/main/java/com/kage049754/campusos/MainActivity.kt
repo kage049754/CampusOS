@@ -302,12 +302,12 @@ class LocalStore(context: Context) {
     fun resetHomeLayout() { prefs.edit().remove("home_layout_order").remove("home_hidden_tiles").apply(); revision++ }
     fun setTheme(v: String) { prefs.edit().putString("theme", v).apply(); revision++ }
     fun toolOrder(): List<String> {
-        val allowed = listOf("subjects", "calculator", "budget")
+        val allowed = listOf("study_maker", "subjects", "calculator", "budget")
         val saved = (prefs.getString("tool_order", "") ?: "").split(",").filter { it in allowed }
         return (saved + allowed).distinct()
     }
     fun setToolOrder(order: List<String>) {
-        prefs.edit().putString("tool_order", order.filter { it in listOf("subjects","calculator","budget") }.distinct().joinToString(",")).apply()
+        prefs.edit().putString("tool_order", order.filter { it in listOf("study_maker","subjects","calculator","budget") }.distinct().joinToString(",")).apply()
         revision++
     }
 
@@ -538,7 +538,7 @@ class MainActivity : ComponentActivity() {
 }
 
 enum class Screen(val label: String) {
-    HOME("Home"), SCHEDULE("Schedule"), TASKS("Notes"), ACADEMICS("Tools"),
+    HOME("Home"), SCHEDULE("Schedule"), TASKS("Notes"), ACADEMICS("Tools"), STUDY_MAKER("Study Maker"),
     FILES("Files"), CHAT("Chats"), ANNOUNCEMENTS("Announcements"), ADMIN("Campus Management"), SETTINGS("Settings")
 }
 
@@ -610,6 +610,7 @@ fun CampusOSApp(activity: Activity) {
                 showHomeSettings = true
             }
             scheduleFullscreen -> scheduleFullscreen = false
+            screen == Screen.STUDY_MAKER -> screenName = Screen.ACADEMICS.name
             screen != Screen.HOME -> screenName = Screen.HOME.name
         }
     }
@@ -685,7 +686,7 @@ fun CampusOSApp(activity: Activity) {
         Scaffold(
             contentWindowInsets = WindowInsets.safeDrawing,
             topBar = {
-                if (!scheduleFullscreen) {
+                if (!scheduleFullscreen && screen != Screen.STUDY_MAKER) {
                     TopAppBar(
                         title = { Text("CampusOS", fontWeight = FontWeight.Bold) },
                         actions = {
@@ -713,7 +714,7 @@ fun CampusOSApp(activity: Activity) {
                 }
             },
             bottomBar = {
-                if (!scheduleFullscreen) {
+                if (!scheduleFullscreen && screen != Screen.STUDY_MAKER) {
                     NavigationBar {
                         listOf(
                             Screen.HOME,
@@ -757,6 +758,7 @@ fun CampusOSApp(activity: Activity) {
                 ) { targetScreen ->
                     when (Screen.valueOf(targetScreen)) {
                         Screen.HOME -> HomeScreen(store, { screenName = it.name }, homeEditRequest)
+                        Screen.STUDY_MAKER -> StudyMakerScreen(activity, store) { screenName = Screen.ACADEMICS.name }
                         Screen.CHAT -> {
                             if (campusSession == null) {
                                 NativeLoginScreen { session ->
@@ -807,7 +809,7 @@ fun CampusOSApp(activity: Activity) {
                         )
                     }
                 }
-                if (!scheduleFullscreen && screen != Screen.HOME && screen != Screen.SETTINGS && screen != Screen.FILES && screen != Screen.TASKS) {
+                if (!scheduleFullscreen && screen != Screen.HOME && screen != Screen.SETTINGS && screen != Screen.FILES && screen != Screen.TASKS && screen != Screen.STUDY_MAKER) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                         OutlinedTextField(
                             value = search.takeUnless { it == "__ADD__" } ?: "",
