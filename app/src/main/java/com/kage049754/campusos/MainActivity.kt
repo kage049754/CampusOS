@@ -83,6 +83,17 @@ data class FileRecord(val name: String, val size: Long, val file: File? = null)
 
 data class SubjectNote(val id: Long, val title: String, val body: String, val updatedAt: Long, val favorite: Boolean = false, val order: Long = 0L)
 
+
+data class BudgetEntry(
+    val id: Long = System.currentTimeMillis(),
+    val type: String,
+    val amount: Double,
+    val category: String = "",
+    val note: String = "",
+    val date: String = "",
+    val target: String = ""
+)
+
 private val CampusShapes = Shapes(
     extraSmall = RoundedCornerShape(10.dp),
     small = RoundedCornerShape(12.dp),
@@ -271,6 +282,67 @@ class LocalStore(context: Context) {
     fun setHomeHiddenTiles(hidden: Set<String>) { prefs.edit().putString("home_hidden_tiles", hidden.joinToString(",")).apply(); revision++ }
     fun resetHomeLayout() { prefs.edit().remove("home_layout_order").remove("home_hidden_tiles").apply(); revision++ }
     fun setTheme(v: String) { prefs.edit().putString("theme", v).apply(); revision++ }
+
+    fun budgetPeriod() = prefs.getString("budget_period", "Weekly") ?: "Weekly"
+    fun budgetAllowance() = prefs.getFloat("budget_allowance", 0f).toDouble()
+    fun setBudgetPlan(period: String, amount: Double) {
+        prefs.edit().putString("budget_period", period).putFloat("budget_allowance", amount.toFloat().coerceAtLeast(0f)).apply()
+        revision++
+    }
+    fun budgetTargetName() = prefs.getString("budget_target_name", "") ?: ""
+    fun budgetTargetAmount() = prefs.getFloat("budget_target_amount", 0f).toDouble()
+    fun budgetTargetSaved() = prefs.getFloat("budget_target_saved", 0f).toDouble()
+    fun setBudgetTarget(name: String, amount: Double) {
+        prefs.edit().putString("budget_target_name", name).putFloat("budget_target_amount", amount.toFloat().coerceAtLeast(0f)).apply()
+        revision++
+    }
+    fun addBudgetTargetSaved(amount: Double) {
+        prefs.edit().putFloat("budget_target_saved", (budgetTargetSaved() + amount).toFloat().coerceAtLeast(0f)).apply()
+        revision++
+    }
+    fun budgetEntries(): List<BudgetEntry> = runCatching {
+        val raw = prefs.getString("budget_entries", "[]") ?: "[]"
+        val a = JSONArray(raw)
+        (0 until a.length()).mapNotNull { i ->
+            a.optJSONObject(i)?.let { o ->
+                BudgetEntry(
+                    id = o.optLong("id"),
+                    type = o.optString("type"),
+                    amount = o.optDouble("amount", 0.0),
+                    category = o.optString("category"),
+                    note = o.optString("note"),
+                    date = o.optString("date"),
+                    target = o.optString("target")
+                )
+            }
+        }.sortedByDescending { it.id }
+    }.getOrElse { emptyList() }
+    fun addBudgetEntry(entry: BudgetEntry) {
+        val a = JSONArray()
+        budgetEntries().forEach { e ->
+            a.put(JSONObject().apply {
+                put("id", e.id); put("type", e.type); put("amount", e.amount)
+                put("category", e.category); put("note", e.note); put("date", e.date); put("target", e.target)
+            })
+        }
+        a.put(JSONObject().apply {
+            put("id", entry.id); put("type", entry.type); put("amount", entry.amount)
+            put("category", entry.category); put("note", entry.note); put("date", entry.date); put("target", entry.target)
+        })
+        prefs.edit().putString("budget_entries", a.toString()).apply()
+        revision++
+    }
+    fun deleteBudgetEntry(id: Long) {
+        val a = JSONArray()
+        budgetEntries().filterNot { it.id == id }.forEach { e ->
+            a.put(JSONObject().apply {
+                put("id", e.id); put("type", e.type); put("amount", e.amount)
+                put("category", e.category); put("note", e.note); put("date", e.date); put("target", e.target)
+            })
+        }
+        prefs.edit().putString("budget_entries", a.toString()).apply()
+        revision++
+    }
     fun dynamicColorEnabled() = prefs.getBoolean("dynamic_color_enabled", false)
     fun setDynamicColorEnabled(v: Boolean) { prefs.edit().putBoolean("dynamic_color_enabled", v).apply(); revision++ }
     fun lockEnabled() = prefs.getBoolean("lock", false)
@@ -2207,8 +2279,8 @@ fun AcademicsScreen(
     val revision = store.revision
     var tab by remember { mutableIntStateOf(0) }
     var refresh by remember { mutableIntStateOf(0) }
-    val labels = listOf("Subjects", "Reviewers", "Calculator")
-    val keys = listOf("subjects", "reviewers", "calculator")
+    val labels = listOf("Subjects", "Reviewers", "Calculator", "Budget")
+    val keys = listOf("subjects", "reviewers", "calculator", "budget")
     val list = remember(refresh, revision, query, tab) {
         store.get(keys[tab]).filter {
             query.isBlank() || query == "__ADD__" ||
@@ -2220,8 +2292,11 @@ fun AcademicsScreen(
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
             Text("Tools", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text(
-                if (tab == 0) "Your subjects, notes, and lecture files"
-                else "Reviewers and study tools",
+                when (tab) {
+                    0 -> "Your subjects, notes, and lecture files"
+                    3 -> "Track allowance, expenses, savings, and targets"
+                    else -> "Reviewers and study tools"
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -2239,6 +2314,8 @@ fun AcademicsScreen(
 
         if (tab == 2) {
             CalculatorScreen()
+        } else if (tab == 3) {
+            BudgetScreen(store)
         } else if (tab == 1) {
             Card(
                 Modifier.fillMaxWidth().padding(16.dp),
@@ -2274,7 +2351,7 @@ fun AcademicsScreen(
             }
         }
 
-        if (tab != 2 && list.isEmpty()) {
+        if (tab != 2 && tab != 3 && list.isEmpty()) {
             Box(
                 Modifier.fillMaxSize().padding(16.dp),
                 contentAlignment = Alignment.Center
@@ -2318,7 +2395,7 @@ fun AcademicsScreen(
                     }
                 }
             }
-        } else {
+        } else if (tab != 3) {
             val sortedList = list.sortedWith(
                 compareByDescending<Record> { store.subjectFavorite(it.id) }
                     .thenBy { it.title.trim().lowercase(Locale.getDefault()) }
@@ -2433,6 +2510,346 @@ fun AcademicsScreen(
 
 
 @OptIn(ExperimentalMaterial3Api::class)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BudgetScreen(store: LocalStore) {
+    val revision = store.revision
+    var refresh by remember { mutableIntStateOf(0) }
+    var showPlan by remember { mutableStateOf(false) }
+    var showExpense by remember { mutableStateOf(false) }
+    var showSaving by remember { mutableStateOf(false) }
+    var showTarget by remember { mutableStateOf(false) }
+
+    val entries = remember(revision, refresh) { store.budgetEntries() }
+    val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) }
+    val period = store.budgetPeriod()
+    val allowance = store.budgetAllowance()
+
+    fun inCurrentPeriod(date: String): Boolean {
+        if (date.isBlank()) return false
+        val parsed = runCatching { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(date) }.getOrNull() ?: return false
+        val now = Calendar.getInstance()
+        val then = Calendar.getInstance().apply { time = parsed }
+        return when (period) {
+            "Daily" -> now.get(Calendar.YEAR) == then.get(Calendar.YEAR) &&
+                now.get(Calendar.DAY_OF_YEAR) == then.get(Calendar.DAY_OF_YEAR)
+            "Monthly" -> now.get(Calendar.YEAR) == then.get(Calendar.YEAR) &&
+                now.get(Calendar.MONTH) == then.get(Calendar.MONTH)
+            else -> {
+                val nowWeek = now.get(Calendar.WEEK_OF_YEAR)
+                val thenWeek = then.get(Calendar.WEEK_OF_YEAR)
+                now.get(Calendar.YEAR) == then.get(Calendar.YEAR) && nowWeek == thenWeek
+            }
+        }
+    }
+
+    val current = entries.filter { inCurrentPeriod(it.date) }
+    val spent = current.filter { it.type == "expense" }.sumOf { it.amount }
+    val saved = current.filter { it.type == "saving" }.sumOf { it.amount }
+    val remaining = allowance - spent - saved
+    val targetName = store.budgetTargetName()
+    val targetAmount = store.budgetTargetAmount()
+    val targetSaved = store.budgetTargetSaved()
+    val targetRemaining = (targetAmount - targetSaved).coerceAtLeast(0.0)
+    val targetProgress = if (targetAmount > 0) (targetSaved / targetAmount).coerceIn(0.0, 1.0) else 0.0
+    val categories = listOf("Food", "Transportation", "School", "Projects", "Bills", "Personal", "Other")
+    val categoryTotals = categories.map { category ->
+        category to current.filter { it.type == "expense" && it.category == category }.sumOf { it.amount }
+    }.filter { it.second > 0 }
+    val maxCategory = categoryTotals.maxOfOrNull { it.second } ?: 1.0
+
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Card(
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+            ) {
+                Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Student Budget", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                            Text("$period allowance", color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .75f))
+                        }
+                        IconButton(onClick = { showPlan = true }) {
+                            Icon(Icons.Default.Edit, "Edit allowance")
+                        }
+                    }
+                    Text("₱" + String.format(Locale.getDefault(), "%,.2f", allowance), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        BudgetMiniStat("Spent", spent)
+                        BudgetMiniStat("Saved", saved)
+                        BudgetMiniStat("Left", remaining)
+                    }
+                }
+            }
+        }
+
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = { showExpense = true }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Remove, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Expense")
+                }
+                OutlinedButton(onClick = { showSaving = true }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Savings, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Save")
+                }
+            }
+        }
+
+        item {
+            Card(shape = MaterialTheme.shapes.medium, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.TrackChanges, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Savings target", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = { showTarget = true }) { Text(if (targetName.isBlank()) "Add" else "Edit") }
+                    }
+                    if (targetName.isBlank() || targetAmount <= 0) {
+                        Text("Set an item you want to save for, like a phone, laptop, or school project.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        Text(targetName, fontWeight = FontWeight.SemiBold)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("₱" + String.format(Locale.getDefault(), "%,.2f", targetSaved))
+                            Text("₱" + String.format(Locale.getDefault(), "%,.2f", targetAmount))
+                        }
+                        LinearProgressIndicator(
+                            progress = { targetProgress.toFloat() },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            if (targetRemaining <= 0) "Target reached!"
+                            else "₱" + String.format(Locale.getDefault(), "%,.2f", targetRemaining) + " left to reach your target",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(shape = MaterialTheme.shapes.medium, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Text("Spending breakdown", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    if (categoryTotals.isEmpty()) {
+                        Text("No expenses recorded for this $period yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        categoryTotals.forEach { (category, amount) ->
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(category, style = MaterialTheme.typography.bodyMedium)
+                                    Text("₱" + String.format(Locale.getDefault(), "%,.2f", amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                }
+                                LinearProgressIndicator(
+                                    progress = { (amount / maxCategory).toFloat().coerceIn(0f, 1f) },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(shape = MaterialTheme.shapes.medium, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Recent activity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    if (entries.isEmpty()) {
+                        Text("Your expenses and savings will appear here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        entries.take(8).forEach { entry ->
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    Modifier.size(38.dp),
+                                    shape = MaterialTheme.shapes.small,
+                                    color = if (entry.type == "saving") MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.errorContainer
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            if (entry.type == "saving") Icons.Default.Savings else Icons.Default.ReceiptLong,
+                                            null
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(entry.note.ifBlank { entry.category.ifBlank { if (entry.type == "saving") "Saving" else "Expense" } }, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        listOf(entry.category, entry.date).filter { it.isNotBlank() }.joinToString(" • "),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Text("₱" + String.format(Locale.getDefault(), "%,.2f", entry.amount), fontWeight = FontWeight.SemiBold)
+                                IconButton(onClick = {
+                                    store.deleteBudgetEntry(entry.id)
+                                    if (entry.type == "saving" && entry.target.isNotBlank()) {
+                                        store.addBudgetTargetSaved(-entry.amount)
+                                    }
+                                    refresh++
+                                }) {
+                                    Icon(Icons.Default.DeleteOutline, "Delete")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showPlan) BudgetPlanDialog(store) { showPlan = false; refresh++ }
+    if (showExpense) BudgetEntryDialog(store, "Expense", categories, today) { showExpense = false; refresh++ }
+    if (showSaving) BudgetEntryDialog(store, "Saving", categories, today, targetName) { showSaving = false; refresh++ }
+    if (showTarget) BudgetTargetDialog(store) { showTarget = false; refresh++ }
+}
+
+@Composable
+private fun BudgetMiniStat(label: String, amount: Double) {
+    Column(Modifier.weight(1f)) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .72f))
+        Text(
+            "₱" + String.format(Locale.getDefault(), "%,.0f", amount.coerceAtLeast(0.0)),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onPrimaryContainer
+        )
+    }
+}
+
+@Composable
+private fun BudgetPlanDialog(store: LocalStore, done: () -> Unit) {
+    var period by remember { mutableStateOf(store.budgetPeriod()) }
+    var amount by remember { mutableStateOf(if (store.budgetAllowance() > 0) store.budgetAllowance().toString() else "") }
+    val periods = listOf("Daily", "Weekly", "Monthly")
+    AlertDialog(
+        onDismissRequest = done,
+        title = { Text("Allowance") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Choose how often you receive this allowance.")
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    periods.forEach { option ->
+                        FilterChip(selected = period == option, onClick = { period = option }, label = { Text(option) })
+                    }
+                }
+                OutlinedTextField(
+                    value = amount,
+                    onValueChange = { amount = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                    label = { Text("Amount (₱)") },
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                store.setBudgetPlan(period, amount.toDoubleOrNull() ?: 0.0)
+                done()
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = done) { Text("Cancel") } }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BudgetEntryDialog(
+    store: LocalStore,
+    typeLabel: String,
+    categories: List<String>,
+    date: String,
+    targetName: String = "",
+    done: () -> Unit
+) {
+    var amount by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf(if (typeLabel == "Saving") "Savings" else categories.first()) }
+    var note by remember { mutableStateOf("") }
+    var expanded by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = done,
+        title = { Text("Add $typeLabel") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = amount,
+                    onValueChange = { amount = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                    label = { Text("Amount (₱)") },
+                    singleLine = true
+                )
+                Box {
+                    OutlinedButton(onClick = { expanded = true }) { Text(category) }
+                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        val options = if (typeLabel == "Saving") listOf("Savings") + categories else categories
+                        options.forEach { option ->
+                            DropdownMenuItem(text = { Text(option) }, onClick = { category = option; expanded = false })
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text(if (typeLabel == "Saving") "What are you saving for? (optional)" else "Note (optional)") },
+                    singleLine = true
+                )
+                if (typeLabel == "Saving" && targetName.isNotBlank()) {
+                    Text("Target: $targetName", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val value = amount.toDoubleOrNull() ?: 0.0
+                if (value > 0) {
+                    val target = if (typeLabel == "Saving" && targetName.isNotBlank()) targetName else ""
+                    store.addBudgetEntry(BudgetEntry(type = typeLabel.lowercase(), amount = value, category = category, note = note.trim(), date = date, target = target))
+                    if (target.isNotBlank()) store.addBudgetTargetSaved(value)
+                }
+                done()
+            }) { Text("Add") }
+        },
+        dismissButton = { TextButton(onClick = done) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun BudgetTargetDialog(store: LocalStore, done: () -> Unit) {
+    var name by remember { mutableStateOf(store.budgetTargetName()) }
+    var amount by remember { mutableStateOf(if (store.budgetTargetAmount() > 0) store.budgetTargetAmount().toString() else "") }
+    AlertDialog(
+        onDismissRequest = done,
+        title = { Text("Savings target") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Target item") }, singleLine = true)
+                OutlinedTextField(
+                    value = amount,
+                    onValueChange = { amount = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                    label = { Text("Target amount (₱)") },
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                store.setBudgetTarget(name.trim(), amount.toDoubleOrNull() ?: 0.0)
+                done()
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = done) { Text("Cancel") } }
+    )
+}
+
 @Composable
 fun SubjectNotepadPage(subject: Record, store: LocalStore, done: () -> Unit) {
     val revision = store.revision
