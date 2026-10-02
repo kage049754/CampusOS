@@ -298,13 +298,65 @@ fun NativeAnnouncementsScreen() {
             }}
         }}
     }
-    if(composer)AlertDialog(onDismissRequest={if(!busy)composer=false},title={Text(if(editing==null)"Create announcement" else "Edit announcement")},text={
-        Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){OutlinedTextField(draft,{draft=it},Modifier.fillMaxWidth().heightIn(min=120.dp),label={Text("Announcement")});if(editing==null)OutlinedButton({picker.launch("image/*")},Modifier.fillMaxWidth()){Text(if(selectedUris.isEmpty())"Add up to 4 images" else selectedUris.size.toString()+" image(s) selected")}}
-    },confirmButton={Button(enabled=!busy&&draft.trim().isNotBlank(),onClick={scope.launch{busy=true;runCatching{
-        val id=if(editing==null)CampusNativeApi.createAnnouncement(session,draft)else{CampusNativeApi.updateAnnouncement(session,editing!!.id,draft);editing!!.id}
-        if(editing==null)selectedUris.forEachIndexed{index,uri->val bytes=context.contentResolver.openInputStream(uri)?.use{it.readBytes()}?:error("Could not read image");val type=context.contentResolver.getType(uri)?:"image/jpeg";val path=session.userId+"/"+System.currentTimeMillis()+"_"+index+"."+type.substringAfterLast('/');CampusNativeApi.uploadAnnouncementImage(session,path,bytes,type);CampusNativeApi.addAnnouncementImage(session,id,path,index)}
-        items=CampusNativeApi.announcements(session);composer=false;selectedUris=emptyList()
-    }.onFailure{error=it.message?:"Save failed"};busy=false})}){Text(if(busy)"Saving…" else "Save")}},dismissButton={TextButton({composer=false}){Text("Cancel")}})
+    if (composer) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) composer = false },
+            title = { Text(if (editing == null) "Create announcement" else "Edit announcement") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
+                        label = { Text("Announcement") }
+                    )
+                    if (editing == null) {
+                        OutlinedButton(
+                            onClick = { picker.launch("image/*") },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (selectedUris.isEmpty()) "Add up to 4 images" else "${selectedUris.size} image(s) selected")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = !busy && draft.trim().isNotBlank(),
+                    onClick = {
+                        scope.launch {
+                            busy = true
+                            runCatching {
+                                val id = if (editing == null) {
+                                    CampusNativeApi.createAnnouncement(session, draft)
+                                } else {
+                                    CampusNativeApi.updateAnnouncement(session, editing!!.id, draft)
+                                    editing!!.id
+                                }
+                                if (editing == null) {
+                                    selectedUris.forEachIndexed { index, uri ->
+                                        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                                            ?: error("Could not read image")
+                                        val type = context.contentResolver.getType(uri) ?: "image/jpeg"
+                                        val path = session.userId + "/" + System.currentTimeMillis() + "_" + index + "." + type.substringAfterLast('/')
+                                        CampusNativeApi.uploadAnnouncementImage(session, path, bytes, type)
+                                        CampusNativeApi.addAnnouncementImage(session, id, path, index)
+                                    }
+                                }
+                                items = CampusNativeApi.announcements(session)
+                                composer = false
+                                selectedUris = emptyList()
+                            }.onFailure { error = it.message ?: "Save failed" }
+                            busy = false
+                        }
+                    }
+                ) { Text(if (busy) "Saving…" else "Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { if (!busy) composer = false }) { Text("Cancel") }
+            }
+        )
+    }
 }
 @Composable
 fun NativeChatScreen() {
