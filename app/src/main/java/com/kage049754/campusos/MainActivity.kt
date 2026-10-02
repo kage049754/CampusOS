@@ -579,7 +579,8 @@ fun CampusOSApp(activity: Activity) {
             CampusSession(
                 it,
                 authPrefs.getString("uid", "") ?: "",
-                authPrefs.getString("email", "") ?: ""
+                authPrefs.getString("email", "") ?: "",
+                authPrefs.getString("role", "student") ?: "student"
             )
         })
     }
