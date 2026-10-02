@@ -1,6 +1,9 @@
 package com.kage049754.campusos
 
 import android.content.Context
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -10,6 +13,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -26,7 +31,10 @@ private const val CAMPUS_SUPABASE = "https://pgniovlvofvkwjhyoqcg.supabase.co"
 private const val CAMPUS_KEY = "sb_publishable_UghfMQF0mqMdDL3-i8TvUQ_t3pWFwoe"
 
 data class CampusSession(val accessToken: String, val userId: String, val email: String)
-data class CampusAnnouncement(val author: String, val body: String, val createdAt: String)
+data class CampusAnnouncement(
+    val author: String, val pagePhotoPath: String?, val body: String,
+    val createdAt: String, val imagePaths: List<String>
+)
 data class CampusGroup(val id: String, val name: String)
 data class CampusMessage(val sender: String, val body: String, val createdAt: String)
 
@@ -70,12 +78,38 @@ object CampusNativeApi {
         }
 
     suspend fun announcements(s: CampusSession) = withContext(Dispatchers.IO) {
-        val a = JSONArray(request("/rest/v1/announcements?select=author_name,author_page_name,body,created_at&order=created_at.desc", token = s.accessToken))
+        val a = JSONArray(request(
+            "/rest/v1/announcements?select=author_name,author_page_name,author_page_photo_path,body,created_at,announcement_images(storage_path,sort_order)&order=created_at.desc",
+            token = s.accessToken
+        ))
         (0 until a.length()).map {
             val o = a.getJSONObject(it)
-            CampusAnnouncement(o.optString("author_page_name").ifBlank { o.optString("author_name", "CampusOS") },
-                o.optString("body"), o.optString("created_at"))
+            val images = mutableListOf<Pair<Int, String>>()
+            val ia = o.optJSONArray("announcement_images")
+            if (ia != null) for (i in 0 until ia.length()) {
+                val io = ia.getJSONObject(i)
+                val path = io.optString("storage_path")
+                if (path.isNotBlank()) images += io.optInt("sort_order", i) to path
+            }
+            CampusAnnouncement(
+                o.optString("author_page_name").ifBlank { o.optString("author_name", "CampusOS") },
+                o.optString("author_page_photo_path").ifBlank { null },
+                o.optString("body"), o.optString("created_at"),
+                images.sortedBy { it.first }.take(4).map { it.second }
+            )
         }
+    }
+
+    suspend fun downloadAnnouncementImage(s: CampusSession, path: String) = withContext(Dispatchers.IO) {
+        val c = URL(CAMPUS_SUPABASE + "/storage/v1/object/authenticated/campus-announcements/" + path)
+            .openConnection() as HttpURLConnection
+        c.setRequestProperty("apikey", CAMPUS_KEY)
+        c.setRequestProperty("Authorization", "Bearer " + s.accessToken)
+        c.connectTimeout = 15000
+        c.readTimeout = 20000
+        val code = c.responseCode
+        if (code !in 200..299) return@withContext null
+        c.inputStream.use { BitmapFactory.decodeStream(it) }
     }
 
     suspend fun groups(s: CampusSession) = withContext(Dispatchers.IO) {
@@ -148,32 +182,87 @@ fun NativeLoginScreen(onSuccess: (CampusSession) -> Unit) {
 }
 
 @Composable
+private fun NativeAnnouncementImage(session: CampusSession, path: String, modifier: Modifier = Modifier) {
+    var bitmap by remember(path) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    LaunchedEffect(path) { bitmap = CampusNativeApi.downloadAnnouncementImage(session, path) }
+    if (bitmap != null) {
+        Image(bitmap!!.asImageBitmap(), contentDescription = null, modifier = modifier, contentScale = ContentScale.Crop)
+    } else {
+        Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant))
+    }
+}
+
+@Composable
 fun NativeAnnouncementsScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val p = context.getSharedPreferences("campusos_auth", Context.MODE_PRIVATE)
     val session = remember { CampusSession(p.getString("token", "") ?: "", p.getString("uid", "") ?: "", p.getString("email", "") ?: "") }
     var items by remember { mutableStateOf<List<CampusAnnouncement>>(emptyList()) }
     var error by remember { mutableStateOf("") }
+
     LaunchedEffect(Unit) {
         runCatching { items = CampusNativeApi.announcements(session) }
             .onFailure { error = it.message ?: "Unable to load announcements" }
     }
-    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Text("Announcements", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
-        if (error.isNotBlank()) item { Text(error, color = MaterialTheme.colorScheme.error) }
+
+    LazyColumn(
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface),
+        contentPadding = PaddingValues(vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Text("Announcements", modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        }
+        if (error.isNotBlank()) item {
+            Text(error, modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error)
+        }
         items(items) { a ->
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(a.author, fontWeight = FontWeight.Bold)
-                    Text(a.body)
-                    Text(a.createdAt.replace("T", " ").replace("Z", ""), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column {
+                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(46.dp).background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.small)) {
+                            if (!a.pagePhotoPath.isNullOrBlank()) {
+                                NativeAnnouncementImage(session, a.pagePhotoPath, Modifier.fillMaxSize())
+                            } else {
+                                Text(a.author.take(1).uppercase(), modifier = Modifier.align(Alignment.Center), fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(a.author, fontWeight = FontWeight.Bold)
+                            Text(a.createdAt.replace("T", " ").replace("Z", ""), style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(onClick = {}) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
+                    }
+                    if (a.body.isNotBlank()) {
+                        Text(a.body, modifier = Modifier.padding(horizontal = 14.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.bodyLarge)
+                    }
+                    if (a.imagePaths.isNotEmpty()) {
+                        Row(Modifier.fillMaxWidth().height(280.dp).horizontalScroll(rememberScrollState())) {
+                            a.imagePaths.forEach { path ->
+                                NativeAnnouncementImage(session, path, Modifier.fillMaxHeight().width(280.dp))
+                                Spacer(Modifier.width(2.dp))
+                            }
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = {}) { Text("♡ Like") }
+                        TextButton(onClick = {}) { Text("Comment") }
+                        Spacer(Modifier.weight(1f))
+                        if (a.imagePaths.size > 1) {
+                            Text("${a.imagePaths.size} photos", modifier = Modifier.padding(end = 10.dp),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
             }
         }
     }
 }
-
 @Composable
 fun NativeChatScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
