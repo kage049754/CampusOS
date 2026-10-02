@@ -854,7 +854,7 @@ fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleM
             }
             "Class Schedule"->{Text("Class Schedule controls",fontWeight=FontWeight.Bold);OutlinedButton(addClass,Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Spacer(Modifier.width(8.dp));Text("Add Class")};OutlinedButton(scheduleManager,Modifier.fillMaxWidth()){Icon(Icons.Default.EditCalendar,null);Spacer(Modifier.width(8.dp));Text("Edit / Delete Classes")};OutlinedButton(scheduleSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.CalendarMonth,null);Spacer(Modifier.width(8.dp));Text("Class Schedule Settings")};OutlinedButton(tableSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.TableView,null);Spacer(Modifier.width(8.dp));Text("Schedule Table Settings")}}
             "Tasks"->{Text("Note controls",fontWeight=FontWeight.Bold);Text("Simple calendar and notes stored offline.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openTasks,Modifier.fillMaxWidth()){Icon(Icons.Default.CheckCircle,null);Spacer(Modifier.width(8.dp));Text("Open Notes")};OutlinedButton({ showTaskSettings = true },Modifier.fillMaxWidth()){Icon(Icons.Default.Settings,null);Spacer(Modifier.width(8.dp));Text("Notes Settings")}}
-            "Subjects"->{Text("Subjects controls",fontWeight=FontWeight.Bold);Text("Subjects, Notepad, and Lecture Files are stored offline. Use the Subjects screen to manage them.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openAcademics,Modifier.fillMaxWidth()){Icon(Icons.Default.School,null);Spacer(Modifier.width(8.dp));Text("Open Academics")}}
+            "Subjects"->{Text("Subjects controls",fontWeight=FontWeight.Bold);Text("Subjects, Notepad, and Lecture Files are stored offline. Use the Subjects screen to manage them.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openAcademics,Modifier.fillMaxWidth()){Icon(Icons.Default.School,null);Spacer(Modifier.width(8.dp));Text("Open Subjects")}}
         }
     }},confirmButton={TextButton(close){Text("Close")}})
     if (showTaskSettings) TaskSettingsDialog(LocalStore(androidx.compose.ui.platform.LocalContext.current)) { showTaskSettings = false }
@@ -2192,7 +2192,7 @@ fun AcademicsScreen(
 
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-            Text("Academics", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("Subjects", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text(
                 if (tab == 0) "Your subjects, notes, and lecture files"
                 else "Reviewers and study tools",
@@ -2963,7 +2963,7 @@ private fun formatSize(size: Long) = when {
 
 @Composable
 fun ModuleBackupDialog(title:String, selected:Set<String>, onSelected:(Set<String>)->Unit, done:()->Unit) {
-    val modules=listOf("homepage" to "Homepage","schedule" to "Schedule","tasks" to "Notes","academics" to "Academics / Lessons")
+    val modules=listOf("homepage" to "Homepage","schedule" to "Class Schedule","tasks" to "Notes","academics" to "Subjects / Lessons")
     AlertDialog(onDismissRequest=done,title={Text(title)},text={Column(verticalArrangement=Arrangement.spacedBy(4.dp)){
         Text("Check each module you want to transfer.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         modules.forEach{(id,label)->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Checkbox(id in selected,{onSelected(if(id in selected)selected-id else selected+id)});Text(label)}}
@@ -3064,7 +3064,7 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Subjects & lecture files", fontWeight = FontWeight.Bold)
-                    Text("Manage Notepad and Lecture Files from the Academics screen.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Manage Notepad and Lecture Files from the Subjects screen.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -3125,13 +3125,13 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
                             Icon(Icons.Default.Restore, null); Spacer(Modifier.width(6.dp)); Text("Recover")
                         }
                     }
-                    Text("You can back up or recover Homepage, Schedule, Notes, or Academics/Lessons separately.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("You can back up or recover Homepage, Class Schedule, Notes, or Subjects/Lessons separately.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
 
         item { Text("CampusOS 1.0.0 • Offline-first", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        item { Text("Transfer tip: select Schedule to share your timetable, or Academics / Lessons to share subjects, notes, and lecture files.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        item { Text("Transfer tip: select Class Schedule to share your timetable, or Subjects / Lessons to share subjects, notes, and lecture files.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 
     if (backupMode) ModuleBackupDialog("Choose modules to backup", selectedModules, { selectedModules=it }) {
