@@ -16,6 +16,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import kotlin.math.*
 
 private enum class CalcMode(val title: String) {
@@ -244,16 +247,44 @@ private fun basicCalc(s: String): String = runCatching {
     }
 }
 
+private fun normalizeDateInput(raw: String): String {
+    val digits = raw.filter { it.isDigit() }
+    return if (digits.length == 8) digits.substring(0,4) + "-" + digits.substring(4,6) + "-" + digits.substring(6,8) else raw
+}
+
+private fun parseDateInput(raw: String): LocalDate? =
+    runCatching { LocalDate.parse(normalizeDateInput(raw.trim()), DateTimeFormatter.ISO_LOCAL_DATE) }.getOrNull()
+
 @Composable private fun DateCalculator() {
     var start by rememberSaveable{mutableStateOf("")}
     var end by rememberSaveable{mutableStateOf("")}
+    var includeEnd by rememberSaveable{mutableStateOf(false)}
+    val startDate = parseDateInput(start)
+    val endDate = parseDateInput(end)
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        Text("Format: YYYY-MM-DD")
-        CalcInput("Start date",start){start=it};CalcInput("End date",end){end=it}
-        runCatching {
-            val f=SimpleDateFormat("yyyy-MM-dd",Locale.US);f.isLenient=false
-            val days=abs(f.parse(end)!!.time-f.parse(start)!!.time)/86400000L
-            CalcResult(listOf("Difference = "+days+" days"))
+        Text("Date Calculator",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+        Text("Type 20241114 and it automatically becomes 2024-11-14.",style=MaterialTheme.typography.bodySmall)
+        CalcInput("Start date",start){start=normalizeDateInput(it)}
+        CalcInput("End date",end){end=normalizeDateInput(it)}
+        Row(verticalAlignment=Alignment.CenterVertically) {
+            Checkbox(includeEnd,{includeEnd=it})
+            Text("Include end date")
+        }
+        if(start.isNotBlank() && startDate==null) Text("Enter a valid start date.",color=MaterialTheme.colorScheme.error)
+        if(end.isNotBlank() && endDate==null) Text("Enter a valid end date.",color=MaterialTheme.colorScheme.error)
+        if(startDate!=null && endDate!=null) {
+            val days=abs(ChronoUnit.DAYS.between(startDate,endDate)) + if(includeEnd) 1 else 0
+            CalcResult(listOf(
+                "Difference = $days days",
+                "About %.1f months".format(Locale.US,days/30.4375),
+                "About %.2f years".format(Locale.US,days/365.2425),
+                "Start = $startDate",
+                "End = $endDate"
+            ))
+        }
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            OutlinedButton({start="";end="";includeEnd=false},Modifier.weight(1f)){Text("CLEAR")}
+            OutlinedButton({start=LocalDate.now().toString();end=""},Modifier.weight(1f)){Text("TODAY")}
         }
     }
 }
