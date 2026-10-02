@@ -2207,8 +2207,8 @@ fun AcademicsScreen(
     val revision = store.revision
     var tab by remember { mutableIntStateOf(0) }
     var refresh by remember { mutableIntStateOf(0) }
-    val labels = listOf("Subjects", "Reviewers")
-    val keys = listOf("subjects", "reviewers")
+    val labels = listOf("Subjects", "Reviewers", "Calculator")
+    val keys = listOf("subjects", "reviewers", "calculator")
     val list = remember(refresh, revision, query, tab) {
         store.get(keys[tab]).filter {
             query.isBlank() || query == "__ADD__" ||
@@ -2237,7 +2237,9 @@ fun AcademicsScreen(
             }
         }
 
-        if (tab == 1) {
+        if (tab == 2) {
+            CalculatorScreen()
+        } else if (tab == 1) {
             Card(
                 Modifier.fillMaxWidth().padding(16.dp),
                 shape = MaterialTheme.shapes.medium,
@@ -2272,7 +2274,7 @@ fun AcademicsScreen(
             }
         }
 
-        if (list.isEmpty()) {
+        if (tab != 2 && list.isEmpty()) {
             Box(
                 Modifier.fillMaxSize().padding(16.dp),
                 contentAlignment = Alignment.Center
@@ -2421,7 +2423,7 @@ fun AcademicsScreen(
         }
     }
 
-    if (query == "__ADD__") AddRecordDialog(
+    if (query == "__ADD__" && tab < 2) AddRecordDialog(
         labels[tab],
         keys[tab],
         store,
