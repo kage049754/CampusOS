@@ -1255,7 +1255,7 @@ fun HomeTodayClassCard(r: Record,status:String?=null){
         Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){
             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
                 Text(r.title,Modifier.weight(1f),fontWeight=FontWeight.Bold)
-                if(status!=null)Text(status,fontWeight=FontWeight.SemiBold,color=if(completed) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant)
+                if(status!=null)Text(status,fontWeight=FontWeight.SemiBold,color=if(completed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text("${r.startTime}–${r.endTime}",style=MaterialTheme.typography.bodyMedium)
             Text(if(r.classType.equals("Lab",true))"Lab" else "Lecture",style=MaterialTheme.typography.bodySmall,fontWeight=FontWeight.SemiBold)
@@ -1526,12 +1526,10 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
     var professor by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var classType by remember { mutableStateOf("Lecture") }
-    var color by remember { mutableLongStateOf(0xFFE3F2FD) }
     var selectedSlots by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var removedSlots by remember { mutableStateOf<Set<String>>(emptySet()) }
     var refresh by remember { mutableIntStateOf(0) }
 
-    val colors = listOf(0xFFE3F2FDL,0xFFE8F5E9L,0xFFFFF3E0L,0xFFF3E5F5L,0xFFFFEBEEL,0xFFE0F7FAL)
     val startHour = store.scheduleStartHour().coerceIn(0,23)
     val endHour = store.scheduleEndHour().coerceIn(startHour,23)
     val hours = (startHour until endHour).toList()
@@ -1567,7 +1565,6 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
                                         fullName = first.subtitle
                                         professor = first.professor
                                         notes = first.extra
-                                        color = first.color
                                         classType = if (first.classType.equals("Lab", true)) "Lab" else "Lecture"
                                     }
                                     lectureRoom = records.firstOrNull { it.classType.equals("Lecture", true) && it.room.isNotBlank() }?.room ?: ""
@@ -1658,14 +1655,6 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
                 OutlinedTextField(labRoom, { labRoom = it }, Modifier.fillMaxWidth(), label = { Text("Lab room") }, singleLine = true)
                 OutlinedTextField(professor, { professor = it }, Modifier.fillMaxWidth(), label = { Text("Professor") })
                 OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth(), label = { Text("Notes") })
-                Text("Class color", fontWeight = FontWeight.SemiBold)
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    colors.forEach { c ->
-                        Box(Modifier.size(40.dp).border(3.dp, if (color == c) MaterialTheme.colorScheme.onSurface else Color.Transparent, RoundedCornerShape(50)).padding(4.dp).background(Color(c), RoundedCornerShape(50)).clickable { color = c }, contentAlignment = Alignment.Center) {
-                            if (color == c) Text("✓", color = readableContentColor(Color(c)), fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
             }
         },
         confirmButton = {
@@ -1679,7 +1668,7 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
                         val day = p.getOrNull(0).orEmpty()
                         val hour = p.getOrNull(1)?.toIntOrNull() ?: 0
                         val type = if (entry.value.equals("Lab", true)) "Lab" else "Lecture"
-                        Record(id = idBase + index, title = normalizedSubject, subtitle = fullName.trim(), extra = notes.trim(), day = day, startTime = "%02d:00".format(hour), endTime = "%02d:00".format(hour + 1), room = if (type == "Lab") labRoom.trim() else lectureRoom.trim(), professor = professor.trim(), color = color, classType = type)
+                        Record(id = idBase + index, title = normalizedSubject, subtitle = fullName.trim(), extra = notes.trim(), day = day, startTime = "%02d:00".format(hour), endTime = "%02d:00".format(hour + 1), room = if (type == "Lab") labRoom.trim() else lectureRoom.trim(), professor = professor.trim(), color = 0L, classType = type)
                     }
                     val withoutSubject = existing.filterNot { it.title.trim().equals(normalizedSubject, true) }
                     store.put("schedule", withoutSubject + newRecords)
