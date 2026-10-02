@@ -973,7 +973,7 @@ fun BackupRecoverySettingsDialog(store:LocalStore,done:()->Unit){
     if(showRecover)ModuleBackupDialog("Choose modules to recover",selectedModules,{selectedModules=it}){showRecover=false;if(selectedModules.isNotEmpty())restore.launch(arrayOf("application/json","text/plain"))}
 }
 @Composable
-fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleManager:()->Unit,scheduleSettings:()->Unit,tableSettings:()->Unit,addClass:()->Unit,openTasks:()->Unit,openAcademics:()->Unit,editHome:()->Unit) {
+fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleManager:()->Unit,scheduleSettings:()->Unit,addClass:()->Unit,openTasks:()->Unit,openAcademics:()->Unit,editHome:()->Unit) {
     var showTaskSettings by remember { mutableStateOf(false) }
     var showHomeTiles by remember { mutableStateOf(false) }
     val homeContext = androidx.compose.ui.platform.LocalContext.current
@@ -3421,90 +3421,3 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
                     Text("UPCOMING • Starts in ${formatClassCountdown((st-currentMinutes).coerceAtLeast(0))}",fontWeight=FontWeight.Bold)
                     Text(r.title,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
                     Text(if(r.classType.equals("Lab",true))"Lab" else "Lecture",fontWeight=FontWeight.SemiBold)
-                    Text("${r.startTime}–${r.endTime}")
-                    if(r.room.isNotBlank())Text("Room ${r.room}",fontWeight=FontWeight.SemiBold)
-                    Text("Duration: " + formatClassDuration((en-st).coerceAtLeast(0)),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    LinearProgressIndicator(progress={0f},modifier=Modifier.fillMaxWidth())
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-        }
-        if(todaySchedule.isEmpty()) EmptyCard("No classes scheduled for today.") else {
-            val featuredSubjects = setOfNotNull(
-                current?.first?.title?.trim()?.uppercase(Locale.getDefault()),
-                next?.first?.title?.trim()?.uppercase(Locale.getDefault())
-            )
-            val remaining=mergedTodaySchedule.filterNot {
-                it.title.trim().uppercase(Locale.getDefault()) in featuredSubjects
-            }.sortedWith(
-                compareBy<Record> {
-                    val end = it.endTime.toMinutesOrNull() ?: Int.MAX_VALUE
-                    // Completed classes are always placed after current/upcoming classes.
-                    if (currentMinutes >= end) 1 else 0
-                }.thenBy { it.startTime.toMinutesOrNull() ?: Int.MAX_VALUE }
-            )
-            remaining.forEach{r->
-                val st=r.startTime.toMinutesOrNull();val en=r.endTime.toMinutesOrNull()
-                val completed = st != null && en != null && currentMinutes >= en
-                val status=when {
-                    completed -> "✓ Completed"
-                    st != null -> "Starts in " + formatClassCountdown((st-currentMinutes).coerceAtLeast(0))
-                    else -> null
-                }
-                HomeTodayClassCard(r,status)
-            }
-        }
-    }
-}
-
-@Composable
-fun HomePinnedTile(pinnedTasks: List<Record>) {
-    Column(Modifier.fillMaxWidth()) {
-        SectionTitle("📍 Pinned")
-        Spacer(Modifier.height(8.dp))
-        if (pinnedTasks.isEmpty()) EmptyCard("Nothing pinned yet.")
-        else for (r in pinnedTasks) {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-                ListItem(headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) }, supportingContent = { if (r.dueDate.isNotBlank()) Text("Due " + r.dueDate + " " + r.dueTime) }, leadingContent = { Icon(Icons.Default.PushPin, "Pinned") })
-            }
-            Spacer(Modifier.height(8.dp))
-        }
-    }
-}
-@Composable
-fun HomeTasksTile(pendingTasks: List<Record>) {
-    Column(Modifier.fillMaxWidth()) {
-        SectionTitle("Tasks to do")
-        Spacer(Modifier.height(8.dp))
-        if (pendingTasks.isEmpty()) EmptyCard("You're all caught up.")
-        else for (r in pendingTasks) {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-                ListItem(headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) }, supportingContent = { Column { if (r.subtitle.isNotBlank()) Text(r.subtitle, maxLines = 2); if (r.dueDate.isNotBlank()) Text("Due ${r.dueDate} ${r.dueTime}") } }, leadingContent = { Icon(Icons.Default.CheckCircleOutline, null) })
-            }
-            Spacer(Modifier.height(8.dp))
-        }
-    }
-}
-
-
-
-@Composable
-fun CampusWebEmbeddedScreen(url: String) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    AndroidView(
-        modifier = Modifier.fillMaxSize(),
-        factory = {
-            WebView(context).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.allowFileAccess = false
-                settings.allowContentAccess = false
-                webViewClient = WebViewClient()
-                loadUrl(url)
-            }
-        },
-        update = { webView ->
-            if (webView.url == null) webView.loadUrl(url)
-        }
-    )
-}
