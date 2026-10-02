@@ -816,6 +816,7 @@ fun CampusOSApp(activity: Activity) {
             if (showHomeSettings) {
                 HomeSettingsDialog(store, campusSession?.role ?: "student", onManagement = { screenName = Screen.ADMIN.name; showHomeSettings = false }, onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, onLockNow = { locked = true }, done = { showHomeSettings = false }, openAppLock = { showHomeSettings = false; showAppLock = true }, openBackupRecovery = { showHomeSettings = false; showBackupRecovery = true }, openAbout = { showHomeSettings = false; showAbout = true })
             }
+            if (showAbout) AboutDialog { showAbout = false }
             if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
             if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }, appearancePreset, { appearancePreset = it; store.setAppearancePreset(it); applyLauncherIcon(activity, it) }) { showHomeColors = false }
             if (showProfile) ProfileDialog(store) { showProfile = false }
