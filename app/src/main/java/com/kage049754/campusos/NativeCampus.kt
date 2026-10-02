@@ -2,6 +2,9 @@ package com.kage049754.campusos
 
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -33,7 +36,7 @@ private const val CAMPUS_KEY = "sb_publishable_UghfMQF0mqMdDL3-i8TvUQ_t3pWFwoe"
 
 data class CampusSession(val accessToken: String, val userId: String, val email: String, val role: String = "student")
 data class CampusAnnouncement(
-    val author: String, val pagePhotoPath: String?, val body: String,
+    val id: String, val authorId: String, val author: String, val pagePhotoPath: String?, val body: String,
     val createdAt: String, val imagePaths: List<String>
 )
 data class CampusGroup(val id: String, val name: String)
@@ -52,6 +55,7 @@ object CampusNativeApi {
         c.setRequestProperty("apikey", CAMPUS_KEY)
         c.setRequestProperty("Authorization", "Bearer " + (token ?: CAMPUS_KEY))
         c.setRequestProperty("Content-Type", "application/json")
+        c.setRequestProperty("Prefer", "return=representation")
         c.connectTimeout = 15000
         c.readTimeout = 20000
         if (body != null) {
@@ -117,7 +121,7 @@ object CampusNativeApi {
 
     suspend fun announcements(s: CampusSession) = withContext(Dispatchers.IO) {
         val a = JSONArray(request(
-            "/rest/v1/announcements?select=author_name,author_page_name,author_page_photo_path,body,created_at,announcement_images(storage_path,sort_order)&order=created_at.desc",
+            "/rest/v1/announcements?select=id,author_id,author_name,author_page_name,author_page_photo_path,body,created_at,announcement_images(storage_path,sort_order)&order=created_at.desc",
             token = s.accessToken
         ))
         (0 until a.length()).map {
@@ -130,12 +134,37 @@ object CampusNativeApi {
                 if (path.isNotBlank()) images += io.optInt("sort_order", i) to path
             }
             CampusAnnouncement(
+                o.optString("id"), o.optString("author_id"),
                 o.optString("author_page_name").ifBlank { o.optString("author_name", "CampusOS") },
                 o.optString("author_page_photo_path").ifBlank { null },
                 o.optString("body"), o.optString("created_at"),
                 images.sortedBy { it.first }.take(4).map { it.second }
             )
         }
+    }
+
+    suspend fun createAnnouncement(s: CampusSession, body: String) = withContext(Dispatchers.IO) {
+        val a = JSONArray(request("/rest/v1/announcements", "POST", s.accessToken, JSONObject().put("author_id", s.userId).put("author_name", s.email).put("body", body.trim()).toString()))
+        if (a.length() == 0) error("Announcement was not created")
+        a.getJSONObject(0).getString("id")
+    }
+    suspend fun updateAnnouncement(s: CampusSession, id: String, body: String) = withContext(Dispatchers.IO) {
+        request("/rest/v1/announcements?id=eq.$id", "PATCH", s.accessToken, JSONObject().put("body", body.trim()).toString())
+    }
+    suspend fun deleteAnnouncement(s: CampusSession, id: String, imagePaths: List<String>) = withContext(Dispatchers.IO) {
+        imagePaths.forEach { path -> runCatching { request("/storage/v1/object/campus-announcements/$path", "DELETE", s.accessToken) } }
+        request("/rest/v1/announcement_images?announcement_id=eq.$id", "DELETE", s.accessToken)
+        request("/rest/v1/announcements?id=eq.$id", "DELETE", s.accessToken)
+    }
+    suspend fun uploadAnnouncementImage(s: CampusSession, path: String, bytes: ByteArray, contentType: String) = withContext(Dispatchers.IO) {
+        val c = URL(CAMPUS_SUPABASE + "/storage/v1/object/campus-announcements/" + path).openConnection() as HttpURLConnection
+        c.requestMethod = "POST"; c.doOutput = true
+        c.setRequestProperty("apikey", CAMPUS_KEY); c.setRequestProperty("Authorization", "Bearer " + s.accessToken); c.setRequestProperty("Content-Type", contentType)
+        c.outputStream.use { it.write(bytes) }
+        if (c.responseCode !in 200..299) throw IllegalStateException("Image upload failed")
+    }
+    suspend fun addAnnouncementImage(s: CampusSession, announcementId: String, path: String, sortOrder: Int) = withContext(Dispatchers.IO) {
+        request("/rest/v1/announcement_images", "POST", s.accessToken, JSONObject().put("announcement_id", announcementId).put("storage_path", path).put("sort_order", sortOrder).toString())
     }
 
     suspend fun downloadAnnouncementImage(s: CampusSession, path: String) = withContext(Dispatchers.IO) {
@@ -156,6 +185,14 @@ object CampusNativeApi {
             val g = a.getJSONObject(it).optJSONObject("chat_groups") ?: return@mapNotNull null
             CampusGroup(g.optString("id"), g.optString("name", "Group"))
         }
+    }
+
+    suspend fun createGroup(s: CampusSession, name: String): CampusGroup = withContext(Dispatchers.IO) {
+        val a = JSONArray(request("/rest/v1/chat_groups", "POST", s.accessToken, JSONObject().put("name", name.trim()).put("owner_id", s.userId).toString()))
+        if (a.length() == 0) error("Group was not created")
+        val g=a.getJSONObject(0); val id=g.getString("id")
+        request("/rest/v1/chat_members", "POST", s.accessToken, JSONObject().put("group_id",id).put("user_id",s.userId).put("role","owner").toString())
+        CampusGroup(id,g.optString("name",name.trim()))
     }
 
     suspend fun messages(s: CampusSession, groupId: String) = withContext(Dispatchers.IO) {
@@ -233,130 +270,56 @@ private fun NativeAnnouncementImage(session: CampusSession, path: String, modifi
 
 @Composable
 fun NativeAnnouncementsScreen() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val p = context.getSharedPreferences("campusos_auth", Context.MODE_PRIVATE)
-    val session = remember { CampusSession(p.getString("token", "") ?: "", p.getString("uid", "") ?: "", p.getString("email", "") ?: "") }
-    var items by remember { mutableStateOf<List<CampusAnnouncement>>(emptyList()) }
-    var error by remember { mutableStateOf("") }
-
-    LaunchedEffect(Unit) {
-        runCatching { items = CampusNativeApi.announcements(session) }
-            .onFailure { error = it.message ?: "Unable to load announcements" }
-    }
-
-    LazyColumn(
-        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface),
-        contentPadding = PaddingValues(vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        item {
-            Text("Announcements", modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        }
-        if (error.isNotBlank()) item {
-            Text(error, modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error)
-        }
-        items(items) { a ->
-            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column {
-                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(46.dp).background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.small)) {
-                            if (!a.pagePhotoPath.isNullOrBlank()) {
-                                NativeAnnouncementImage(session, a.pagePhotoPath, Modifier.fillMaxSize())
-                            } else {
-                                Text(a.author.take(1).uppercase(), modifier = Modifier.align(Alignment.Center), fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(a.author, fontWeight = FontWeight.Bold)
-                            Text(a.createdAt.replace("T", " ").replace("Z", ""), style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        IconButton(onClick = {}) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
-                    }
-                    if (a.body.isNotBlank()) {
-                        Text(a.body, modifier = Modifier.padding(horizontal = 14.dp, vertical = 2.dp),
-                            style = MaterialTheme.typography.bodyLarge)
-                    }
-                    if (a.imagePaths.isNotEmpty()) {
-                        Row(Modifier.fillMaxWidth().height(280.dp).horizontalScroll(rememberScrollState())) {
-                            a.imagePaths.forEach { path ->
-                                NativeAnnouncementImage(session, path, Modifier.fillMaxHeight().width(280.dp))
-                                Spacer(Modifier.width(2.dp))
-                            }
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = {}) { Text("♡ Like") }
-                        TextButton(onClick = {}) { Text("Comment") }
-                        Spacer(Modifier.weight(1f))
-                        if (a.imagePaths.size > 1) {
-                            Text("${a.imagePaths.size} photos", modifier = Modifier.padding(end = 10.dp),
-                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
+    val context=androidx.compose.ui.platform.LocalContext.current
+    val p=context.getSharedPreferences("campusos_auth",Context.MODE_PRIVATE)
+    val session=remember{CampusSession(p.getString("token","")?:"",p.getString("uid","")?:"",p.getString("email","")?:"",p.getString("role","student")?:"student")}
+    var items by remember{mutableStateOf<List<CampusAnnouncement>>(emptyList())}; var error by remember{mutableStateOf("")}
+    var composer by rememberSaveable{mutableStateOf(false)}; var editing by remember{mutableStateOf<CampusAnnouncement?>(null)}
+    var draft by rememberSaveable{mutableStateOf("")}; var busy by remember{mutableStateOf(false)}; var selectedUris by remember{mutableStateOf<List<Uri>>(emptyList())}
+    val scope=rememberCoroutineScope(); val canPublish=session.role.equals("admin",true)||session.role.equals("leader",true)
+    fun reload(){scope.launch{runCatching{items=CampusNativeApi.announcements(session)}.onFailure{error=it.message?:"Unable to load announcements"}}}
+    val picker=rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()){selectedUris=it.take(4)}
+    LaunchedEffect(Unit){reload()}
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)){
+        Row(Modifier.fillMaxWidth().padding(16.dp),verticalAlignment=Alignment.CenterVertically){Text("Announcements",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f));if(canPublish)Button({editing=null;draft="";selectedUris=emptyList();composer=true}){Text("Post")}}
+        if(error.isNotBlank())Text(error,Modifier.padding(horizontal=16.dp),color=MaterialTheme.colorScheme.error)
+        LazyColumn(contentPadding=PaddingValues(bottom=20.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
+            items(items){a->Card(Modifier.fillMaxWidth()){Column{
+                Row(Modifier.fillMaxWidth().padding(14.dp),verticalAlignment=Alignment.CenterVertically){
+                    Box(Modifier.size(46.dp).background(MaterialTheme.colorScheme.surfaceVariant,MaterialTheme.shapes.small)){if(!a.pagePhotoPath.isNullOrBlank())NativeAnnouncementImage(session,a.pagePhotoPath,Modifier.fillMaxSize())else Text(a.author.take(1).uppercase(),Modifier.align(Alignment.Center),fontWeight=FontWeight.Bold)}
+                    Spacer(Modifier.width(12.dp));Column(Modifier.weight(1f)){Text(a.author,fontWeight=FontWeight.Bold);Text(a.createdAt.replace("T"," ").replace("Z",""),style=MaterialTheme.typography.bodySmall)}
+                    if(a.authorId==session.userId||session.role.equals("admin",true)){var menu by remember(a.id){mutableStateOf(false)};Box{IconButton({menu=true}){Text("⋮")};DropdownMenu(menu,{menu=false}){
+                        DropdownMenuItem({Text("Edit")},{menu=false;editing=a;draft=a.body;selectedUris=emptyList();composer=true})
+                        DropdownMenuItem({Text("Delete")},{menu=false;scope.launch{runCatching{CampusNativeApi.deleteAnnouncement(session,a.id,a.imagePaths);reload()}.onFailure{error=it.message?:"Delete failed"}}})
+                    }}}
                 }
-            }
-        }
+                Text(a.body,Modifier.padding(horizontal=14.dp,vertical=4.dp))
+                if(a.imagePaths.isNotEmpty())Row(Modifier.fillMaxWidth().height(280.dp).horizontalScroll(rememberScrollState())){a.imagePaths.forEach{path->NativeAnnouncementImage(session,path,Modifier.fillMaxHeight().width(280.dp));Spacer(Modifier.width(2.dp))}}
+            }}
+        }}
     }
+    if(composer)AlertDialog(onDismissRequest={if(!busy)composer=false},title={Text(if(editing==null)"Create announcement" else "Edit announcement")},text={
+        Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){OutlinedTextField(draft,{draft=it},Modifier.fillMaxWidth().heightIn(min=120.dp),label={Text("Announcement")});if(editing==null)OutlinedButton({picker.launch("image/*")},Modifier.fillMaxWidth()){Text(if(selectedUris.isEmpty())"Add up to 4 images" else selectedUris.size.toString()+" image(s) selected")}}
+    },confirmButton={Button(enabled=!busy&&draft.trim().isNotBlank(),onClick={scope.launch{busy=true;runCatching{
+        val id=if(editing==null)CampusNativeApi.createAnnouncement(session,draft)else{CampusNativeApi.updateAnnouncement(session,editing!!.id,draft);editing!!.id}
+        if(editing==null)selectedUris.forEachIndexed{index,uri->val bytes=context.contentResolver.openInputStream(uri)?.use{it.readBytes()}?:error("Could not read image");val type=context.contentResolver.getType(uri)?:"image/jpeg";val path=session.userId+"/"+System.currentTimeMillis()+"_"+index+"."+type.substringAfterLast('/');CampusNativeApi.uploadAnnouncementImage(session,path,bytes,type);CampusNativeApi.addAnnouncementImage(session,id,path,index)}
+        items=CampusNativeApi.announcements(session);composer=false;selectedUris=emptyList()
+    }.onFailure{error=it.message?:"Save failed"};busy=false})}){Text(if(busy)"Saving…" else "Save")}},dismissButton={TextButton({composer=false}){Text("Cancel")}})
 }
 @Composable
 fun NativeChatScreen() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val p = context.getSharedPreferences("campusos_auth", Context.MODE_PRIVATE)
-    val session = remember { CampusSession(p.getString("token", "") ?: "", p.getString("uid", "") ?: "", p.getString("email", "") ?: "") }
-    var groups by remember { mutableStateOf<List<CampusGroup>>(emptyList()) }
-    var selected by remember { mutableStateOf<CampusGroup?>(null) }
-    var messages by remember { mutableStateOf<List<CampusMessage>>(emptyList()) }
-    var text by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
-
-    LaunchedEffect(Unit) {
-        runCatching { groups = CampusNativeApi.groups(session); if (groups.size == 1) selected = groups.first() }
-            .onFailure { error = it.message ?: "Unable to load group chats" }
-    }
-    LaunchedEffect(selected?.id) {
-        selected?.let { g -> runCatching { messages = CampusNativeApi.messages(session, g.id) }
-            .onFailure { error = it.message ?: "Unable to load messages" } }
-    }
-
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Private GCs", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-            groups.forEach { g -> FilterChip(selected?.id == g.id, { selected = g }, label = { Text(g.name) }) }
-        }
-        selected?.let { g ->
-            LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(messages) { m ->
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(12.dp)) {
-                            Text(m.sender, fontWeight = FontWeight.Bold)
-                            Text(m.body)
-                            Text(m.createdAt.replace("T", " ").replace("Z", ""), style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                }
-            }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(text, { text = it }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Message…") })
-                Spacer(Modifier.width(8.dp))
-                Button(onClick = {
-                    val body = text.trim()
-                    if (body.isNotBlank()) scope.launch {
-                        runCatching { CampusNativeApi.send(session, g.id, body); messages = CampusNativeApi.messages(session, g.id); text = "" }
-                            .onFailure { error = it.message ?: "Send failed" }
-                    }
-                }) { Text("Send") }
-            }
-        }
-    }
+    val context=androidx.compose.ui.platform.LocalContext.current;val p=context.getSharedPreferences("campusos_auth",Context.MODE_PRIVATE)
+    val session=remember{CampusSession(p.getString("token","")?:"",p.getString("uid","")?:"",p.getString("email","")?:"",p.getString("role","student")?:"student")}
+    var groups by remember{mutableStateOf<List<CampusGroup>>(emptyList())};var selected by remember{mutableStateOf<CampusGroup?>(null)};var messages by remember{mutableStateOf<List<CampusMessage>>(emptyList())}
+    var text by remember{mutableStateOf("")};var error by remember{mutableStateOf("")};var createDialog by rememberSaveable{mutableStateOf(false)};var groupName by rememberSaveable{mutableStateOf("")}
+    val scope=rememberCoroutineScope();val canCreate=session.role.equals("admin",true)||session.role.equals("leader",true)
+    fun reload(){scope.launch{runCatching{groups=CampusNativeApi.groups(session);if(selected==null)selected=groups.firstOrNull()}.onFailure{error=it.message?:"Unable to load GCs"}}}
+    LaunchedEffect(Unit){reload()};LaunchedEffect(selected?.id){selected?.let{g->runCatching{messages=CampusNativeApi.messages(session,g.id)}.onFailure{error=it.message?:"Unable to load messages"}}}
+    Column(Modifier.fillMaxSize().padding(16.dp)){Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("Private GCs",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f));if(canCreate)Button({groupName="";createDialog=true}){Text("New GC")}}
+        if(error.isNotBlank())Text(error,color=MaterialTheme.colorScheme.error);Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())){groups.forEach{g->FilterChip(selected?.id==g.id,{selected=g},label={Text(g.name)})}}
+        selected?.let{g->LazyColumn(Modifier.weight(1f).fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(8.dp)){items(messages){m->Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){Text(m.sender,fontWeight=FontWeight.Bold);Text(m.body);Text(m.createdAt.replace("T"," ").replace("Z",""),style=MaterialTheme.typography.bodySmall)}}}};Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){OutlinedTextField(text,{text=it},Modifier.weight(1f),singleLine=true);Spacer(Modifier.width(8.dp));Button({val b=text.trim();if(b.isNotBlank())scope.launch{runCatching{CampusNativeApi.send(session,g.id,b);messages=CampusNativeApi.messages(session,g.id);text=""}.onFailure{error=it.message?:"Send failed"}}}){Text("Send")}}}?:EmptyCampusManagementCard("No GC yet. Admins and leaders can create one.")}
+    if(createDialog)AlertDialog(onDismissRequest={createDialog=false},title={Text("Create private GC")},text={OutlinedTextField(groupName,{groupName=it},label={Text("GC name")},singleLine=true,modifier=Modifier.fillMaxWidth())},confirmButton={Button(enabled=groupName.trim().isNotBlank(),onClick={scope.launch{runCatching{val g=CampusNativeApi.createGroup(session,groupName);groups=CampusNativeApi.groups(session);selected=g;createDialog=false}.onFailure{error=it.message?:"Create GC failed"}}}){Text("Create")}},dismissButton={TextButton({createDialog=false}){Text("Cancel")}})
 }
-
-
 @Composable
 fun NativeCampusManagementScreen(session: CampusSession) {
     var profiles by remember { mutableStateOf<List<CampusProfile>>(emptyList()) }
