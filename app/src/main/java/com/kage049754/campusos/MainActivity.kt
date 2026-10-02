@@ -2326,10 +2326,11 @@ fun AcademicsScreen(
     openLectureFiles: (Record) -> Unit
 ) {
     val revision = store.revision
-    var tab by remember { mutableIntStateOf(0) }
+    var selectedKey by rememberSaveable { mutableStateOf(store.toolOrder().firstOrNull() ?: "subjects") }
     var refresh by remember { mutableIntStateOf(0) }
-    val labels = listOf("Subjects", "Calculator", "Budget")
-    val keys = listOf("subjects", "calculator", "budget")
+    val keys = remember(store.revision, refresh) { store.toolOrder() }
+    val labels = keys.map { when (it) { "subjects" -> "Subjects"; "calculator" -> "Calculator"; else -> "Budget" } }
+    val tab = keys.indexOf(selectedKey).coerceAtLeast(0)
     val list = remember(refresh, revision, query, tab) {
         store.get(keys[tab]).filter {
             query.isBlank() || query == "__ADD__" ||
@@ -2357,7 +2358,7 @@ fun AcademicsScreen(
             containerColor = Color.Transparent
         ) {
             labels.forEachIndexed { i, label ->
-                Tab(tab == i, { tab = i }, text = { Text(label) })
+                Tab(tab == i, { selectedKey = keys[i] }, text = { Text(label) })
             }
         }
 
