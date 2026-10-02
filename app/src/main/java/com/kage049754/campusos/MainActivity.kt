@@ -298,7 +298,7 @@ class LocalStore(context: Context) {
     fun setHomeHiddenTiles(hidden: Set<String>) { prefs.edit().putString("home_hidden_tiles", hidden.joinToString(",")).apply(); revision++ }
     fun resetHomeLayout() { prefs.edit().remove("home_layout_order").remove("home_hidden_tiles").apply(); revision++ }
     fun setTheme(v: String) { prefs.edit().putString("theme", v).apply(); revision++ }
-    fun dynamicColorEnabled() = prefs.getBoolean("dynamic_color_enabled", true)
+    fun dynamicColorEnabled() = prefs.getBoolean("dynamic_color_enabled", false)
     fun setDynamicColorEnabled(v: Boolean) { prefs.edit().putBoolean("dynamic_color_enabled", v).apply(); revision++ }
     fun lockEnabled() = prefs.getBoolean("lock", false)
     fun setLockEnabled(v: Boolean) { prefs.edit().putBoolean("lock", v).apply(); revision++ }
@@ -469,7 +469,7 @@ class MainActivity : ComponentActivity() {
 }
 
 enum class Screen(val label: String) {
-    HOME("Home"), SCHEDULE("Class Schedule"), TASKS("Notes"), ACADEMICS("Subjects"),
+    HOME("Home"), SCHEDULE("Schedule"), TASKS("Notes"), ACADEMICS("Subjects"),
     FILES("Files"), CHAT("Chats"), ANNOUNCEMENTS("Announcements"), ADMIN("Campus Management"), SETTINGS("Settings")
 }
 
@@ -594,10 +594,7 @@ fun CampusOSApp(activity: Activity) {
         }
     }
 
-    val colorScheme = if (dynamicColor && android.os.Build.VERSION.SDK_INT >= 31) {
-        if (dark) androidx.compose.material3.dynamicDarkColorScheme(activity)
-        else androidx.compose.material3.dynamicLightColorScheme(activity)
-    } else if (dark) CampusDarkColors else CampusLightColors
+    val colorScheme = if (dark) CampusDarkColors else CampusLightColors
 
     MaterialTheme(colorScheme = colorScheme, shapes = CampusShapes) {
         if (subjectPageId != 0L) {
@@ -808,7 +805,7 @@ fun HomeSettingsDialog(
                 }
                 SettingsRow(Icons.Default.Person, "Profile", "Name, student ID, section and photo") { onModule("Homepage") }
                 SettingsRow(Icons.Default.Home, "Homepage", "Dashboard layout and home tiles") { onModule("Homepage") }
-                SettingsRow(Icons.Default.CalendarMonth, "Class Schedule", "Class days, timetable and class editing") { onModule("Class Schedule") }
+                SettingsRow(Icons.Default.CalendarMonth, "Schedule", "Class days, timetable and class editing") { onModule("Class Schedule") }
                 SettingsRow(Icons.Default.CheckCircle, "Tasks", "Calendar, tasks and deadlines") { onModule("Tasks") }
                 SettingsRow(Icons.Default.School, "Subjects", "Subjects, Notepad and Lecture Files") { onModule("Subjects") }
                 SettingsGroupTitle("App")
@@ -933,7 +930,7 @@ fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleM
                 OutlinedButton({ showHomeTiles = true },Modifier.fillMaxWidth()){Icon(Icons.Default.ViewModule,null);Spacer(Modifier.width(8.dp));Text("Home Tiles")}
                 OutlinedButton(profile,Modifier.fillMaxWidth()){Icon(Icons.Default.Person,null);Spacer(Modifier.width(8.dp));Text("Profile & homepage information")}
             }
-            "Class Schedule"->{Text("Class Schedule controls",fontWeight=FontWeight.Bold);OutlinedButton(addClass,Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Spacer(Modifier.width(8.dp));Text("Add Class")};OutlinedButton(scheduleManager,Modifier.fillMaxWidth()){Icon(Icons.Default.EditCalendar,null);Spacer(Modifier.width(8.dp));Text("Edit / Delete Classes")};OutlinedButton(scheduleSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.CalendarMonth,null);Spacer(Modifier.width(8.dp));Text("Class Schedule Settings")};OutlinedButton(tableSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.TableView,null);Spacer(Modifier.width(8.dp));Text("Schedule Table Settings")}}
+            "Class Schedule"->{Text("Class Schedule controls",fontWeight=FontWeight.Bold);OutlinedButton(addClass,Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Spacer(Modifier.width(8.dp));Text("Add Class")};OutlinedButton(scheduleManager,Modifier.fillMaxWidth()){Icon(Icons.Default.EditCalendar,null);Spacer(Modifier.width(8.dp));Text("Edit / Delete Classes")};OutlinedButton(scheduleSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.CalendarMonth,null);Spacer(Modifier.width(8.dp));Text("Schedule Settings")};OutlinedButton(tableSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.TableView,null);Spacer(Modifier.width(8.dp));Text("Schedule Table Settings")}}
             "Tasks"->{Text("Note controls",fontWeight=FontWeight.Bold);Text("Simple calendar and notes stored offline.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openTasks,Modifier.fillMaxWidth()){Icon(Icons.Default.CheckCircle,null);Spacer(Modifier.width(8.dp));Text("Open Notes")};OutlinedButton({ showTaskSettings = true },Modifier.fillMaxWidth()){Icon(Icons.Default.Settings,null);Spacer(Modifier.width(8.dp));Text("Notes Settings")}}
             "Subjects"->{Text("Subjects controls",fontWeight=FontWeight.Bold);Text("Subjects, Notepad, and Lecture Files are stored offline. Use the Subjects screen to manage them.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openAcademics,Modifier.fillMaxWidth()){Icon(Icons.Default.School,null);Spacer(Modifier.width(8.dp));Text("Open Subjects")}}
         }
@@ -1217,7 +1214,7 @@ fun ScheduleDaySetupDialog(store: LocalStore, done: () -> Unit) {
 @Composable
 fun ScheduleSettingsDialog(store:LocalStore,done:()->Unit){
     val allDays=listOf("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday");var chosen by remember{mutableStateOf(store.scheduleDays().toSet())};var start by remember{mutableIntStateOf(store.scheduleStartHour())};var end by remember{mutableIntStateOf(store.scheduleEndHour())}
-    AlertDialog(onDismissRequest=done,title={Text("Class Schedule Settings")},text={Column(Modifier.heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(6.dp)){
+    AlertDialog(onDismissRequest=done,title={Text("Schedule Settings")},text={Column(Modifier.heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(6.dp)){
         Text("Show only the days you have class",fontWeight=FontWeight.Bold);allDays.forEach{day->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Checkbox(chosen.contains(day),{chosen=if(day in chosen)chosen-day else chosen+day});Text(day)}}
         Text("Time range",fontWeight=FontWeight.Bold);Text("%02d:00 – %02d:00".format(start,end),style=MaterialTheme.typography.titleMedium)
         Column(verticalArrangement=Arrangement.spacedBy(5.dp)) {
@@ -1405,12 +1402,18 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                                                 val contentAlpha = if (isPassed) .62f else 1f
                                                 Card(Modifier.fillMaxWidth().weight(1f, fill = false), colors = CardDefaults.cardColors(containerColor = bg.copy(alpha = contentAlpha)), shape = RoundedCornerShape(8.dp)) {
                                                     Column(Modifier.fillMaxSize().padding(horizontal = 5.dp, vertical = 3.dp), verticalArrangement = Arrangement.Center) {
-                                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                                            Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f).graphicsLayer { alpha = contentAlpha })
-                                                            if (r.room.isNotBlank()) Text(r.room, style = MaterialTheme.typography.labelSmall.copy(fontSize = (tableFontSize - 1).coerceAtLeast(8f).sp), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = contentAlpha })
-                                                            Surface(shape = RoundedCornerShape(50), color = typeContainer) {
-                                                                Text(if (lab) "LAB" else "LEC", Modifier.padding(horizontal = 4.dp, vertical = 1.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                                                            }
+                                                        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                                            Text("Subject code", style = MaterialTheme.typography.labelSmall.copy(fontSize = (tableFontSize - 2).coerceAtLeast(8f).sp), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                            Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = contentAlpha })
+                                                            Text(
+                                                                if (r.room.isNotBlank()) r.room + " • " + if (lab) "LAB" else "LEC" else if (lab) "LAB" else "LEC",
+                                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = (tableFontSize - 1).coerceAtLeast(8f).sp),
+                                                                fontWeight = FontWeight.SemiBold,
+                                                                color = if (lab) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                maxLines = 1,
+                                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                                                modifier = Modifier.graphicsLayer { alpha = contentAlpha }
+                                                            )
                                                         }
                                                         if (isCurrent) {
                                                             val st = r.startTime.toMinutesOrNull() ?: rowStart
@@ -3129,7 +3132,7 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
                     OutlinedButton(onClick = openScheduleSettings, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Default.CalendarMonth, null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Class Schedule Settings")
+                        Text("Schedule Settings")
                     }
                     OutlinedButton(onClick = { showTableSettings = true }, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Default.TableView, null)
