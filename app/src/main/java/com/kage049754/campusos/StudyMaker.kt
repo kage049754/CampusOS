@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import kotlinx.coroutines.Dispatchers
@@ -242,11 +243,20 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
     var chatInput by rememberSaveable { mutableStateOf("") }
     var chat by rememberSaveable { mutableStateOf(listOf<Pair<String,String>>()) }
     var packs by remember { mutableStateOf(secure.packs(context)) }
+    var testingConnection by remember { mutableStateOf(false) }
+    var testRequest by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
         runCatching { PDFBoxResourceLoader.init(context) }
         sources = studySources(context, store)
         activity.window.decorView.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+    }
+    LaunchedEffect(testRequest) {
+        if (testRequest > 0 && apiKey.isNotBlank()) {
+            testingConnection = true
+            studyAiCall(provider, model, apiKey, "Reply with only: OK").onSuccess { error = "Connection successful." }.onFailure { error = it.message ?: "Connection test failed." }
+            testingConnection = false
+        }
     }
     DisposableEffect(Unit) { onDispose { activity.window.decorView.systemUiVisibility = 0 } }
     BackHandler { if (page == "home") done() else page = "home" }
@@ -394,9 +404,12 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("Gemini","OpenAI","OpenRouter").forEach { p ->
                     FilterChip(provider == p, { provider = p; secure.setProvider(p); model = defaultStudyModel(p); secure.setModel(model) }, label = { Text(p) })
                 }}
-                OutlinedTextField(apiKey, { apiKey = it }, Modifier.fillMaxWidth(), label = { Text("API key") }, singleLine = true)
+                OutlinedTextField(apiKey, { apiKey = it }, Modifier.fillMaxWidth(), label = { Text("API key") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
                 OutlinedTextField(model, { model = it; secure.setModel(it) }, Modifier.fillMaxWidth(), label = { Text("Model") }, singleLine = true)
                 Button({ secure.setApiKey(apiKey.trim()); apiKey = secure.getApiKey(); error = "API key saved on this device." }, Modifier.fillMaxWidth()) { Text("Save API Key") }
+                OutlinedButton({ secure.setApiKey(apiKey.trim()); apiKey = secure.getApiKey(); testRequest++ }, Modifier.fillMaxWidth(), enabled = !testingConnection && apiKey.isNotBlank()) {
+                    if (testingConnection) CircularProgressIndicator(Modifier.size(18.dp)) else Text("Test Connection")
+                }
                 Text("Use a model available to your provider account. API usage is billed/limited by that provider.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (error.isNotBlank()) Text(error, color = if (error.contains("saved", true)) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
             }
