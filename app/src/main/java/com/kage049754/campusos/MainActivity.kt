@@ -25,6 +25,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -2518,27 +2519,20 @@ fun BudgetScreen(store: LocalStore) {
     var showExpense by remember { mutableStateOf(false) }
     var showSaving by remember { mutableStateOf(false) }
     var showTarget by remember { mutableStateOf(false) }
-
     val entries = remember(revision, refresh) { store.budgetEntries() }
     val today = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) }
     val period = store.budgetPeriod()
     val allowance = store.budgetAllowance()
+    val categories = listOf("Food", "Transportation", "School", "Projects", "Bills", "Personal", "Other")
 
     fun inCurrentPeriod(date: String): Boolean {
-        if (date.isBlank()) return false
         val parsed = runCatching { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(date) }.getOrNull() ?: return false
         val now = Calendar.getInstance()
         val then = Calendar.getInstance().apply { time = parsed }
         return when (period) {
-            "Daily" -> now.get(Calendar.YEAR) == then.get(Calendar.YEAR) &&
-                now.get(Calendar.DAY_OF_YEAR) == then.get(Calendar.DAY_OF_YEAR)
-            "Monthly" -> now.get(Calendar.YEAR) == then.get(Calendar.YEAR) &&
-                now.get(Calendar.MONTH) == then.get(Calendar.MONTH)
-            else -> {
-                val nowWeek = now.get(Calendar.WEEK_OF_YEAR)
-                val thenWeek = then.get(Calendar.WEEK_OF_YEAR)
-                now.get(Calendar.YEAR) == then.get(Calendar.YEAR) && nowWeek == thenWeek
-            }
+            "Daily" -> now.get(Calendar.YEAR) == then.get(Calendar.YEAR) && now.get(Calendar.DAY_OF_YEAR) == then.get(Calendar.DAY_OF_YEAR)
+            "Monthly" -> now.get(Calendar.YEAR) == then.get(Calendar.YEAR) && now.get(Calendar.MONTH) == then.get(Calendar.MONTH)
+            else -> now.get(Calendar.YEAR) == then.get(Calendar.YEAR) && now.get(Calendar.WEEK_OF_YEAR) == then.get(Calendar.WEEK_OF_YEAR)
         }
     }
 
@@ -2551,166 +2545,146 @@ fun BudgetScreen(store: LocalStore) {
     val targetSaved = store.budgetTargetSaved()
     val targetRemaining = (targetAmount - targetSaved).coerceAtLeast(0.0)
     val targetProgress = if (targetAmount > 0) (targetSaved / targetAmount).coerceIn(0.0, 1.0) else 0.0
-    val categories = listOf("Food", "Transportation", "School", "Projects", "Bills", "Personal", "Other")
-    val categoryTotals = categories.map { category ->
-        category to current.filter { it.type == "expense" && it.category == category }.sumOf { it.amount }
-    }.filter { it.second > 0 }
-    val maxCategory = categoryTotals.maxOfOrNull { it.second } ?: 1.0
+    val categoryTotals = categories.map { it to current.filter { e -> e.type == "expense" && e.category == it }.sumOf { e -> e.amount } }.filter { it.second > 0 }
+    val totalCategorySpend = categoryTotals.sumOf { it.second }
+    val topCategory = categoryTotals.maxByOrNull { it.second }
+    val remainingPercent = if (allowance > 0) (remaining / allowance * 100).coerceIn(0.0, 100.0) else 0.0
 
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Card(
-                shape = MaterialTheme.shapes.large,
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-            ) {
-                Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Student Budget", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                            Text("$period allowance", color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .75f))
-                        }
-                        IconButton(onClick = { showPlan = true }) {
-                            Icon(Icons.Default.Edit, "Edit allowance")
-                        }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Budget", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text("$period • local only", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                TextButton(onClick = { showPlan = true }) { Text("Edit") }
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Money left", style = MaterialTheme.typography.labelLarge)
+                    Text("₱" + String.format(Locale.getDefault(), "%,.2f", remaining), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+                    Text("₱" + String.format(Locale.getDefault(), "%,.2f", allowance) + " allowance", color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .75f))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Spent ₱" + String.format(Locale.getDefault(), "%,.0f", spent))
+                        Text("Saved ₱" + String.format(Locale.getDefault(), "%,.0f", saved))
                     }
-                    Text("₱" + String.format(Locale.getDefault(), "%,.2f", allowance), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        BudgetMiniStat("Spent", spent)
-                        BudgetMiniStat("Saved", saved)
-                        BudgetMiniStat("Left", remaining)
-                    }
+                    if (allowance > 0) LinearProgressIndicator(progress = { (remaining / allowance).toFloat().coerceIn(0f, 1f) }, Modifier.fillMaxWidth())
                 }
             }
         }
-
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(onClick = { showExpense = true }, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Remove, null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Expense")
+                Button(onClick = { showExpense = true }, Modifier.weight(1f), shape = MaterialTheme.shapes.medium) {
+                    Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text("Expense")
                 }
-                OutlinedButton(onClick = { showSaving = true }, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Savings, null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Save")
+                OutlinedButton(onClick = { showSaving = true }, Modifier.weight(1f), shape = MaterialTheme.shapes.medium) {
+                    Icon(Icons.Default.Savings, null); Spacer(Modifier.width(6.dp)); Text("Save")
                 }
             }
         }
-
+        if (categoryTotals.isNotEmpty()) item {
+            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Where your money goes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        BudgetPieChart(categoryTotals)
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            categoryTotals.take(5).forEachIndexed { index, pair ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(10.dp).background(BudgetChartColors[index % BudgetChartColors.size], RoundedCornerShape(3.dp)))
+                                    Spacer(Modifier.width(7.dp))
+                                    Text(pair.first, Modifier.weight(1f), maxLines = 1)
+                                    Text("${((pair.second / totalCategorySpend) * 100).toInt()}%", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         item {
-            Card(shape = MaterialTheme.shapes.medium, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Quick insight", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        when {
+                            allowance <= 0 -> "Set your allowance first. The app will calculate your remaining money automatically."
+                            current.isEmpty() -> "No spending recorded yet. Add an expense whenever you spend."
+                            topCategory != null -> "Most spent: " + topCategory.first + " (₱" + String.format(Locale.getDefault(), "%,.2f", topCategory.second) + "). You have " + String.format(Locale.getDefault(), "%.0f", remainingPercent) + "% left."
+                            else -> "Keep adding expenses to see your spending insight."
+                        },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.TrackChanges, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Savings target", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.weight(1f))
-                        TextButton(onClick = { showTarget = true }) { Text(if (targetName.isBlank()) "Add" else "Edit") }
-                    }
-                    if (targetName.isBlank() || targetAmount <= 0) {
-                        Text("Set an item you want to save for, like a phone, laptop, or school project.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else {
-                        Text(targetName, fontWeight = FontWeight.SemiBold)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("₱" + String.format(Locale.getDefault(), "%,.2f", targetSaved))
-                            Text("₱" + String.format(Locale.getDefault(), "%,.2f", targetAmount))
+                        Column(Modifier.weight(1f)) {
+                            Text("Saving goal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(if (targetName.isBlank() || targetAmount <= 0) "Optional — save for something you want" else targetName, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        LinearProgressIndicator(
-                            progress = { targetProgress.toFloat() },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Text(
-                            if (targetRemaining <= 0) "Target reached!"
-                            else "₱" + String.format(Locale.getDefault(), "%,.2f", targetRemaining) + " left to reach your target",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        TextButton(onClick = { showTarget = true }) { Text(if (targetName.isBlank()) "Set" else "Edit") }
+                    }
+                    if (targetName.isNotBlank() && targetAmount > 0) {
+                        LinearProgressIndicator(progress = { targetProgress.toFloat() }, Modifier.fillMaxWidth())
+                        Text(if (targetRemaining <= 0) "Goal reached 🎉" else "₱" + String.format(Locale.getDefault(), "%,.2f", targetRemaining) + " more to go", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
         }
-
-        item {
-            Card(shape = MaterialTheme.shapes.medium, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    Text("Spending breakdown", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    if (categoryTotals.isEmpty()) {
-                        Text("No expenses recorded for this $period yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else {
-                        categoryTotals.forEach { (category, amount) ->
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(category, style = MaterialTheme.typography.bodyMedium)
-                                    Text("₱" + String.format(Locale.getDefault(), "%,.2f", amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                                }
-                                LinearProgressIndicator(
-                                    progress = { (amount / maxCategory).toFloat().coerceIn(0f, 1f) },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
+        if (entries.isNotEmpty()) item {
+            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Recent", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    entries.take(5).forEach { entry ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(if (entry.type == "saving") Icons.Default.Savings else Icons.Default.ReceiptLong, null, tint = if (entry.type == "saving") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(entry.note.ifBlank { entry.category.ifBlank { if (entry.type == "saving") "Saving" else "Expense" } }, fontWeight = FontWeight.SemiBold)
+                                Text(entry.date, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            Card(shape = MaterialTheme.shapes.medium, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Recent activity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    if (entries.isEmpty()) {
-                        Text("Your expenses and savings will appear here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else {
-                        entries.take(8).forEach { entry ->
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Surface(
-                                    Modifier.size(38.dp),
-                                    shape = MaterialTheme.shapes.small,
-                                    color = if (entry.type == "saving") MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.errorContainer
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            if (entry.type == "saving") Icons.Default.Savings else Icons.Default.ReceiptLong,
-                                            null
-                                        )
-                                    }
-                                }
-                                Spacer(Modifier.width(10.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(entry.note.ifBlank { entry.category.ifBlank { if (entry.type == "saving") "Saving" else "Expense" } }, fontWeight = FontWeight.SemiBold)
-                                    Text(
-                                        listOf(entry.category, entry.date).filter { it.isNotBlank() }.joinToString(" • "),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Text("₱" + String.format(Locale.getDefault(), "%,.2f", entry.amount), fontWeight = FontWeight.SemiBold)
-                                IconButton(onClick = {
-                                    store.deleteBudgetEntry(entry.id)
-                                    if (entry.type == "saving" && entry.target.isNotBlank()) {
-                                        store.addBudgetTargetSaved(-entry.amount)
-                                    }
-                                    refresh++
-                                }) {
-                                    Icon(Icons.Default.DeleteOutline, "Delete")
-                                }
-                            }
+                            Text("₱" + String.format(Locale.getDefault(), "%,.2f", entry.amount), fontWeight = FontWeight.SemiBold)
+                            IconButton(onClick = {
+                                store.deleteBudgetEntry(entry.id)
+                                if (entry.type == "saving" && entry.target.isNotBlank()) store.addBudgetTargetSaved(-entry.amount)
+                                refresh++
+                            }) { Icon(Icons.Default.DeleteOutline, "Delete") }
                         }
                     }
                 }
             }
         }
     }
-
     if (showPlan) BudgetPlanDialog(store) { showPlan = false; refresh++ }
     if (showExpense) BudgetEntryDialog(store, "Expense", categories, today) { showExpense = false; refresh++ }
     if (showSaving) BudgetEntryDialog(store, "Saving", categories, today, targetName) { showSaving = false; refresh++ }
     if (showTarget) BudgetTargetDialog(store) { showTarget = false; refresh++ }
+}
+
+private val BudgetChartColors = listOf(
+    Color(0xFF5E6AD2), Color(0xFF2E9B74), Color(0xFFE49A3A),
+    Color(0xFFD95D6A), Color(0xFF8C6BCB), Color(0xFF4D91C6), Color(0xFF8A8A8A)
+)
+
+@Composable
+private fun BudgetPieChart(data: List<Pair<String, Double>>) {
+    val total = data.sumOf { it.second }.coerceAtLeast(0.01)
+    Canvas(Modifier.size(145.dp)) {
+        var start = -90f
+        data.forEachIndexed { index, item ->
+            val sweep = (item.second / total * 360f).toFloat()
+            drawArc(BudgetChartColors[index % BudgetChartColors.size], start, sweep, true)
+            start += sweep
+        }
+        drawCircle(MaterialTheme.colorScheme.surface, radius = size.minDimension * .23f, center = center)
+    }
 }
 
 @Composable
