@@ -573,12 +573,35 @@ fun CampusOSApp(activity: Activity) {
         subjectPageVisible = true
     }
 
+    val authPrefs = remember { activity.getSharedPreferences("campusos_auth", Context.MODE_PRIVATE) }
+    var campusSession by remember {
+        mutableStateOf(authPrefs.getString("token", null)?.let {
+            CampusSession(
+                it,
+                authPrefs.getString("uid", "") ?: "",
+                authPrefs.getString("email", "") ?: ""
+            )
+        })
+    }
+
     val colorScheme = if (dynamicColor && android.os.Build.VERSION.SDK_INT >= 31) {
         if (dark) androidx.compose.material3.dynamicDarkColorScheme(activity)
         else androidx.compose.material3.dynamicLightColorScheme(activity)
     } else if (dark) CampusDarkColors else CampusLightColors
 
     MaterialTheme(colorScheme = colorScheme, shapes = CampusShapes) {
+        if (campusSession == null) {
+            NativeLoginScreen { session ->
+                authPrefs.edit()
+                    .putString("token", session.accessToken)
+                    .putString("uid", session.userId)
+                    .putString("email", session.email)
+                    .apply()
+                campusSession = session
+            }
+            return@MaterialTheme
+        }
+
         if (subjectPageId != 0L) {
             AnimatedVisibility(
                 visible = subjectPageVisible,
@@ -607,6 +630,12 @@ fun CampusOSApp(activity: Activity) {
                     TopAppBar(
                         title = { Text("CampusOS", fontWeight = FontWeight.Bold) },
                         actions = {
+                            IconButton(onClick = { screenName = Screen.CHAT.name }) {
+                                Icon(Icons.Default.Chat, "Private group chats")
+                            }
+                            IconButton(onClick = { screenName = Screen.ANNOUNCEMENTS.name }) {
+                                Icon(Icons.Default.Campaign, "Announcements")
+                            }
                             if (screen == Screen.SCHEDULE) {
                                 IconButton(onClick = { showScheduleDetails = true }) {
                                     Icon(Icons.Default.Info, "Subject details")
@@ -624,8 +653,6 @@ fun CampusOSApp(activity: Activity) {
                     NavigationBar {
                         listOf(
                             Screen.HOME,
-                            Screen.CHAT,
-                            Screen.ANNOUNCEMENTS,
                             Screen.SCHEDULE,
                             Screen.TASKS,
                             Screen.ACADEMICS
@@ -659,8 +686,8 @@ fun CampusOSApp(activity: Activity) {
                 ) { targetScreen ->
                     when (Screen.valueOf(targetScreen)) {
                         Screen.HOME -> HomeScreen(store, { screenName = it.name }, homeEditRequest)
-                        Screen.CHAT -> CampusWebEmbeddedScreen("https://kage049754.github.io/CampusOS-Web/?embed=android#chat")
-                        Screen.ANNOUNCEMENTS -> CampusWebEmbeddedScreen("https://kage049754.github.io/CampusOS-Web/?embed=android#announcements")
+                        Screen.CHAT -> NativeChatScreen()
+                        Screen.ANNOUNCEMENTS -> NativeAnnouncementsScreen()
                         Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }, { showScheduleDetails = true }) { search = "" }
                         Screen.TASKS -> TasksScreen(store, search, { search = "" }, { id -> subjectPageId = id; subjectPageMode = 0 })
                         Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 })
