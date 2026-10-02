@@ -217,7 +217,7 @@ object CampusNativeApi {
         val a = JSONArray(request("/rest/v1/chat_messages?select=sender_id,body,created_at,profiles(full_name)&group_id=eq." + groupId + "&order=created_at.asc&limit=100", token = s.accessToken))
         (0 until a.length()).map {
             val o = a.getJSONObject(it)
-            CampusMessage(o.optJSONObject("profiles")?.optString("full_name", "Member") ?: "Member",
+            CampusMessage(o.optString("sender_id"), o.optJSONObject("profiles")?.optString("full_name", "Member") ?: "Member",
                 o.optString("body"), o.optString("created_at"))
         }
     }
