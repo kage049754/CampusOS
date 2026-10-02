@@ -2510,8 +2510,6 @@ fun AcademicsScreen(
 
 
 @OptIn(ExperimentalMaterial3Api::class)
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BudgetScreen(store: LocalStore) {
     val revision = store.revision
@@ -2716,7 +2714,7 @@ fun BudgetScreen(store: LocalStore) {
 }
 
 @Composable
-private fun BudgetMiniStat(label: String, amount: Double) {
+private fun RowScope.BudgetMiniStat(label: String, amount: Double) {
     Column(Modifier.weight(1f)) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .72f))
         Text(
@@ -2850,6 +2848,7 @@ private fun BudgetTargetDialog(store: LocalStore, done: () -> Unit) {
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubjectNotepadPage(subject: Record, store: LocalStore, done: () -> Unit) {
     val revision = store.revision
