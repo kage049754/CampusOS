@@ -711,11 +711,19 @@ fun CampusOSApp(activity: Activity) {
                                         .putString("token", session.accessToken)
                                         .putString("uid", session.userId)
                                         .putString("email", session.email)
+                                        .putString("role", session.role)
                                         .apply()
                                     campusSession = session
                                 }
                             } else {
                                 NativeAnnouncementsScreen()
+                            }
+                        }
+                        Screen.ADMIN -> {
+                            if (campusSession == null || (campusSession?.role?.lowercase() != "admin" && campusSession?.role?.lowercase() != "leader")) {
+                                screenName = Screen.HOME.name
+                            } else {
+                                NativeCampusManagementScreen(campusSession!!)
                             }
                         }
                         Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }, { showScheduleDetails = true }) { search = "" }
@@ -768,6 +776,7 @@ fun CampusOSApp(activity: Activity) {
     Screen.TASKS -> Icons.Default.CheckCircle
     Screen.ACADEMICS -> Icons.Default.School
     Screen.FILES -> Icons.Default.Folder
+    Screen.ADMIN -> Icons.Default.AdminPanelSettings
     Screen.SETTINGS -> Icons.Default.Settings
 }
 
