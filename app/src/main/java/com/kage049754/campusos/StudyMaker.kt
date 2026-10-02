@@ -346,7 +346,6 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                     item { Button(enabled = action.isNotBlank() && !busy, onClick = {
                         resultTitle = action; busy = true; page = "result"
                     }, modifier = Modifier.fillMaxWidth()) { if (busy) CircularProgressIndicator(Modifier.size(18.dp)) else Text("Create " + action) } }
-                    if (busy && page == "result") LaunchedEffect(resultTitle) { generate(resultTitle) }
                     if (error.isNotBlank()) item { Text(error, color = MaterialTheme.colorScheme.error) }
                 }
             }
