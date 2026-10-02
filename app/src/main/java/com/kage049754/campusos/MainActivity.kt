@@ -438,7 +438,7 @@ class MainActivity : ComponentActivity() {
 }
 
 enum class Screen(val label: String) {
-    HOME("Home"), SCHEDULE("Schedule"), TASKS("Notes"), ACADEMICS("Subjects"),
+    HOME("Home"), SCHEDULE("Schedule"), TASKS("Notes"), ACADEMICS("Tools"),
     FILES("Files"), CHAT("Chats"), ANNOUNCEMENTS("Announcements"), ADMIN("Campus Management"), SETTINGS("Settings")
 }
 
@@ -2218,7 +2218,7 @@ fun AcademicsScreen(
 
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-            Text("Subjects", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("Tools", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text(
                 if (tab == 0) "Your subjects, notes, and lecture files"
                 else "Reviewers and study tools",
@@ -3084,7 +3084,7 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Subjects & lecture files", fontWeight = FontWeight.Bold)
-                    Text("Manage Notepad and Lecture Files from the Subjects screen.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Manage Notepad and Lecture Files from the Tools screen.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -3145,13 +3145,13 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
                             Icon(Icons.Default.Restore, null); Spacer(Modifier.width(6.dp)); Text("Recover")
                         }
                     }
-                    Text("You can back up or recover Homepage, Class Schedule, Notes, or Subjects/Lessons separately.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("You can back up or recover Homepage, Class Schedule, Notes, or Tools separately.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
 
         item { Text("CampusOS 1.0.0 • Offline-first", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        item { Text("Transfer tip: select Class Schedule to share your timetable, or Subjects / Lessons to share subjects, notes, and lecture files.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        item { Text("Transfer tip: select Class Schedule to share your timetable, or Tools to share subjects, notes, and lecture files.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 
     if (backupMode) ModuleBackupDialog("Choose modules to backup", selectedModules, { selectedModules=it }) {
