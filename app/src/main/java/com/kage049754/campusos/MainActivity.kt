@@ -3338,11 +3338,11 @@ fun CampusWebEmbeddedScreen(url: String) {
                 settings.allowFileAccess = false
                 settings.allowContentAccess = false
                 webViewClient = WebViewClient()
-                loadUrl("https://kage049754.github.io/CampusOS-Web/?embed=android#chat")
+                loadUrl(url)
             }
         },
         update = { webView ->
-            if (webView.url == null) webView.loadUrl("https://kage049754.github.io/CampusOS-Web/#chat")
+            if (webView.url == null) webView.loadUrl(url)
         }
     )
 }
