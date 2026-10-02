@@ -2676,6 +2676,7 @@ private val BudgetChartColors = listOf(
 @Composable
 private fun BudgetPieChart(data: List<Pair<String, Double>>) {
     val total = data.sumOf { it.second }.coerceAtLeast(0.01)
+    val holeColor = MaterialTheme.colorScheme.surface
     Canvas(Modifier.size(145.dp)) {
         var start = -90f
         data.forEachIndexed { index, item ->
@@ -2683,7 +2684,7 @@ private fun BudgetPieChart(data: List<Pair<String, Double>>) {
             drawArc(BudgetChartColors[index % BudgetChartColors.size], start, sweep, true)
             start += sweep
         }
-        drawCircle(MaterialTheme.colorScheme.surface, radius = size.minDimension * .23f, center = center)
+        drawCircle(holeColor, radius = size.minDimension * .23f, center = center)
     }
 }
 
