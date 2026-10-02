@@ -275,7 +275,7 @@ class LocalStore(context: Context) {
     fun authMethod(): String { val stored = prefs.getString("lock_method", "") ?: ""; if (stored.isNotBlank()) return stored; return if (pin().isNotBlank()) "pin" else "none" }
     fun setAuthMethod(v: String) { prefs.edit().putString("lock_method", v).apply(); revision++ }
     fun theme() = prefs.getString("theme", "system") ?: "system"
-    fun appearancePreset() = prefs.getString("appearance_preset", "default") ?: "default"
+    fun appearancePreset() = prefs.getString("appearance_preset", "forest") ?: "forest"
     fun setAppearancePreset(v: String) { prefs.edit().putString("appearance_preset", v).apply(); revision++ }
     fun homeLayoutOrder(): List<String> = (prefs.getString("home_layout_order", "") ?: "").split(",").filter { it.isNotBlank() }
     fun setHomeLayoutOrder(order: List<String>) { prefs.edit().putString("home_layout_order", order.joinToString(",")).apply(); revision++ }
@@ -283,6 +283,15 @@ class LocalStore(context: Context) {
     fun setHomeHiddenTiles(hidden: Set<String>) { prefs.edit().putString("home_hidden_tiles", hidden.joinToString(",")).apply(); revision++ }
     fun resetHomeLayout() { prefs.edit().remove("home_layout_order").remove("home_hidden_tiles").apply(); revision++ }
     fun setTheme(v: String) { prefs.edit().putString("theme", v).apply(); revision++ }
+    fun toolOrder(): List<String> {
+        val allowed = listOf("subjects", "calculator", "budget")
+        val saved = (prefs.getString("tool_order", "") ?: "").split(",").filter { it in allowed }
+        return (saved + allowed).distinct()
+    }
+    fun setToolOrder(order: List<String>) {
+        prefs.edit().putString("tool_order", order.filter { it in listOf("subjects","calculator","budget") }.distinct().joinToString(",")).apply()
+        revision++
+    }
 
     fun budgetPeriod() = prefs.getString("budget_period", "Weekly") ?: "Weekly"
     fun budgetAllowance() = prefs.getFloat("budget_allowance", 0f).toDouble()
@@ -533,6 +542,7 @@ fun CampusOSApp(activity: Activity) {
     var showHomeSettings by remember { mutableStateOf(false) }
     var showAppLock by remember { mutableStateOf(false) }
     var showBackupRecovery by remember { mutableStateOf(false) }
+    var showAbout by remember { mutableStateOf(false) }
     var homeEditRequest by remember { mutableIntStateOf(0) }
     var showProfile by remember { mutableStateOf(false) }
     var showScheduleSettings by remember { mutableStateOf(false) }
@@ -786,10 +796,10 @@ fun CampusOSApp(activity: Activity) {
                 }
             }
             if (showHomeSettings) {
-                HomeSettingsDialog(store, campusSession?.role ?: "student", onManagement = { screenName = Screen.ADMIN.name; showHomeSettings = false }, onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, onLockNow = { locked = true }, done = { showHomeSettings = false }, openAppLock = { showHomeSettings = false; showAppLock = true }, openBackupRecovery = { showHomeSettings = false; showBackupRecovery = true })
+                HomeSettingsDialog(store, campusSession?.role ?: "student", onManagement = { screenName = Screen.ADMIN.name; showHomeSettings = false }, onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, onLockNow = { locked = true }, done = { showHomeSettings = false }, openAppLock = { showHomeSettings = false; showAppLock = true }, openBackupRecovery = { showHomeSettings = false; showBackupRecovery = true }, openAbout = { showHomeSettings = false; showAbout = true })
             }
             if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
-            if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }, appearancePreset, { appearancePreset = it; store.setAppearancePreset(it) }) { showHomeColors = false }
+            if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }, appearancePreset, { appearancePreset = it; store.setAppearancePreset(it); applyLauncherIcon(activity, it) }) { showHomeColors = false }
             if (showProfile) ProfileDialog(store) { showProfile = false }
             if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
             if (showScheduleManager) ScheduleManagerDialog(store) { showScheduleManager = false }
@@ -822,7 +832,8 @@ fun HomeSettingsDialog(
     onLockNow:()->Unit,
     done:()->Unit,
     openAppLock:()->Unit,
-    openBackupRecovery:()->Unit
+    openBackupRecovery:()->Unit,
+    openAbout:()->Unit
 ) {
     Dialog(onDismissRequest = done) {
         Surface(Modifier.fillMaxWidth().padding(12.dp), shape = MaterialTheme.shapes.extraLarge, tonalElevation = 8.dp, color = MaterialTheme.colorScheme.surface) {
@@ -841,14 +852,14 @@ fun HomeSettingsDialog(
                 SettingsRow(Icons.Default.Person, "Profile", "Name, student ID, section and photo") { onModule("Homepage") }
                 SettingsRow(Icons.Default.Home, "Homepage", "Dashboard layout and home tiles") { onModule("Homepage") }
                 SettingsRow(Icons.Default.CalendarMonth, "Schedule", "Class days, timetable and class editing") { onModule("Class Schedule") }
-                SettingsRow(Icons.Default.CheckCircle, "Tasks", "Calendar, tasks and deadlines") { onModule("Tasks") }
-                SettingsRow(Icons.Default.School, "Subjects", "Subjects, Notepad and Lecture Files") { onModule("Subjects") }
+                SettingsRow(Icons.Default.EventNote, "Notes", "Calendar, notes and reminders") { onModule("Notes") }
+                SettingsRow(Icons.Default.Build, "Tools", "Subjects, Calculator, Budget and study tools") { onModule("Tools") }
                 SettingsGroupTitle("App")
                 SettingsRow(Icons.Default.Notifications, "Notifications", "Next-class and deadline reminders") { onModule("Notifications") }
                 SettingsRow(Icons.Default.Palette, "Appearance", "Light, dark and system theme") { onAppearance() }
                 SettingsRow(Icons.Default.Backup, "Data & Backup", "Backup or recover selected modules") { openBackupRecovery() }
                 SettingsRow(Icons.Default.Lock, "App Lock", "PIN or pattern protection") { openAppLock() }
-                SettingsRow(Icons.Default.Info, "About", "CampusOS 1.0.0 • Offline-first") { done() }
+                SettingsRow(Icons.Default.Info, "About", "Features, modules and offline functions") { showAbout = true }
                 Spacer(Modifier.height(4.dp))
                 TextButton(onClick = done, modifier = Modifier.align(Alignment.End)) { Text("Done") }
             }
@@ -966,11 +977,11 @@ fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleM
                 OutlinedButton(profile,Modifier.fillMaxWidth()){Icon(Icons.Default.Person,null);Spacer(Modifier.width(8.dp));Text("Profile & homepage information")}
             }
             "Class Schedule"->{Text("Class Schedule controls",fontWeight=FontWeight.Bold);OutlinedButton(addClass,Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Spacer(Modifier.width(8.dp));Text("Add Class")};OutlinedButton(scheduleManager,Modifier.fillMaxWidth()){Icon(Icons.Default.EditCalendar,null);Spacer(Modifier.width(8.dp));Text("Edit / Delete Classes")};OutlinedButton(scheduleSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.CalendarMonth,null);Spacer(Modifier.width(8.dp));Text("Schedule Settings")};}
-            "Tasks"->{Text("Note controls",fontWeight=FontWeight.Bold);Text("Simple calendar and notes stored offline.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openTasks,Modifier.fillMaxWidth()){Icon(Icons.Default.CheckCircle,null);Spacer(Modifier.width(8.dp));Text("Open Notes")};OutlinedButton({ showTaskSettings = true },Modifier.fillMaxWidth()){Icon(Icons.Default.Settings,null);Spacer(Modifier.width(8.dp));Text("Notes Settings")}}
-            "Subjects"->{Text("Subjects controls",fontWeight=FontWeight.Bold);Text("Subjects, Notepad, and Lecture Files are stored offline. Use the Subjects screen to manage them.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openAcademics,Modifier.fillMaxWidth()){Icon(Icons.Default.School,null);Spacer(Modifier.width(8.dp));Text("Open Subjects")}}
+            "Notes"->{Text("Notes controls",fontWeight=FontWeight.Bold);Text("Calendar, notes, reminders and deadlines are stored locally.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openTasks,Modifier.fillMaxWidth()){Icon(Icons.Default.EventNote,null);Spacer(Modifier.width(8.dp));Text("Open Notes")};OutlinedButton({ showTaskSettings = true },Modifier.fillMaxWidth()){Icon(Icons.Default.Settings,null);Spacer(Modifier.width(8.dp));Text("Notes Settings")}}
+            "Tools"->{Text("Tools controls",fontWeight=FontWeight.Bold);Text("Subjects, Calculator, Budget, Notepad and Lecture Files are available from Tools.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openAcademics,Modifier.fillMaxWidth()){Icon(Icons.Default.Build,null);Spacer(Modifier.width(8.dp));Text("Open Tools")};OutlinedButton({ showTaskSettings = true },Modifier.fillMaxWidth()){Icon(Icons.Default.SwapVert,null);Spacer(Modifier.width(8.dp));Text("Tool Order")}}
         }
     }},confirmButton={TextButton(close){Text("Close")}})
-    if (showTaskSettings) TaskSettingsDialog(LocalStore(androidx.compose.ui.platform.LocalContext.current)) { showTaskSettings = false }
+    if (showTaskSettings) { if (module == "Tools") ToolOrderDialog(homeStore) { showTaskSettings = false } else TaskSettingsDialog(LocalStore(androidx.compose.ui.platform.LocalContext.current)) { showTaskSettings = false } }
     if (showHomeTiles) HomeTileSettingsDialog(
         defaultOrder = listOf("profile", "stats", "classes", "pinned", "tasks"),
         hiddenTiles = homeHiddenTiles,
