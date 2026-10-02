@@ -37,6 +37,12 @@ data class CampusAnnouncement(
 )
 data class CampusGroup(val id: String, val name: String)
 data class CampusMessage(val sender: String, val body: String, val createdAt: String)
+data class CampusProfile(val id: String, val fullName: String, val schoolId: String, val section: String, val status: String, val role: String)
+data class CampusLeaderAssignment(
+    val userId: String, val title: String, val organizationType: String,
+    val organizationName: String, val canAnnounce: Boolean, val active: Boolean,
+    val pageEnabled: Boolean, val pageName: String
+)
 
 object CampusNativeApi {
     private fun request(path: String, method: String = "GET", token: String? = null, body: String? = null): String {
@@ -81,6 +87,31 @@ object CampusNativeApi {
         val a = JSONArray(request("/rest/v1/profiles?select=role&id=eq." + s.userId + "&limit=1", token = s.accessToken))
         val role = if (a.length() > 0) a.getJSONObject(0).optString("role", "student") else "student"
         s.copy(role = role)
+    }
+
+    suspend fun profiles(s: CampusSession) = withContext(Dispatchers.IO) {
+        val a = JSONArray(request("/rest/v1/profiles?select=id,full_name,school_id,year_section,status,role&order=full_name.asc", token = s.accessToken))
+        (0 until a.length()).map {
+            val o = a.getJSONObject(it)
+            CampusProfile(o.optString("id"), o.optString("full_name", "Student"), o.optString("school_id"), o.optString("year_section"), o.optString("status", "pending"), o.optString("role", "student"))
+        }
+    }
+
+    suspend fun updateProfileRoleOrStatus(s: CampusSession, userId: String, role: String, status: String) = withContext(Dispatchers.IO) {
+        request("/rest/v1/profiles?id=eq." + userId, "PATCH", s.accessToken, JSONObject().put("role", role).put("status", status).toString())
+    }
+
+    suspend fun leaderAssignments(s: CampusSession) = withContext(Dispatchers.IO) {
+        val a = JSONArray(request("/rest/v1/leader_assignments?select=user_id,title,organization_type,organization_name,can_announce,active,page_enabled,page_name&order=organization_name.asc", token = s.accessToken))
+        (0 until a.length()).map {
+            val o = a.getJSONObject(it)
+            CampusLeaderAssignment(o.optString("user_id"), o.optString("title"), o.optString("organization_type"), o.optString("organization_name"), o.optBoolean("can_announce"), o.optBoolean("active", true), o.optBoolean("page_enabled"), o.optString("page_name"))
+        }
+    }
+
+    suspend fun saveLeaderAssignment(s: CampusSession, userId: String, title: String, organizationType: String, organizationName: String, canAnnounce: Boolean, active: Boolean, pageEnabled: Boolean, pageName: String) = withContext(Dispatchers.IO) {
+        request("/rest/v1/leader_assignments?on_conflict=user_id", "POST", s.accessToken,
+            JSONObject().put("user_id", userId).put("title", title).put("organization_type", organizationType).put("organization_name", organizationName).put("can_announce", canAnnounce).put("active", active).put("page_enabled", pageEnabled).put("page_name", pageName).put("assigned_by", s.userId).toString())
     }
 
     suspend fun announcements(s: CampusSession) = withContext(Dispatchers.IO) {
@@ -322,4 +353,189 @@ fun NativeChatScreen() {
             }
         }
     }
+}
+
+
+@Composable
+fun NativeCampusManagementScreen(session: CampusSession) {
+    var profiles by remember { mutableStateOf<List<CampusProfile>>(emptyList()) }
+    var assignments by remember { mutableStateOf<List<CampusLeaderAssignment>>(emptyList()) }
+    var error by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(true) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var editing by remember { mutableStateOf<CampusProfile?>(null) }
+    var assignmentFor by remember { mutableStateOf<CampusProfile?>(null) }
+    val scope = rememberCoroutineScope()
+    val isAdmin = session.role.equals("admin", true)
+    val isLeader = session.role.equals("leader", true) || isAdmin
+
+    fun reload() {
+        scope.launch {
+            loading = true
+            error = ""
+            runCatching {
+                if (isAdmin) profiles = CampusNativeApi.profiles(session)
+                if (isLeader) assignments = CampusNativeApi.leaderAssignments(session)
+            }.onFailure { error = it.message ?: "Unable to load campus management data" }
+            loading = false
+        }
+    }
+    LaunchedEffect(session.userId, session.role) { reload() }
+
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Text("Campus Management", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(4.dp))
+        Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.small) {
+            Text(if (isAdmin) "ADMIN" else "LEADER", Modifier.padding(horizontal = 10.dp, vertical = 5.dp), fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(10.dp))
+        if (isAdmin) {
+            TabRow(selectedTabIndex = selectedTab) {
+                Tab(selectedTab == 0, { selectedTab = 0 }, text = { Text("People") })
+                Tab(selectedTab == 1, { selectedTab = 1 }, text = { Text("Leaders") })
+            }
+        }
+        if (loading) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        } else if (error.isNotBlank()) {
+            Column(Modifier.fillMaxSize()) {
+                Text(error, color = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = { reload() }) { Text("Retry") }
+            }
+        } else if (isAdmin && selectedTab == 0) {
+            LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+                item { Text("Account management", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                items(profiles) { p ->
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(p.fullName, fontWeight = FontWeight.Bold)
+                            Text(listOf(p.schoolId, p.section).filter { it.isNotBlank() }.joinToString(" • "), style = MaterialTheme.typography.bodySmall)
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                AssistChip(onClick = { editing = p }, label = { Text(p.role) })
+                                Spacer(Modifier.width(6.dp))
+                                AssistChip(onClick = { editing = p }, label = { Text(p.status) })
+                                Spacer(Modifier.weight(1f))
+                                TextButton(onClick = { editing = p }) { Text("Manage") }
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (isAdmin && selectedTab == 1) {
+            LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+                item {
+                    Text("Leader assignments", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Configure position, club/group/org, page and announcement access.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                items(profiles.filter { it.role.equals("leader", true) }) { p ->
+                    val a = assignments.firstOrNull { it.userId == p.id }
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(p.fullName, fontWeight = FontWeight.Bold)
+                            Text(a?.organizationName?.ifBlank { "No organization" } ?: "No organization")
+                            Text(a?.title?.ifBlank { "Leader" } ?: "Leader", style = MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = { assignmentFor = p }) { Text(if (a == null) "Set up leader" else "Edit assignment") }
+                        }
+                    }
+                }
+                if (profiles.none { it.role.equals("leader", true) }) item {
+                    EmptyCampusManagementCard("No leader accounts yet. Change an approved person's role to leader in People first.")
+                }
+            }
+        } else {
+            val mine = assignments.firstOrNull { it.userId == session.userId }
+            LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+                item {
+                    Text("Your leader access", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(mine?.title?.ifBlank { "Leader" } ?: "Leader", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text(listOfNotNull(mine?.organizationType?.takeIf { it.isNotBlank() }, mine?.organizationName?.takeIf { it.isNotBlank() }).joinToString(" • ").ifBlank { "No organization assignment found." })
+                            if (!mine?.pageName.isNullOrBlank()) Text("Page: " + mine?.pageName)
+                            Text(if (mine?.canAnnounce == true) "You can publish announcements." else "Announcement publishing is not enabled for your account.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (mine?.pageEnabled == true) Text("Organization page: enabled")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    editing?.let { p ->
+        var role by remember(p.id) { mutableStateOf(p.role) }
+        var status by remember(p.id) { mutableStateOf(p.status) }
+        AlertDialog(
+            onDismissRequest = { editing = null },
+            title = { Text("Manage " + p.fullName) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Role", fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("student", "leader", "admin").forEach { value -> FilterChip(role == value, { role = value }, label = { Text(value) }) }
+                    }
+                    Text("Status", fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("approved", "pending", "rejected").forEach { value -> FilterChip(status == value, { status = value }, label = { Text(value) }) }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    scope.launch {
+                        runCatching {
+                            CampusNativeApi.updateProfileRoleOrStatus(session, p.id, role, status)
+                            profiles = CampusNativeApi.profiles(session)
+                            assignments = CampusNativeApi.leaderAssignments(session)
+                            editing = null
+                        }.onFailure { error = it.message ?: "Unable to update account" }
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { editing = null }) { Text("Cancel") } }
+        )
+    }
+
+    assignmentFor?.let { p ->
+        val existing = assignments.firstOrNull { it.userId == p.id }
+        var title by remember(p.id) { mutableStateOf(existing?.title ?: "Leader") }
+        var type by remember(p.id) { mutableStateOf(existing?.organizationType ?: "Organization") }
+        var org by remember(p.id) { mutableStateOf(existing?.organizationName ?: "") }
+        var page by remember(p.id) { mutableStateOf(existing?.pageName ?: "") }
+        var canAnnounce by remember(p.id) { mutableStateOf(existing?.canAnnounce ?: true) }
+        var active by remember(p.id) { mutableStateOf(existing?.active ?: true) }
+        var pageEnabled by remember(p.id) { mutableStateOf(existing?.pageEnabled ?: true) }
+        AlertDialog(
+            onDismissRequest = { assignmentFor = null },
+            title = { Text("Leader assignment") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(title, { title = it }, label = { Text("Position") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(type, { type = it }, label = { Text("Club / Group / Org") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(org, { org = it }, label = { Text("Organization name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(page, { page = it }, label = { Text("Page name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Can publish announcements"); Switch(canAnnounce, { canAnnounce = it }) }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Organization page enabled"); Switch(pageEnabled, { pageEnabled = it }) }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Active leader assignment"); Switch(active, { active = it }) }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    scope.launch {
+                        runCatching {
+                            CampusNativeApi.saveLeaderAssignment(session, p.id, title.trim(), type.trim(), org.trim(), canAnnounce, active, pageEnabled, page.trim())
+                            assignments = CampusNativeApi.leaderAssignments(session)
+                            assignmentFor = null
+                        }.onFailure { error = it.message ?: "Unable to save leader assignment" }
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { assignmentFor = null }) { Text("Cancel") } }
+        )
+    }
+}
+
+@Composable
+private fun EmptyCampusManagementCard(text: String) {
+    Card(Modifier.fillMaxWidth()) { Text(text, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
 }
