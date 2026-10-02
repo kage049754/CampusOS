@@ -91,52 +91,119 @@ private val CampusShapes = Shapes(
     extraLarge = RoundedCornerShape(24.dp)
 )
 
-private val CampusLightColors = lightColorScheme(
-    primary = Color(0xFF1565C0),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFD6E8FF),
-    onPrimaryContainer = Color(0xFF001D36),
-    secondary = Color(0xFF4F5F72),
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFD9E4F7),
-    onSecondaryContainer = Color(0xFF0C1C2B),
-    background = Color(0xFFF7F9FC),
-    onBackground = Color(0xFF191C20),
-    surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF191C20),
-    surfaceVariant = Color(0xFFE0E4EA),
-    onSurfaceVariant = Color(0xFF43474E),
-    outline = Color(0xFF73777F),
-    outlineVariant = Color(0xFFC3C7CF)
-)
-
-private val CampusDarkColors = darkColorScheme(
-    primary = Color(0xFFA8C8FF),
-    onPrimary = Color(0xFF00315C),
-    primaryContainer = Color(0xFF174A7A),
-    onPrimaryContainer = Color(0xFFD6E8FF),
-    secondary = Color(0xFFBBC7D9),
-    onSecondary = Color(0xFF253140),
-    secondaryContainer = Color(0xFF354253),
-    onSecondaryContainer = Color(0xFFD9E4F7),
-    tertiary = Color(0xFFC5C0E8),
-    onTertiary = Color(0xFF2C2942),
-    tertiaryContainer = Color(0xFF44405D),
-    onTertiaryContainer = Color(0xFFE6E0FF),
-    background = Color(0xFF121417),
-    onBackground = Color(0xFFE3E6EA),
-    surface = Color(0xFF1A1D21),
-    onSurface = Color(0xFFE3E6EA),
-    surfaceVariant = Color(0xFF292D33),
-    onSurfaceVariant = Color(0xFFC3C7CF),
-    surfaceContainerLowest = Color(0xFF0D0F12),
-    surfaceContainerLow = Color(0xFF20242A),
-    surfaceContainer = Color(0xFF252A30),
-    surfaceContainerHigh = Color(0xFF2B3037),
-    surfaceContainerHighest = Color(0xFF353A42),
-    outline = Color(0xFF8D929A),
-    outlineVariant = Color(0xFF444950)
-)
+private fun campusColorScheme(preset: String, dark: Boolean): ColorScheme {
+    return when (preset) {
+        "forest" -> if (dark) darkColorScheme(
+            primary = Color(0xFF8FD6A6), onPrimary = Color(0xFF00391D),
+            primaryContainer = Color(0xFF00532B), onPrimaryContainer = Color(0xFFACF2C2),
+            secondary = Color(0xFFB4CCB9), onSecondary = Color(0xFF1F3526),
+            secondaryContainer = Color(0xFF354B3B), onSecondaryContainer = Color(0xFFD0E8D4),
+            tertiary = Color(0xFF9FD0CB), onTertiary = Color(0xFF003735),
+            tertiaryContainer = Color(0xFF1F4E4A), onTertiaryContainer = Color(0xFFBAECE7),
+            background = Color(0xFF101510), onBackground = Color(0xFFE0E8E0),
+            surface = Color(0xFF171D18), onSurface = Color(0xFFE0E8E0),
+            surfaceVariant = Color(0xFF29312B), onSurfaceVariant = Color(0xFFC0C9C0),
+            outline = Color(0xFF89938A), outlineVariant = Color(0xFF404840)
+        ) else lightColorScheme(
+            primary = Color(0xFF176B3A), onPrimary = Color.White,
+            primaryContainer = Color(0xFFB8F2C8), onPrimaryContainer = Color(0xFF00210E),
+            secondary = Color(0xFF4E6354), onSecondary = Color.White,
+            secondaryContainer = Color(0xFFD0E8D4), onSecondaryContainer = Color(0xFF0B1F12),
+            tertiary = Color(0xFF326B67), onTertiary = Color.White,
+            tertiaryContainer = Color(0xFFBCECE7), onTertiaryContainer = Color(0xFF00201E),
+            background = Color(0xFFF7FBF7), onBackground = Color(0xFF181D19),
+            surface = Color(0xFFFFFFFF), onSurface = Color(0xFF181D19),
+            surfaceVariant = Color(0xFFE0E9E1), onSurfaceVariant = Color(0xFF414942),
+            outline = Color(0xFF717970), outlineVariant = Color(0xFFC1CAC2)
+        )
+        "lavender" -> if (dark) darkColorScheme(
+            primary = Color(0xFFD0BCFF), onPrimary = Color(0xFF372062),
+            primaryContainer = Color(0xFF4F378B), onPrimaryContainer = Color(0xFFEADDFF),
+            secondary = Color(0xFFCCC2DC), onSecondary = Color(0xFF332D41),
+            secondaryContainer = Color(0xFF4A4458), onSecondaryContainer = Color(0xFFE8DEF8),
+            tertiary = Color(0xFFEFB8C8), onTertiary = Color(0xFF492532),
+            tertiaryContainer = Color(0xFF633B48), onTertiaryContainer = Color(0xFFFFD9E2),
+            background = Color(0xFF141218), onBackground = Color(0xFFE6E0E9),
+            surface = Color(0xFF1C1A20), onSurface = Color(0xFFE6E0E9),
+            surfaceVariant = Color(0xFF48454E), onSurfaceVariant = Color(0xFFCAC4D0),
+            outline = Color(0xFF938F99), outlineVariant = Color(0xFF49454F)
+        ) else lightColorScheme(
+            primary = Color(0xFF6750A4), onPrimary = Color.White,
+            primaryContainer = Color(0xFFEADDFF), onPrimaryContainer = Color(0xFF21005D),
+            secondary = Color(0xFF625B71), onSecondary = Color.White,
+            secondaryContainer = Color(0xFFE8DEF8), onSecondaryContainer = Color(0xFF1D192B),
+            tertiary = Color(0xFF7D5260), onTertiary = Color.White,
+            tertiaryContainer = Color(0xFFFFD8E4), onTertiaryContainer = Color(0xFF31111D),
+            background = Color(0xFFFAF8FF), onBackground = Color(0xFF1D1B20),
+            surface = Color(0xFFFFFBFE), onSurface = Color(0xFF1D1B20),
+            surfaceVariant = Color(0xFFE7E0EC), onSurfaceVariant = Color(0xFF49454F),
+            outline = Color(0xFF79747E), outlineVariant = Color(0xFFCAC4D0)
+        )
+        "sunset" -> if (dark) darkColorScheme(
+            primary = Color(0xFFFFB4A2), onPrimary = Color(0xFF5F160B),
+            primaryContainer = Color(0xFF7D291C), onPrimaryContainer = Color(0xFFFFDAD1),
+            secondary = Color(0xFFE7BDB4), onSecondary = Color(0xFF442925),
+            secondaryContainer = Color(0xFF5D3F3A), onSecondaryContainer = Color(0xFFFFDAD4),
+            tertiary = Color(0xFFD4C58F), onTertiary = Color(0xFF393006),
+            tertiaryContainer = Color(0xFF51471A), onTertiaryContainer = Color(0xFFF1E3A6),
+            background = Color(0xFF1A1110), onBackground = Color(0xFFF1DFDB),
+            surface = Color(0xFF211816), onSurface = Color(0xFFF1DFDB),
+            surfaceVariant = Color(0xFF534340), onSurfaceVariant = Color(0xFFD8C2BE),
+            outline = Color(0xFFA08B87), outlineVariant = Color(0xFF594744)
+        ) else lightColorScheme(
+            primary = Color(0xFFB3261E), onPrimary = Color.White,
+            primaryContainer = Color(0xFFFFDAD1), onPrimaryContainer = Color(0xFF410002),
+            secondary = Color(0xFF775650), onSecondary = Color.White,
+            secondaryContainer = Color(0xFFFFDBD3), onSecondaryContainer = Color(0xFF2C1511),
+            tertiary = Color(0xFF705E1F), onTertiary = Color.White,
+            tertiaryContainer = Color(0xFFF9E3A7), onTertiaryContainer = Color(0xFF241A00),
+            background = Color(0xFFFFF8F6), onBackground = Color(0xFF231A18),
+            surface = Color(0xFFFFFBF9), onSurface = Color(0xFF231A18),
+            surfaceVariant = Color(0xFFF5DED8), onSurfaceVariant = Color(0xFF53433F),
+            outline = Color(0xFF85736E), outlineVariant = Color(0xFFD8C2BC)
+        )
+        "mono" -> if (dark) darkColorScheme(
+            primary = Color(0xFFD0D5DC), onPrimary = Color(0xFF20242A),
+            primaryContainer = Color(0xFF41464D), onPrimaryContainer = Color(0xFFE4E8EE),
+            secondary = Color(0xFFC3C7CE), onSecondary = Color(0xFF2C3036),
+            secondaryContainer = Color(0xFF41464D), onSecondaryContainer = Color(0xFFE1E4EA),
+            background = Color(0xFF111315), onBackground = Color(0xFFE3E5E8),
+            surface = Color(0xFF191B1E), onSurface = Color(0xFFE3E5E8),
+            surfaceVariant = Color(0xFF292C30), onSurfaceVariant = Color(0xFFC3C7CE),
+            outline = Color(0xFF8D9299), outlineVariant = Color(0xFF45484D)
+        ) else lightColorScheme(
+            primary = Color(0xFF3F4650), onPrimary = Color.White,
+            primaryContainer = Color(0xFFE0E4E9), onPrimaryContainer = Color(0xFF12161B),
+            secondary = Color(0xFF5D636B), onSecondary = Color.White,
+            secondaryContainer = Color(0xFFE1E4E8), onSecondaryContainer = Color(0xFF191C20),
+            background = Color(0xFFF7F8FA), onBackground = Color(0xFF191C20),
+            surface = Color(0xFFFFFFFF), onSurface = Color(0xFF191C20),
+            surfaceVariant = Color(0xFFE4E7EB), onSurfaceVariant = Color(0xFF454A51),
+            outline = Color(0xFF757A82), outlineVariant = Color(0xFFC5C9CF)
+        )
+        else -> if (dark) darkColorScheme(
+            primary = Color(0xFFA8C8FF), onPrimary = Color(0xFF00315C),
+            primaryContainer = Color(0xFF174A7A), onPrimaryContainer = Color(0xFFD6E8FF),
+            secondary = Color(0xFFBBC7D9), onSecondary = Color(0xFF253140),
+            secondaryContainer = Color(0xFF354253), onSecondaryContainer = Color(0xFFD9E4F7),
+            tertiary = Color(0xFFC5C0E8), onTertiary = Color(0xFF2C2942),
+            tertiaryContainer = Color(0xFF44405D), onTertiaryContainer = Color(0xFFE6E0FF),
+            background = Color(0xFF121417), onBackground = Color(0xFFE3E6EA),
+            surface = Color(0xFF1A1D21), onSurface = Color(0xFFE3E6EA),
+            surfaceVariant = Color(0xFF292D33), onSurfaceVariant = Color(0xFFC3C7CF),
+            outline = Color(0xFF8D929A), outlineVariant = Color(0xFF444950)
+        ) else lightColorScheme(
+            primary = Color(0xFF1565C0), onPrimary = Color.White,
+            primaryContainer = Color(0xFFD6E8FF), onPrimaryContainer = Color(0xFF001D36),
+            secondary = Color(0xFF4F5F72), onSecondary = Color.White,
+            secondaryContainer = Color(0xFFD9E4F7), onSecondaryContainer = Color(0xFF0C1C2B),
+            background = Color(0xFFF7F9FC), onBackground = Color(0xFF191C20),
+            surface = Color(0xFFFFFFFF), onSurface = Color(0xFF191C20),
+            surfaceVariant = Color(0xFFE0E4EA), onSurfaceVariant = Color(0xFF43474E),
+            outline = Color(0xFF73777F), outlineVariant = Color(0xFFC3C7CF)
+        )
+    }
+}
 
 private fun readableContentColor(background: Color): Color {
     val luminance = 0.299f * background.red + 0.587f * background.green + 0.114f * background.blue
@@ -292,6 +359,8 @@ class LocalStore(context: Context) {
     fun authMethod(): String { val stored = prefs.getString("lock_method", "") ?: ""; if (stored.isNotBlank()) return stored; return if (pin().isNotBlank()) "pin" else "none" }
     fun setAuthMethod(v: String) { prefs.edit().putString("lock_method", v).apply(); revision++ }
     fun theme() = prefs.getString("theme", "system") ?: "system"
+    fun appearancePreset() = prefs.getString("appearance_preset", "default") ?: "default"
+    fun setAppearancePreset(v: String) { prefs.edit().putString("appearance_preset", v).apply(); revision++ }
     fun homeLayoutOrder(): List<String> = (prefs.getString("home_layout_order", "") ?: "").split(",").filter { it.isNotBlank() }
     fun setHomeLayoutOrder(order: List<String>) { prefs.edit().putString("home_layout_order", order.joinToString(",")).apply(); revision++ }
     fun homeHiddenTiles(): Set<String> = (prefs.getString("home_hidden_tiles", "") ?: "").split(",").filter { it.isNotBlank() }.toSet()
@@ -376,8 +445,6 @@ class LocalStore(context: Context) {
             root.put("scheduleEndHour", scheduleEndHour())
             root.put("scheduleDayHighlight", scheduleDayHighlight())
             root.put("scheduleTimeHighlight", scheduleTimeHighlight())
-            root.put("scheduleTableBackground", scheduleTableBackground())
-            root.put("scheduleTableBorder", scheduleTableBorder())
             root.put("scheduleTableHorizontalScroll", scheduleTableHorizontalScroll())
             root.put("scheduleTableVerticalScroll", scheduleTableVerticalScroll())
             root.put("scheduleTableFontSize", scheduleTableFontSize())
@@ -398,7 +465,7 @@ class LocalStore(context: Context) {
             root.put("subjectFiles", files)
         }
         if ("homepage" in selected) {
-            root.put("theme", theme()); root.put("dynamicColor", dynamicColorEnabled()); root.put("lock", lockEnabled()); root.put("lockMethod", authMethod())
+            root.put("theme", theme()); root.put("appearancePreset", appearancePreset()); root.put("lock", lockEnabled()); root.put("lockMethod", authMethod())
             root.put("profileName", profileName()); root.put("profileStudentId", profileStudentId()); root.put("profileSection", profileSection())
             root.put("homeLayoutOrder", prefs.getString("home_layout_order", ""))
             root.put("homeHiddenTiles", prefs.getString("home_hidden_tiles", ""))
@@ -418,8 +485,6 @@ class LocalStore(context: Context) {
             if (root.has("scheduleEndHour")) e.putInt("schedule_end_hour", root.getInt("scheduleEndHour"))
             if (root.has("scheduleDayHighlight")) e.putLong("schedule_day_highlight", root.getLong("scheduleDayHighlight"))
             if (root.has("scheduleTimeHighlight")) e.putLong("schedule_time_highlight", root.getLong("scheduleTimeHighlight"))
-            if (root.has("scheduleTableBackground")) e.putLong("schedule_table_background", root.getLong("scheduleTableBackground"))
-            if (root.has("scheduleTableBorder")) e.putLong("schedule_table_border", root.getLong("scheduleTableBorder"))
             if (root.has("scheduleTableHorizontalScroll")) e.putBoolean("schedule_table_horizontal_scroll", root.getBoolean("scheduleTableHorizontalScroll"))
             if (root.has("scheduleTableVerticalScroll")) e.putBoolean("schedule_table_vertical_scroll", root.getBoolean("scheduleTableVerticalScroll"))
             if (root.has("scheduleTableFontSize")) e.putFloat("schedule_table_font_size", root.getDouble("scheduleTableFontSize").toFloat())
@@ -434,7 +499,7 @@ class LocalStore(context: Context) {
         }
         if ("homepage" in selected) {
             if (root.has("theme")) e.putString("theme", root.getString("theme"))
-            if (root.has("dynamicColor")) e.putBoolean("dynamic_color_enabled", root.getBoolean("dynamicColor"))
+            if (root.has("appearancePreset")) e.putString("appearance_preset", root.getString("appearancePreset"))
             if (root.has("lock")) e.putBoolean("lock", root.getBoolean("lock"))
             if (root.has("lockMethod") && listOf("none","pin","pattern").contains(root.optString("lockMethod"))) e.putString("lock_method", root.getString("lockMethod"))
             if (root.has("profileName")) e.putString("profile_name", root.getString("profileName"))
@@ -478,7 +543,7 @@ enum class Screen(val label: String) {
 fun CampusOSApp(activity: Activity) {
     val store = remember { LocalStore(activity) }
     var theme by remember { mutableStateOf(store.theme()) }
-    var dynamicColor by remember { mutableStateOf(store.dynamicColorEnabled()) }
+    var appearancePreset by remember { mutableStateOf(store.appearancePreset()) }
     var locked by remember { mutableStateOf(store.lockEnabled() && store.authMethod() != "none") }
     var screenName by rememberSaveable {
         mutableStateOf(activity.intent.getStringExtra("widget_open_screen")?.let { runCatching { Screen.valueOf(it) }.getOrNull()?.name } ?: Screen.HOME.name)
@@ -494,7 +559,6 @@ fun CampusOSApp(activity: Activity) {
     var homeEditRequest by remember { mutableIntStateOf(0) }
     var showProfile by remember { mutableStateOf(false) }
     var showScheduleSettings by remember { mutableStateOf(false) }
-    var showScheduleTableSettings by remember { mutableStateOf(false) }
     var showScheduleManager by remember { mutableStateOf(false) }
     var showScheduleDetails by remember { mutableStateOf(false) }
     var settingsModule by remember { mutableStateOf<String?>(null) }
@@ -509,11 +573,6 @@ fun CampusOSApp(activity: Activity) {
             subjectPageId != 0L && subjectOpenedFile.isNotBlank() -> subjectOpenedFile = ""
             subjectPageId != 0L -> { subjectPageId = 0L; subjectOpenedFile = "" }
             showScheduleDetails -> showScheduleDetails = false
-            showScheduleTableSettings -> {
-                showScheduleTableSettings = false
-                settingsModule = settingsParent
-                settingsParent = null
-            }
             showScheduleManager -> {
                 showScheduleManager = false
                 settingsModule = settingsParent
@@ -594,7 +653,7 @@ fun CampusOSApp(activity: Activity) {
         }
     }
 
-    val colorScheme = if (dark) CampusDarkColors else CampusLightColors
+    val colorScheme = campusColorScheme(appearancePreset, dark)
 
     MaterialTheme(colorScheme = colorScheme, shapes = CampusShapes) {
         if (subjectPageId != 0L) {
@@ -753,12 +812,11 @@ fun CampusOSApp(activity: Activity) {
                 HomeSettingsDialog(store, campusSession?.role ?: "student", onManagement = { screenName = Screen.ADMIN.name; showHomeSettings = false }, onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, onLockNow = { locked = true }, done = { showHomeSettings = false }, openAppLock = { showHomeSettings = false; showAppLock = true }, openBackupRecovery = { showHomeSettings = false; showBackupRecovery = true })
             }
             if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
-            if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }, dynamicColor, { dynamicColor = it; store.setDynamicColorEnabled(it) }) { showHomeColors = false }
+            if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }, appearancePreset, { appearancePreset = it; store.setAppearancePreset(it) }) { showHomeColors = false }
             if (showProfile) ProfileDialog(store) { showProfile = false }
             if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
-            if (showScheduleTableSettings) ScheduleTableSettingsDialog(store) { showScheduleTableSettings = false }
             if (showScheduleManager) ScheduleManagerDialog(store) { showScheduleManager = false }
-            settingsModule?.let { module -> ModuleSettingsDialog(module, { settingsModule = null; settingsParent = null; showHomeSettings = true }, { settingsParent = module; settingsModule = null; showProfile = true }, { settingsParent = module; settingsModule = null; showScheduleManager = true }, { settingsParent = module; settingsModule = null; showScheduleSettings = true }, { settingsParent = module; settingsModule = null; showScheduleTableSettings = true }, { settingsParent = module; settingsModule = null; showHomeAdd = true }, { settingsModule = null; settingsParent = null; screenName = Screen.TASKS.name }, { settingsModule = null; settingsParent = null; screenName = Screen.ACADEMICS.name }, { settingsModule = null; settingsParent = null; showHomeSettings = false; homeEditRequest++ }) }
+            settingsModule?.let { module -> ModuleSettingsDialog(module, { settingsModule = null; settingsParent = null; showHomeSettings = true }, { settingsParent = module; settingsModule = null; showProfile = true }, { settingsParent = module; settingsModule = null; showScheduleManager = true }, { settingsParent = module; settingsModule = null; showScheduleSettings = true }, { settingsParent = module; settingsModule = null; showHomeAdd = true }, { settingsModule = null; settingsParent = null; screenName = Screen.TASKS.name }, { settingsModule = null; settingsParent = null; screenName = Screen.ACADEMICS.name }, { settingsModule = null; settingsParent = null; showHomeSettings = false; homeEditRequest++ }) }
             if (showScheduleDetails) SubjectDetailsDialog(store.get("schedule"), { showScheduleDetails = false })
             if (showAppLock) AppLockSettingsDialog(store, { showAppLock = false }, { locked = true })
             if (showBackupRecovery) BackupRecoverySettingsDialog(store, { showBackupRecovery = false })
@@ -930,7 +988,7 @@ fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleM
                 OutlinedButton({ showHomeTiles = true },Modifier.fillMaxWidth()){Icon(Icons.Default.ViewModule,null);Spacer(Modifier.width(8.dp));Text("Home Tiles")}
                 OutlinedButton(profile,Modifier.fillMaxWidth()){Icon(Icons.Default.Person,null);Spacer(Modifier.width(8.dp));Text("Profile & homepage information")}
             }
-            "Class Schedule"->{Text("Class Schedule controls",fontWeight=FontWeight.Bold);OutlinedButton(addClass,Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Spacer(Modifier.width(8.dp));Text("Add Class")};OutlinedButton(scheduleManager,Modifier.fillMaxWidth()){Icon(Icons.Default.EditCalendar,null);Spacer(Modifier.width(8.dp));Text("Edit / Delete Classes")};OutlinedButton(scheduleSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.CalendarMonth,null);Spacer(Modifier.width(8.dp));Text("Schedule Settings")};OutlinedButton(tableSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.TableView,null);Spacer(Modifier.width(8.dp));Text("Schedule Table Settings")}}
+            "Class Schedule"->{Text("Class Schedule controls",fontWeight=FontWeight.Bold);OutlinedButton(addClass,Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Spacer(Modifier.width(8.dp));Text("Add Class")};OutlinedButton(scheduleManager,Modifier.fillMaxWidth()){Icon(Icons.Default.EditCalendar,null);Spacer(Modifier.width(8.dp));Text("Edit / Delete Classes")};OutlinedButton(scheduleSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.CalendarMonth,null);Spacer(Modifier.width(8.dp));Text("Schedule Settings")}}
             "Tasks"->{Text("Note controls",fontWeight=FontWeight.Bold);Text("Simple calendar and notes stored offline.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openTasks,Modifier.fillMaxWidth()){Icon(Icons.Default.CheckCircle,null);Spacer(Modifier.width(8.dp));Text("Open Notes")};OutlinedButton({ showTaskSettings = true },Modifier.fillMaxWidth()){Icon(Icons.Default.Settings,null);Spacer(Modifier.width(8.dp));Text("Notes Settings")}}
             "Subjects"->{Text("Subjects controls",fontWeight=FontWeight.Bold);Text("Subjects, Notepad, and Lecture Files are stored offline. Use the Subjects screen to manage them.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openAcademics,Modifier.fillMaxWidth()){Icon(Icons.Default.School,null);Spacer(Modifier.width(8.dp));Text("Open Subjects")}}
         }
@@ -1229,46 +1287,93 @@ fun ScheduleSettingsDialog(store:LocalStore,done:()->Unit){
         }
     }},confirmButton={Button({if(chosen.isNotEmpty()){store.setScheduleDays(allDays.filter{it in chosen});store.setScheduleHours(start,end)};done()}){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})}
 @Composable
-fun HomeAppearanceDialog(store: LocalStore, theme: String, setTheme: (String) -> Unit, dynamicColor: Boolean, setDynamicColor: (Boolean) -> Unit, done: () -> Unit) {
-    var tableBg by remember { mutableLongStateOf(store.scheduleTableBackground()) }
-    var border by remember { mutableLongStateOf(store.scheduleTableBorder()) }
-    val colors = listOf(0xFF000000L,0xFFFFFFFFL,0xFF263238L,0xFF37474FL,0xFFECEFF1L,0xFFF5F5F5L,0xFF1976D2L,0xFF7B1FA2L,0xFFC62828L,0xFF00897BL)
+fun HomeAppearanceDialog(
+    store: LocalStore,
+    theme: String,
+    setTheme: (String) -> Unit,
+    appearancePreset: String,
+    setAppearancePreset: (String) -> Unit,
+    done: () -> Unit
+) {
+    val presets = listOf(
+        "default" to "Campus Blue",
+        "forest" to "Forest",
+        "lavender" to "Lavender",
+        "sunset" to "Sunset",
+        "mono" to "Monochrome"
+    )
     AlertDialog(
-        onDismissRequest=done,
-        title={Text("CampusOS appearance")},
-        text={
-            Column(Modifier.heightIn(max=560.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                Text("Theme",fontWeight=FontWeight.SemiBold)
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Dynamic colors", fontWeight = FontWeight.SemiBold)
-                        Text(if (android.os.Build.VERSION.SDK_INT >= 31) "Use colors derived from your phone wallpaper and system theme." else "Dynamic colors require Android 12 or newer.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        onDismissRequest = done,
+        title = { Text("Appearance") },
+        text = {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text("Theme mode", fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("system", "light", "dark").forEach { mode ->
+                        FilterChip(
+                            selected = theme == mode,
+                            onClick = { setTheme(mode) },
+                            label = { Text(mode.replaceFirstChar { it.uppercase() }) }
+                        )
                     }
-                    Switch(checked = dynamicColor && android.os.Build.VERSION.SDK_INT >= 31, onCheckedChange = { if (android.os.Build.VERSION.SDK_INT >= 31) setDynamicColor(it) }, enabled = android.os.Build.VERSION.SDK_INT >= 31)
                 }
-                Row(horizontalArrangement=Arrangement.spacedBy(7.dp)) {
-                    listOf("system","light","dark").forEach { mode ->
-                        FilterChip(theme==mode,{setTheme(mode)},label={Text(mode.replaceFirstChar{it.uppercase()})})
+                Text("Color appearance", fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Choose a ready-made color combination. It changes the app background, surfaces, text, buttons, tiles, cards, and schedule accents together.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                presets.forEach { (id, label) ->
+                    val selected = appearancePreset == id
+                    Card(
+                        Modifier.fillMaxWidth().clickable { setAppearancePreset(id) },
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                Modifier.size(42.dp).background(
+                                    when (id) {
+                                        "forest" -> Color(0xFF176B3A)
+                                        "lavender" -> Color(0xFF6750A4)
+                                        "sunset" -> Color(0xFFB3261E)
+                                        "mono" -> Color(0xFF3F4650)
+                                        else -> Color(0xFF1565C0)
+                                    },
+                                    RoundedCornerShape(12.dp)
+                                )
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(label, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    when (id) {
+                                        "forest" -> "Green + teal"
+                                        "lavender" -> "Purple + soft pink"
+                                        "sunset" -> "Warm red + gold"
+                                        "mono" -> "Neutral gray"
+                                        else -> "Blue + cool gray"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (selected) Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
+                        }
                     }
-                }
-                Text("Schedule table background",fontWeight=FontWeight.SemiBold)
-                Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(9.dp)) {
-                    colors.forEach { c -> ColorChoiceCircle(c,tableBg==c){tableBg=c} }
-                }
-                Text("Schedule table border",fontWeight=FontWeight.SemiBold)
-                Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(9.dp)) {
-                    colors.forEach { c -> ColorChoiceCircle(c,border==c){border=c} }
                 }
             }
         },
-        confirmButton={
-            Button({
-                store.setScheduleTableBackground(tableBg)
-                store.setScheduleTableBorder(border)
-                done()
-            }){Text("Save")}
-        },
-        dismissButton={TextButton(done){Text("Cancel")}}
+        confirmButton = { Button(onClick = done) { Text("Done") } }
     )
 }
 
@@ -1322,9 +1427,6 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
     val visibleDays = selectedDay?.let { selected -> orderedDays.firstOrNull { it.equals(selected, true) }?.let { listOf(it) } } ?: pageDays
     val dayHighlight = Color(store.scheduleDayHighlight())
     val timeHighlight = Color(store.scheduleTimeHighlight())
-    val tableBgValue = store.scheduleTableBackground()
-    val tableBg = if (tableBgValue == 0L) Color.Transparent else Color(tableBgValue)
-    val tableBorder = Color(store.scheduleTableBorder())
     val tableFontSize = remember(revision) { store.scheduleTableFontSize() }
     val customDayWidth = remember(revision) { store.scheduleTableDayWidth() }
     val customRowHeight = remember(revision) { store.scheduleTableRowHeight() }
@@ -1360,16 +1462,12 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                     val rowHeight = baseRowHeight * zoom
                     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                         Row(Modifier.height(headerHeight)) {
-                            Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) { Text("Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp)) }
+                            Box(Modifier.width(56.dp).fillMaxHeight().background(Color.Transparent), contentAlignment = Alignment.Center) { Text("Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp)) }
                             visibleDays.forEach { day ->
                                 val isToday = day.equals(today, true)
                                 Box(
                                     Modifier.width(dayWidth).fillMaxHeight()
-                                        .background(if (isToday) dayHighlight.copy(alpha = .16f) else tableBg)
-                                        .border(
-                                            if (isToday || selectedDay?.equals(day, true) == true) 2.dp else 1.dp,
-                                            if (isToday || selectedDay?.equals(day, true) == true) dayHighlight else tableBorder
-                                        )
+                                        .background(Color.Transparent)
                                         .clickable {
                                             selectedDay = if (selectedDay?.equals(day, true) == true) null else day
                                         },
@@ -1385,13 +1483,13 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                         hours.forEach { hour ->
                             val rowStart = hour * 60
                             Row(Modifier.height(rowHeight)) {
-                                Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) { Text(formatHourRange(hour, hour + 1), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp)) }
+                                Box(Modifier.width(56.dp).fillMaxHeight().background(Color.Transparent), contentAlignment = Alignment.Center) { Text(formatHourRange(hour, hour + 1), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp)) }
                                 visibleDays.forEach { day ->
                                     val cell = all.filter { it.day.equals(day, true) && it.startTime.toHourOrNull() == hour }
                                     val groups = cell.groupBy { it.title.trim().uppercase(Locale.getDefault()) }.values.take(2)
                                     val isCurrent = day.equals(today, true) && groups.any { g -> val r = g.first(); val st = r.startTime.toMinutesOrNull() ?: -1; val en = r.endTime.toMinutesOrNull() ?: -1; currentMinutes in st until en }
                                     val isPassed = day.equals(today, true) && groups.isNotEmpty() && groups.all { g -> (g.maxOfOrNull { it.endTime.toMinutesOrNull() ?: -1 } ?: -1) <= currentMinutes }
-                                    Box(Modifier.width(dayWidth).fillMaxHeight().background(if (isCurrent) timeHighlight.copy(alpha = .14f) else tableBg).border(if (isCurrent) 2.dp else 1.dp, if (isCurrent) timeHighlight else tableBorder).padding(2.dp)) {
+                                    Box(Modifier.width(dayWidth).fillMaxHeight().background(Color.Transparent).padding(2.dp)) {
                                         if (groups.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("—", color = MaterialTheme.colorScheme.outlineVariant, style = MaterialTheme.typography.labelSmall) }
                                         else Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                             groups.forEach { group ->
@@ -1403,10 +1501,9 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                                                 Card(Modifier.fillMaxWidth().weight(1f, fill = false), colors = CardDefaults.cardColors(containerColor = bg.copy(alpha = contentAlpha)), shape = RoundedCornerShape(8.dp)) {
                                                     Column(Modifier.fillMaxSize().padding(horizontal = 5.dp, vertical = 3.dp), verticalArrangement = Arrangement.Center) {
                                                         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                                                            Text("Subject code", style = MaterialTheme.typography.labelSmall.copy(fontSize = (tableFontSize - 2).coerceAtLeast(8f).sp), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                                             Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = contentAlpha })
                                                             Text(
-                                                                if (r.room.isNotBlank()) r.room + " • " + if (lab) "LAB" else "LEC" else if (lab) "LAB" else "LEC",
+                                                                if (r.room.isNotBlank()) r.room + " " + if (lab) "LAB" else "LEC" else if (lab) "LAB" else "LEC",
                                                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = (tableFontSize - 1).coerceAtLeast(8f).sp),
                                                                 fontWeight = FontWeight.SemiBold,
                                                                 color = if (lab) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer,
@@ -3060,7 +3157,6 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
     var pin by remember { mutableStateOf(store.pin()) }
     var lockOn by remember { mutableStateOf(store.lockEnabled()) }
     var showPin by remember { mutableStateOf(false) }
-    var showTableSettings by remember { mutableStateOf(false) }
     var notificationsOn by remember { mutableStateOf(context.getSharedPreferences("campusos_reminders", Context.MODE_PRIVATE).getBoolean("enabled", false) && CampusReminders.notificationsEnabled(context)) }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -3133,11 +3229,6 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
                         Icon(Icons.Default.CalendarMonth, null)
                         Spacer(Modifier.width(8.dp))
                         Text("Schedule Settings")
-                    }
-                    OutlinedButton(onClick = { showTableSettings = true }, modifier = Modifier.fillMaxWidth()) {
-                        Icon(Icons.Default.TableView, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Schedule Table Settings")
                     }
                 }
             }
@@ -3234,10 +3325,6 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
             confirmButton = { TextButton(onClick = { restoreError = "" }) { Text("OK") } }
         )
     }
-    if (showTableSettings) {
-        ScheduleTableSettingsDialog(store) { showTableSettings = false }
-    }
-
     if (showPin) {
         var newPin by remember { mutableStateOf("") }
         AlertDialog(
