@@ -725,7 +725,14 @@ fun CampusOSApp(activity: Activity) {
                                 selected = screen == it,
                                 onClick = { screenName = it.name },
                                 icon = { Icon(iconFor(it), it.label) },
-                                label = { Text(it.label) }
+                                label = { Text(it.label) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             )
                         }
                     }
@@ -1472,11 +1479,11 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                                         else Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                             groups.forEach { group ->
                                                 val r = group.first()
-                                                val bg = if (r.color != 0L) Color(r.color) else MaterialTheme.colorScheme.primaryContainer
                                                 val lab = r.classType.equals("Lab", true)
+                                                // Always use the active CampusOS appearance; legacy subject colors are ignored.
                                                 val typeContainer = if (lab) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer
                                                 val contentAlpha = if (isPassed) .62f else 1f
-                                                Card(Modifier.fillMaxWidth().weight(1f, fill = false), colors = CardDefaults.cardColors(containerColor = bg.copy(alpha = contentAlpha)), shape = RoundedCornerShape(8.dp)) {
+                                                Card(Modifier.fillMaxWidth().weight(1f, fill = false), colors = CardDefaults.cardColors(containerColor = typeContainer.copy(alpha = contentAlpha)), shape = RoundedCornerShape(8.dp)) {
                                                     Column(Modifier.fillMaxSize().padding(horizontal = 5.dp, vertical = 3.dp), verticalArrangement = Arrangement.Center) {
                                                         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                                                             Text(r.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = contentAlpha })
@@ -2606,7 +2613,7 @@ fun BudgetScreen(store: LocalStore) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             categoryTotals.take(5).forEachIndexed { index, pair ->
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(10.dp).background(BudgetChartColors[index % BudgetChartColors.size], RoundedCornerShape(3.dp)))
+                                    Box(Modifier.size(10.dp).background(chartColors[index % chartColors.size], RoundedCornerShape(3.dp)))
                                     Spacer(Modifier.width(7.dp))
                                     Text(pair.first, Modifier.weight(1f), maxLines = 1)
                                     Text("${((pair.second / totalCategorySpend) * 100).toInt()}%", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
@@ -2680,20 +2687,24 @@ fun BudgetScreen(store: LocalStore) {
     if (showTarget) BudgetTargetDialog(store) { showTarget = false; refresh++ }
 }
 
-private val BudgetChartColors = listOf(
-    Color(0xFF5E6AD2), Color(0xFF2E9B74), Color(0xFFE49A3A),
-    Color(0xFFD95D6A), Color(0xFF8C6BCB), Color(0xFF4D91C6), Color(0xFF8A8A8A)
-)
-
 @Composable
 private fun BudgetPieChart(data: List<Pair<String, Double>>) {
+    val chartColors = listOf(
+        MaterialTheme.colorScheme.primary,
+        MaterialTheme.colorScheme.secondary,
+        MaterialTheme.colorScheme.tertiary,
+        MaterialTheme.colorScheme.error,
+        MaterialTheme.colorScheme.primaryContainer,
+        MaterialTheme.colorScheme.secondaryContainer,
+        MaterialTheme.colorScheme.tertiaryContainer
+    )
     val total = data.sumOf { it.second }.coerceAtLeast(0.01)
     val holeColor = MaterialTheme.colorScheme.surface
     Canvas(Modifier.size(145.dp)) {
         var start = -90f
         data.forEachIndexed { index, item ->
             val sweep = (item.second / total * 360f).toFloat()
-            drawArc(BudgetChartColors[index % BudgetChartColors.size], start, sweep, true)
+            drawArc(chartColors[index % chartColors.size], start, sweep, true)
             start += sweep
         }
         drawCircle(holeColor, radius = size.minDimension * .23f, center = center)
