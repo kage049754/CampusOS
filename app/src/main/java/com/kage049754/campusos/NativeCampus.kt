@@ -178,7 +178,7 @@ fun NativeLoginScreen(onSuccess: (CampusSession) -> Unit) {
                     if (signup) CampusNativeApi.register(email.trim().lowercase(), password, name.trim(), schoolId.trim(), section.trim())
                     else CampusNativeApi.signIn(email.trim().lowercase(), password)
                 }.mapCatching { CampusNativeApi.loadRole(it) }
-                }.onSuccess { onSuccess(it) }
+                 .onSuccess { onSuccess(it) }
                  .onFailure { error = it.message ?: "Sign in failed"; busy = false }
             }
         }, modifier = Modifier.fillMaxWidth(), enabled = !busy) { Text(if (busy) "Signing in…" else if (signup) "Create account" else "Sign in") }
