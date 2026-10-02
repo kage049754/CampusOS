@@ -92,117 +92,21 @@ private val CampusShapes = Shapes(
 )
 
 private fun campusColorScheme(preset: String, dark: Boolean): ColorScheme {
-    return when (preset) {
-        "forest" -> if (dark) darkColorScheme(
-            primary = Color(0xFF8FD6A6), onPrimary = Color(0xFF00391D),
-            primaryContainer = Color(0xFF00532B), onPrimaryContainer = Color(0xFFACF2C2),
-            secondary = Color(0xFFB4CCB9), onSecondary = Color(0xFF1F3526),
-            secondaryContainer = Color(0xFF354B3B), onSecondaryContainer = Color(0xFFD0E8D4),
-            tertiary = Color(0xFF9FD0CB), onTertiary = Color(0xFF003735),
-            tertiaryContainer = Color(0xFF1F4E4A), onTertiaryContainer = Color(0xFFBAECE7),
-            background = Color(0xFF101510), onBackground = Color(0xFFE0E8E0),
-            surface = Color(0xFF171D18), onSurface = Color(0xFFE0E8E0),
-            surfaceVariant = Color(0xFF29312B), onSurfaceVariant = Color(0xFFC0C9C0),
-            outline = Color(0xFF89938A), outlineVariant = Color(0xFF404840)
-        ) else lightColorScheme(
-            primary = Color(0xFF176B3A), onPrimary = Color.White,
-            primaryContainer = Color(0xFFB8F2C8), onPrimaryContainer = Color(0xFF00210E),
-            secondary = Color(0xFF4E6354), onSecondary = Color.White,
-            secondaryContainer = Color(0xFFD0E8D4), onSecondaryContainer = Color(0xFF0B1F12),
-            tertiary = Color(0xFF326B67), onTertiary = Color.White,
-            tertiaryContainer = Color(0xFFBCECE7), onTertiaryContainer = Color(0xFF00201E),
-            background = Color(0xFFF7FBF7), onBackground = Color(0xFF181D19),
-            surface = Color(0xFFFFFFFF), onSurface = Color(0xFF181D19),
-            surfaceVariant = Color(0xFFE0E9E1), onSurfaceVariant = Color(0xFF414942),
-            outline = Color(0xFF717970), outlineVariant = Color(0xFFC1CAC2)
-        )
-        "lavender" -> if (dark) darkColorScheme(
-            primary = Color(0xFFD0BCFF), onPrimary = Color(0xFF372062),
-            primaryContainer = Color(0xFF4F378B), onPrimaryContainer = Color(0xFFEADDFF),
-            secondary = Color(0xFFCCC2DC), onSecondary = Color(0xFF332D41),
-            secondaryContainer = Color(0xFF4A4458), onSecondaryContainer = Color(0xFFE8DEF8),
-            tertiary = Color(0xFFEFB8C8), onTertiary = Color(0xFF492532),
-            tertiaryContainer = Color(0xFF633B48), onTertiaryContainer = Color(0xFFFFD9E2),
-            background = Color(0xFF141218), onBackground = Color(0xFFE6E0E9),
-            surface = Color(0xFF1C1A20), onSurface = Color(0xFFE6E0E9),
-            surfaceVariant = Color(0xFF48454E), onSurfaceVariant = Color(0xFFCAC4D0),
-            outline = Color(0xFF938F99), outlineVariant = Color(0xFF49454F)
-        ) else lightColorScheme(
-            primary = Color(0xFF6750A4), onPrimary = Color.White,
-            primaryContainer = Color(0xFFEADDFF), onPrimaryContainer = Color(0xFF21005D),
-            secondary = Color(0xFF625B71), onSecondary = Color.White,
-            secondaryContainer = Color(0xFFE8DEF8), onSecondaryContainer = Color(0xFF1D192B),
-            tertiary = Color(0xFF7D5260), onTertiary = Color.White,
-            tertiaryContainer = Color(0xFFFFD8E4), onTertiaryContainer = Color(0xFF31111D),
-            background = Color(0xFFFAF8FF), onBackground = Color(0xFF1D1B20),
-            surface = Color(0xFFFFFBFE), onSurface = Color(0xFF1D1B20),
-            surfaceVariant = Color(0xFFE7E0EC), onSurfaceVariant = Color(0xFF49454F),
-            outline = Color(0xFF79747E), outlineVariant = Color(0xFFCAC4D0)
-        )
-        "sunset" -> if (dark) darkColorScheme(
-            primary = Color(0xFFFFB4A2), onPrimary = Color(0xFF5F160B),
-            primaryContainer = Color(0xFF7D291C), onPrimaryContainer = Color(0xFFFFDAD1),
-            secondary = Color(0xFFE7BDB4), onSecondary = Color(0xFF442925),
-            secondaryContainer = Color(0xFF5D3F3A), onSecondaryContainer = Color(0xFFFFDAD4),
-            tertiary = Color(0xFFD4C58F), onTertiary = Color(0xFF393006),
-            tertiaryContainer = Color(0xFF51471A), onTertiaryContainer = Color(0xFFF1E3A6),
-            background = Color(0xFF1A1110), onBackground = Color(0xFFF1DFDB),
-            surface = Color(0xFF211816), onSurface = Color(0xFFF1DFDB),
-            surfaceVariant = Color(0xFF534340), onSurfaceVariant = Color(0xFFD8C2BE),
-            outline = Color(0xFFA08B87), outlineVariant = Color(0xFF594744)
-        ) else lightColorScheme(
-            primary = Color(0xFFB3261E), onPrimary = Color.White,
-            primaryContainer = Color(0xFFFFDAD1), onPrimaryContainer = Color(0xFF410002),
-            secondary = Color(0xFF775650), onSecondary = Color.White,
-            secondaryContainer = Color(0xFFFFDBD3), onSecondaryContainer = Color(0xFF2C1511),
-            tertiary = Color(0xFF705E1F), onTertiary = Color.White,
-            tertiaryContainer = Color(0xFFF9E3A7), onTertiaryContainer = Color(0xFF241A00),
-            background = Color(0xFFFFF8F6), onBackground = Color(0xFF231A18),
-            surface = Color(0xFFFFFBF9), onSurface = Color(0xFF231A18),
-            surfaceVariant = Color(0xFFF5DED8), onSurfaceVariant = Color(0xFF53433F),
-            outline = Color(0xFF85736E), outlineVariant = Color(0xFFD8C2BC)
-        )
-        "mono" -> if (dark) darkColorScheme(
-            primary = Color(0xFFD0D5DC), onPrimary = Color(0xFF20242A),
-            primaryContainer = Color(0xFF41464D), onPrimaryContainer = Color(0xFFE4E8EE),
-            secondary = Color(0xFFC3C7CE), onSecondary = Color(0xFF2C3036),
-            secondaryContainer = Color(0xFF41464D), onSecondaryContainer = Color(0xFFE1E4EA),
-            background = Color(0xFF111315), onBackground = Color(0xFFE3E5E8),
-            surface = Color(0xFF191B1E), onSurface = Color(0xFFE3E5E8),
-            surfaceVariant = Color(0xFF292C30), onSurfaceVariant = Color(0xFFC3C7CE),
-            outline = Color(0xFF8D9299), outlineVariant = Color(0xFF45484D)
-        ) else lightColorScheme(
-            primary = Color(0xFF3F4650), onPrimary = Color.White,
-            primaryContainer = Color(0xFFE0E4E9), onPrimaryContainer = Color(0xFF12161B),
-            secondary = Color(0xFF5D636B), onSecondary = Color.White,
-            secondaryContainer = Color(0xFFE1E4E8), onSecondaryContainer = Color(0xFF191C20),
-            background = Color(0xFFF7F8FA), onBackground = Color(0xFF191C20),
-            surface = Color(0xFFFFFFFF), onSurface = Color(0xFF191C20),
-            surfaceVariant = Color(0xFFE4E7EB), onSurfaceVariant = Color(0xFF454A51),
-            outline = Color(0xFF757A82), outlineVariant = Color(0xFFC5C9CF)
-        )
-        else -> if (dark) darkColorScheme(
-            primary = Color(0xFFA8C8FF), onPrimary = Color(0xFF00315C),
-            primaryContainer = Color(0xFF174A7A), onPrimaryContainer = Color(0xFFD6E8FF),
-            secondary = Color(0xFFBBC7D9), onSecondary = Color(0xFF253140),
-            secondaryContainer = Color(0xFF354253), onSecondaryContainer = Color(0xFFD9E4F7),
-            tertiary = Color(0xFFC5C0E8), onTertiary = Color(0xFF2C2942),
-            tertiaryContainer = Color(0xFF44405D), onTertiaryContainer = Color(0xFFE6E0FF),
-            background = Color(0xFF121417), onBackground = Color(0xFFE3E6EA),
-            surface = Color(0xFF1A1D21), onSurface = Color(0xFFE3E6EA),
-            surfaceVariant = Color(0xFF292D33), onSurfaceVariant = Color(0xFFC3C7CF),
-            outline = Color(0xFF8D929A), outlineVariant = Color(0xFF444950)
-        ) else lightColorScheme(
-            primary = Color(0xFF1565C0), onPrimary = Color.White,
-            primaryContainer = Color(0xFFD6E8FF), onPrimaryContainer = Color(0xFF001D36),
-            secondary = Color(0xFF4F5F72), onSecondary = Color.White,
-            secondaryContainer = Color(0xFFD9E4F7), onSecondaryContainer = Color(0xFF0C1C2B),
-            background = Color(0xFFF7F9FC), onBackground = Color(0xFF191C20),
-            surface = Color(0xFFFFFFFF), onSurface = Color(0xFF191C20),
-            surfaceVariant = Color(0xFFE0E4EA), onSurfaceVariant = Color(0xFF43474E),
-            outline = Color(0xFF73777F), outlineVariant = Color(0xFFC3C7CF)
-        )
+    val colors = when (preset) {
+        "forest" -> Triple(Color(0xFF176B3A), Color(0xFFB8F2C8), Color(0xFF326B67))
+        "lavender" -> Triple(Color(0xFF6750A4), Color(0xFFEADDFF), Color(0xFF7D5260))
+        "sunset" -> Triple(Color(0xFFB3261E), Color(0xFFFFDAD1), Color(0xFF705E1F))
+        "mono" -> Triple(Color(0xFF3F4650), Color(0xFFE0E4E9), Color(0xFF5D636B))
+        else -> Triple(Color(0xFF1565C0), Color(0xFFD6E8FF), Color(0xFF4F5F72))
     }
+    val (primary, primaryContainer, tertiary) = colors
+    return if (dark) darkColorScheme(
+        primary=primary, primaryContainer=primaryContainer, secondary=primary.copy(alpha=.78f), secondaryContainer=primaryContainer.copy(alpha=.75f),
+        tertiary=tertiary, tertiaryContainer=primaryContainer.copy(alpha=.65f), background=Color(0xFF121417), surface=Color(0xFF1A1D21), surfaceVariant=Color(0xFF292D33)
+    ) else lightColorScheme(
+        primary=primary, primaryContainer=primaryContainer, secondary=tertiary, secondaryContainer=primaryContainer.copy(alpha=.78f),
+        tertiary=tertiary, tertiaryContainer=primaryContainer.copy(alpha=.68f), background=Color(0xFFF7F9FC), surface=Color.White, surfaceVariant=Color(0xFFE0E4EA)
+    )
 }
 
 private fun readableContentColor(background: Color): Color {
@@ -988,7 +892,7 @@ fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleM
                 OutlinedButton({ showHomeTiles = true },Modifier.fillMaxWidth()){Icon(Icons.Default.ViewModule,null);Spacer(Modifier.width(8.dp));Text("Home Tiles")}
                 OutlinedButton(profile,Modifier.fillMaxWidth()){Icon(Icons.Default.Person,null);Spacer(Modifier.width(8.dp));Text("Profile & homepage information")}
             }
-            "Class Schedule"->{Text("Class Schedule controls",fontWeight=FontWeight.Bold);OutlinedButton(addClass,Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Spacer(Modifier.width(8.dp));Text("Add Class")};OutlinedButton(scheduleManager,Modifier.fillMaxWidth()){Icon(Icons.Default.EditCalendar,null);Spacer(Modifier.width(8.dp));Text("Edit / Delete Classes")};OutlinedButton(scheduleSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.CalendarMonth,null);Spacer(Modifier.width(8.dp));Text("Schedule Settings")}}
+            "Class Schedule"->{Text("Class Schedule controls",fontWeight=FontWeight.Bold);OutlinedButton(addClass,Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Spacer(Modifier.width(8.dp));Text("Add Class")};OutlinedButton(scheduleManager,Modifier.fillMaxWidth()){Icon(Icons.Default.EditCalendar,null);Spacer(Modifier.width(8.dp));Text("Edit / Delete Classes")};OutlinedButton(scheduleSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.CalendarMonth,null);Spacer(Modifier.width(8.dp));Text("Schedule Settings")};OutlinedButton(tableSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.TableView,null);Spacer(Modifier.width(8.dp));Text("Schedule Table Settings")}}
             "Tasks"->{Text("Note controls",fontWeight=FontWeight.Bold);Text("Simple calendar and notes stored offline.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openTasks,Modifier.fillMaxWidth()){Icon(Icons.Default.CheckCircle,null);Spacer(Modifier.width(8.dp));Text("Open Notes")};OutlinedButton({ showTaskSettings = true },Modifier.fillMaxWidth()){Icon(Icons.Default.Settings,null);Spacer(Modifier.width(8.dp));Text("Notes Settings")}}
             "Subjects"->{Text("Subjects controls",fontWeight=FontWeight.Bold);Text("Subjects, Notepad, and Lecture Files are stored offline. Use the Subjects screen to manage them.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openAcademics,Modifier.fillMaxWidth()){Icon(Icons.Default.School,null);Spacer(Modifier.width(8.dp));Text("Open Subjects")}}
         }
@@ -1287,93 +1191,34 @@ fun ScheduleSettingsDialog(store:LocalStore,done:()->Unit){
         }
     }},confirmButton={Button({if(chosen.isNotEmpty()){store.setScheduleDays(allDays.filter{it in chosen});store.setScheduleHours(start,end)};done()}){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})}
 @Composable
-fun HomeAppearanceDialog(
-    store: LocalStore,
-    theme: String,
-    setTheme: (String) -> Unit,
-    appearancePreset: String,
-    setAppearancePreset: (String) -> Unit,
-    done: () -> Unit
-) {
-    val presets = listOf(
-        "default" to "Campus Blue",
-        "forest" to "Forest",
-        "lavender" to "Lavender",
-        "sunset" to "Sunset",
-        "mono" to "Monochrome"
-    )
+fun HomeAppearanceDialog(store: LocalStore, theme: String, setTheme: (String) -> Unit, appearancePreset: String, setAppearancePreset: (String) -> Unit, done: () -> Unit) {
+    val presets = listOf("default" to "Campus Blue","forest" to "Forest","lavender" to "Lavender","sunset" to "Sunset","mono" to "Monochrome")
     AlertDialog(
-        onDismissRequest = done,
-        title = { Text("Appearance") },
-        text = {
-            Column(
-                Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                Text("Theme mode", fontWeight = FontWeight.SemiBold)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("system", "light", "dark").forEach { mode ->
-                        FilterChip(
-                            selected = theme == mode,
-                            onClick = { setTheme(mode) },
-                            label = { Text(mode.replaceFirstChar { it.uppercase() }) }
-                        )
-                    }
-                }
-                Text("Color appearance", fontWeight = FontWeight.SemiBold)
-                Text(
-                    "Choose a ready-made color combination. It changes the app background, surfaces, text, buttons, tiles, cards, and schedule accents together.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                presets.forEach { (id, label) ->
-                    val selected = appearancePreset == id
-                    Card(
-                        Modifier.fillMaxWidth().clickable { setAppearancePreset(id) },
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
-                            else MaterialTheme.colorScheme.surfaceVariant
-                        ),
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                Modifier.size(42.dp).background(
-                                    when (id) {
-                                        "forest" -> Color(0xFF176B3A)
-                                        "lavender" -> Color(0xFF6750A4)
-                                        "sunset" -> Color(0xFFB3261E)
-                                        "mono" -> Color(0xFF3F4650)
-                                        else -> Color(0xFF1565C0)
-                                    },
-                                    RoundedCornerShape(12.dp)
-                                )
-                            )
+        onDismissRequest=done,
+        title={Text("Appearance")},
+        text={
+            Column(Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(14.dp)){
+                Text("Theme mode",fontWeight=FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){listOf("system","light","dark").forEach{mode->FilterChip(theme==mode,{setTheme(mode)},label={Text(mode.replaceFirstChar{it.uppercase()})})}}
+                Text("Color appearance",fontWeight=FontWeight.SemiBold)
+                Text("Choose a ready-made combination. It changes the whole CampusOS UI: background, surfaces, text, buttons, tiles, cards and schedule accents.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                presets.forEach{(id,label)->
+                    val selected=appearancePreset==id
+                    Card(Modifier.fillMaxWidth().clickable{setAppearancePreset(id)},colors=CardDefaults.cardColors(containerColor=if(selected)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)){
+                        Row(Modifier.fillMaxWidth().padding(14.dp),verticalAlignment=Alignment.CenterVertically){
+                            Box(Modifier.size(42.dp).background(when(id){"forest"->Color(0xFF176B3A);"lavender"->Color(0xFF6750A4);"sunset"->Color(0xFFB3261E);"mono"->Color(0xFF3F4650);else->Color(0xFF1565C0)},RoundedCornerShape(12.dp)))
                             Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(label, fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    when (id) {
-                                        "forest" -> "Green + teal"
-                                        "lavender" -> "Purple + soft pink"
-                                        "sunset" -> "Warm red + gold"
-                                        "mono" -> "Neutral gray"
-                                        else -> "Blue + cool gray"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                            Column(Modifier.weight(1f)){
+                                Text(label,fontWeight=FontWeight.SemiBold)
+                                Text(when(id){"forest"->"Green + teal";"lavender"->"Purple + soft pink";"sunset"->"Warm red + gold";"mono"->"Neutral gray";else->"Blue + cool gray"},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            if (selected) Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
+                            if(selected)Icon(Icons.Default.CheckCircle,null,tint=MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
             }
         },
-        confirmButton = { Button(onClick = done) { Text("Done") } }
+        confirmButton={Button(done){Text("Done")}}
     )
 }
 
@@ -1483,7 +1328,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                         hours.forEach { hour ->
                             val rowStart = hour * 60
                             Row(Modifier.height(rowHeight)) {
-                                Box(Modifier.width(56.dp).fillMaxHeight().background(Color.Transparent), contentAlignment = Alignment.Center) { Text(formatHourRange(hour, hour + 1), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp)) }
+                                Box(Modifier.width(56.dp).fillMaxHeight().background(tableBg).border(1.dp, tableBorder), contentAlignment = Alignment.Center) { Text(formatHourRange(hour, hour + 1), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp)) }
                                 visibleDays.forEach { day ->
                                     val cell = all.filter { it.day.equals(day, true) && it.startTime.toHourOrNull() == hour }
                                     val groups = cell.groupBy { it.title.trim().uppercase(Locale.getDefault()) }.values.take(2)
@@ -3421,3 +3266,90 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
                     Text("UPCOMING • Starts in ${formatClassCountdown((st-currentMinutes).coerceAtLeast(0))}",fontWeight=FontWeight.Bold)
                     Text(r.title,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
                     Text(if(r.classType.equals("Lab",true))"Lab" else "Lecture",fontWeight=FontWeight.SemiBold)
+                    Text("${r.startTime}–${r.endTime}")
+                    if(r.room.isNotBlank())Text("Room ${r.room}",fontWeight=FontWeight.SemiBold)
+                    Text("Duration: " + formatClassDuration((en-st).coerceAtLeast(0)),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    LinearProgressIndicator(progress={0f},modifier=Modifier.fillMaxWidth())
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        if(todaySchedule.isEmpty()) EmptyCard("No classes scheduled for today.") else {
+            val featuredSubjects = setOfNotNull(
+                current?.first?.title?.trim()?.uppercase(Locale.getDefault()),
+                next?.first?.title?.trim()?.uppercase(Locale.getDefault())
+            )
+            val remaining=mergedTodaySchedule.filterNot {
+                it.title.trim().uppercase(Locale.getDefault()) in featuredSubjects
+            }.sortedWith(
+                compareBy<Record> {
+                    val end = it.endTime.toMinutesOrNull() ?: Int.MAX_VALUE
+                    // Completed classes are always placed after current/upcoming classes.
+                    if (currentMinutes >= end) 1 else 0
+                }.thenBy { it.startTime.toMinutesOrNull() ?: Int.MAX_VALUE }
+            )
+            remaining.forEach{r->
+                val st=r.startTime.toMinutesOrNull();val en=r.endTime.toMinutesOrNull()
+                val completed = st != null && en != null && currentMinutes >= en
+                val status=when {
+                    completed -> "✓ Completed"
+                    st != null -> "Starts in " + formatClassCountdown((st-currentMinutes).coerceAtLeast(0))
+                    else -> null
+                }
+                HomeTodayClassCard(r,status)
+            }
+        }
+    }
+}
+
+@Composable
+fun HomePinnedTile(pinnedTasks: List<Record>) {
+    Column(Modifier.fillMaxWidth()) {
+        SectionTitle("📍 Pinned")
+        Spacer(Modifier.height(8.dp))
+        if (pinnedTasks.isEmpty()) EmptyCard("Nothing pinned yet.")
+        else for (r in pinnedTasks) {
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                ListItem(headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) }, supportingContent = { if (r.dueDate.isNotBlank()) Text("Due " + r.dueDate + " " + r.dueTime) }, leadingContent = { Icon(Icons.Default.PushPin, "Pinned") })
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+@Composable
+fun HomeTasksTile(pendingTasks: List<Record>) {
+    Column(Modifier.fillMaxWidth()) {
+        SectionTitle("Tasks to do")
+        Spacer(Modifier.height(8.dp))
+        if (pendingTasks.isEmpty()) EmptyCard("You're all caught up.")
+        else for (r in pendingTasks) {
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                ListItem(headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) }, supportingContent = { Column { if (r.subtitle.isNotBlank()) Text(r.subtitle, maxLines = 2); if (r.dueDate.isNotBlank()) Text("Due ${r.dueDate} ${r.dueTime}") } }, leadingContent = { Icon(Icons.Default.CheckCircleOutline, null) })
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+
+
+@Composable
+fun CampusWebEmbeddedScreen(url: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    AndroidView(
+        modifier = Modifier.fillMaxSize(),
+        factory = {
+            WebView(context).apply {
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.allowFileAccess = false
+                settings.allowContentAccess = false
+                webViewClient = WebViewClient()
+                loadUrl(url)
+            }
+        },
+        update = { webView ->
+            if (webView.url == null) webView.loadUrl(url)
+        }
+    )
+}
