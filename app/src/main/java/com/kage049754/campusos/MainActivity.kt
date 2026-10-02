@@ -845,6 +845,7 @@ fun CampusOSApp(activity: Activity) {
     Screen.SCHEDULE -> Icons.Default.CalendarMonth
     Screen.TASKS -> Icons.Default.CheckCircle
     Screen.ACADEMICS -> Icons.Default.School
+    Screen.STUDY_MAKER -> Icons.Default.AutoAwesome
     Screen.FILES -> Icons.Default.Folder
     Screen.ADMIN -> Icons.Default.AdminPanelSettings
     Screen.SETTINGS -> Icons.Default.Settings
