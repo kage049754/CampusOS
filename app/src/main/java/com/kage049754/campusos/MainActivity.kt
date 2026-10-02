@@ -1987,9 +1987,7 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
     var professor by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var classType by remember { mutableStateOf("Lecture") }
-    var color by remember { mutableLongStateOf(0xFFE3F2FD) }
     var selectedSlots by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-    val colors = listOf(0xFFE3F2FDL,0xFFE8F5E9L,0xFFFFF3E0L,0xFFF3E5F5L,0xFFFFEBEEL,0xFFE0F7FAL)
     val startHour = store.scheduleStartHour().coerceIn(0,23)
     val endHour = store.scheduleEndHour().coerceIn(startHour,23)
     val hours = (startHour..endHour).toList()
@@ -2068,8 +2066,6 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
             }
             OutlinedTextField(professor,{professor=it},Modifier.fillMaxWidth(),label={Text("Professor")})
             OutlinedTextField(notes,{notes=it},Modifier.fillMaxWidth(),label={Text("Notes")})
-            Text("Class color",fontWeight=FontWeight.SemiBold)
-            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(10.dp)){colors.forEach{c->Box(Modifier.size(40.dp).border(3.dp,if(color==c)MaterialTheme.colorScheme.onSurface else Color.Transparent,RoundedCornerShape(50)).padding(4.dp).background(Color(c),RoundedCornerShape(50)).clickable{color=c},contentAlignment=Alignment.Center){if(color==c)Text("✓",color=readableContentColor(Color(c)),fontWeight=FontWeight.Bold)}}}
         }
     },confirmButton={Button({
         if(subject.isNotBlank()&&selectedSlots.isNotEmpty()){
