@@ -1,6 +1,7 @@
 package com.kage049754.campusos
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -39,7 +40,7 @@ data class CampusAnnouncement(
     val id: String, val authorId: String, val author: String, val pagePhotoPath: String?, val body: String,
     val createdAt: String, val imagePaths: List<String>
 )
-data class CampusGroup(val id: String, val name: String)
+data class CampusGroup(val id: String, val name: String, val ownerId: String = "", val inviteToken: String = "")
 data class CampusMessage(val sender: String, val body: String, val createdAt: String)
 data class CampusProfile(val id: String, val fullName: String, val schoolId: String, val section: String, val status: String, val role: String)
 data class CampusLeaderAssignment(
@@ -179,20 +180,26 @@ object CampusNativeApi {
         c.inputStream.use { BitmapFactory.decodeStream(it) }
     }
 
-    suspend fun groups(s: CampusSession) = withContext(Dispatchers.IO) {
-        val a = JSONArray(request("/rest/v1/chat_members?select=group_id,chat_groups(id,name)&user_id=eq." + s.userId, token = s.accessToken))
-        (0 until a.length()).mapNotNull {
-            val g = a.getJSONObject(it).optJSONObject("chat_groups") ?: return@mapNotNull null
-            CampusGroup(g.optString("id"), g.optString("name", "Group"))
+    suspend fun groups(s: CampusSession): List<CampusGroup> = withContext(Dispatchers.IO) {
+        val path = if (s.role.equals("admin", true)) "/rest/v1/chat_groups?select=id,name,owner_id,invite_token&order=name.asc" else "/rest/v1/chat_members?select=chat_groups(id,name,owner_id,invite_token)&user_id=eq." + s.userId
+        val rows = JSONArray(request(path, token = s.accessToken))
+        (0 until rows.length()).mapNotNull { i ->
+            val g = if (s.role.equals("admin", true)) rows.optJSONObject(i) else rows.optJSONObject(i)?.optJSONObject("chat_groups")
+            if (g == null) null else CampusGroup(g.optString("id"), g.optString("name", "Group"), g.optString("owner_id"), g.optString("invite_token"))
         }
     }
 
     suspend fun createGroup(s: CampusSession, name: String): CampusGroup = withContext(Dispatchers.IO) {
-        val a = JSONArray(request("/rest/v1/chat_groups", "POST", s.accessToken, JSONObject().put("name", name.trim()).put("owner_id", s.userId).toString()))
-        if (a.length() == 0) error("Group was not created")
-        val g=a.getJSONObject(0); val id=g.getString("id")
-        request("/rest/v1/chat_members", "POST", s.accessToken, JSONObject().put("group_id",id).put("user_id",s.userId).put("role","owner").toString())
-        CampusGroup(id,g.optString("name",name.trim()))
+        val raw = request("/rest/v1/rpc/create_chat_group", "POST", s.accessToken, JSONObject().put("p_name", name.trim()).put("p_photo_path", JSONObject.NULL).toString())
+        val id = raw.trim().trim('"')
+        val rows = JSONArray(request("/rest/v1/chat_groups?select=id,name,owner_id,invite_token&id=eq." + id, token = s.accessToken))
+        if (rows.length() == 0) error("Group was created but could not be loaded")
+        val g = rows.getJSONObject(0)
+        CampusGroup(id, g.optString("name", name.trim()), g.optString("owner_id"), g.optString("invite_token"))
+    }
+
+    suspend fun deleteGroup(s: CampusSession, groupId: String) = withContext(Dispatchers.IO) {
+        request("/rest/v1/rpc/delete_chat_group", "POST", s.accessToken, JSONObject().put("p_group", groupId).toString())
     }
 
     suspend fun messages(s: CampusSession, groupId: String) = withContext(Dispatchers.IO) {
@@ -367,9 +374,9 @@ fun NativeChatScreen() {
     val scope=rememberCoroutineScope();val canCreate=session.role.equals("admin",true)||session.role.equals("leader",true)
     fun reload(){scope.launch{runCatching{groups=CampusNativeApi.groups(session);if(selected==null)selected=groups.firstOrNull()}.onFailure{error=it.message?:"Unable to load GCs"}}}
     LaunchedEffect(Unit){reload()};LaunchedEffect(selected?.id){selected?.let{g->runCatching{messages=CampusNativeApi.messages(session,g.id)}.onFailure{error=it.message?:"Unable to load messages"}}}
-    Column(Modifier.fillMaxSize().padding(16.dp)){Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("Private GCs",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f));if(canCreate)Button({groupName="";createDialog=true}){Text("New GC")}}
+    Column(Modifier.fillMaxSize().padding(16.dp)){Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("Messages",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f));if(canCreate)Button({groupName="";createDialog=true}){Text("New GC")}}
         if(error.isNotBlank())Text(error,color=MaterialTheme.colorScheme.error);Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())){groups.forEach{g->FilterChip(selected?.id==g.id,{selected=g},label={Text(g.name)})}}
-        selected?.let{g->LazyColumn(Modifier.weight(1f).fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(8.dp)){items(messages){m->Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){Text(m.sender,fontWeight=FontWeight.Bold);Text(m.body);Text(m.createdAt.replace("T"," ").replace("Z",""),style=MaterialTheme.typography.bodySmall)}}}};Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){OutlinedTextField(text,{text=it},Modifier.weight(1f),singleLine=true);Spacer(Modifier.width(8.dp));Button({val b=text.trim();if(b.isNotBlank())scope.launch{runCatching{CampusNativeApi.send(session,g.id,b);messages=CampusNativeApi.messages(session,g.id);text=""}.onFailure{error=it.message?:"Send failed"}}}){Text("Send")}}}?:EmptyCampusManagementCard("No GC yet. Admins and leaders can create one.")}
+        selected?.let{g->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text(g.name,Modifier.weight(1f),fontWeight=FontWeight.Bold);TextButton(onClick={val link="https://kage049754.github.io/CampusOS-Web/?gc="+g.inviteToken;context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT,"Join ${g.name} on CampusOS: $link"),"Share invite"))}){Text("Invite link")};if(session.role.equals("admin",true)||g.ownerId==session.userId)TextButton(onClick={scope.launch{runCatching{CampusNativeApi.deleteGroup(session,g.id);selected=null;groups=CampusNativeApi.groups(session)}.onFailure{error=it.message?:"Delete failed"}}}){Text("Delete")}};LazyColumn(Modifier.weight(1f).fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(8.dp)){items(messages){m->Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){Text(m.sender,fontWeight=FontWeight.Bold);Text(m.body);Text(m.createdAt.replace("T"," ").replace("Z",""),style=MaterialTheme.typography.bodySmall)}}}};Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){OutlinedTextField(text,{text=it},Modifier.weight(1f),singleLine=true);Spacer(Modifier.width(8.dp));Button({val b=text.trim();if(b.isNotBlank())scope.launch{runCatching{CampusNativeApi.send(session,g.id,b);messages=CampusNativeApi.messages(session,g.id);text=""}.onFailure{error=it.message?:"Send failed"}}}){Text("Send")}}}?:EmptyCampusManagementCard("No GC yet. Admins and leaders can create one.")}
     if(createDialog)AlertDialog(onDismissRequest={createDialog=false},title={Text("Create private GC")},text={OutlinedTextField(groupName,{groupName=it},label={Text("GC name")},singleLine=true,modifier=Modifier.fillMaxWidth())},confirmButton={Button(enabled=groupName.trim().isNotBlank(),onClick={scope.launch{runCatching{val g=CampusNativeApi.createGroup(session,groupName);groups=CampusNativeApi.groups(session);selected=g;createDialog=false}.onFailure{error=it.message?:"Create GC failed"}}}){Text("Create")}},dismissButton={TextButton({createDialog=false}){Text("Cancel")}})
 }
 @Composable
