@@ -106,7 +106,7 @@ private val CampusShapes = Shapes(
 private fun applyLauncherIcon(context: Context, preset: String) {
     val pm = context.packageManager
     val pkg = context.packageName
-    val main = android.content.ComponentName(pkg, MainActivity::class.java)
+    val main = android.content.ComponentName(context, MainActivity::class.java)
     val forest = android.content.ComponentName(pkg, "com.kage049754.campusos.ForestLauncher")
     val sunset = android.content.ComponentName(pkg, "com.kage049754.campusos.SunsetLauncher")
     runCatching {
@@ -878,7 +878,7 @@ fun HomeSettingsDialog(
                 SettingsRow(Icons.Default.Palette, "Appearance", "Light, dark and system theme") { onAppearance() }
                 SettingsRow(Icons.Default.Backup, "Data & Backup", "Backup or recover selected modules") { openBackupRecovery() }
                 SettingsRow(Icons.Default.Lock, "App Lock", "PIN or pattern protection") { openAppLock() }
-                SettingsRow(Icons.Default.Info, "About", "Features, modules and offline functions") { showAbout = true }
+                SettingsRow(Icons.Default.Info, "About", "Features, modules and offline functions") { openAbout() }
                 Spacer(Modifier.height(4.dp))
                 TextButton(onClick = done, modifier = Modifier.align(Alignment.End)) { Text("Done") }
             }
@@ -2079,7 +2079,7 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                 val idBase=maxOf(System.currentTimeMillis(),(existing.maxOfOrNull{it.id}?:0L)+1L)
                 val selected=slots.mapIndexed{index,slot->
                     val (day,h,type)=slot
-                    Record(id=idBase+index,title=normalizedSubject,subtitle=fullName.trim(),extra=notes.trim(),day=day,startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=(if (type.equals("Lecture", true)) lectureRoom else labRoom).trim(),professor=professor.trim(),color=color,classType=type)
+                    Record(id=idBase+index,title=normalizedSubject,subtitle=fullName.trim(),extra=notes.trim(),day=day,startTime="%02d:00".format(h),endTime="%02d:00".format(h+1),room=(if (type.equals("Lecture", true)) lectureRoom else labRoom).trim(),professor=professor.trim(),color=0L,classType=type)
                 }
                 val conflict = slots.any { (day,h) ->
                     existing.any { old -> old.day.equals(day,true) && old.startTime.toMinutesOrNull() == h * 60 }
