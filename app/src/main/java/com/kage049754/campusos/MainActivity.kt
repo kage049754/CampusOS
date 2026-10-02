@@ -470,7 +470,7 @@ class MainActivity : ComponentActivity() {
 
 enum class Screen(val label: String) {
     HOME("Home"), SCHEDULE("Class Schedule"), TASKS("Notes"), ACADEMICS("Subjects"),
-    FILES("Files"), CHAT("Chats"), ANNOUNCEMENTS("Announcements"), SETTINGS("Settings")
+    FILES("Files"), CHAT("Chats"), ANNOUNCEMENTS("Announcements"), ADMIN("Campus Management"), SETTINGS("Settings")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -585,6 +585,15 @@ fun CampusOSApp(activity: Activity) {
         })
     }
 
+    LaunchedEffect(campusSession?.userId) {
+        campusSession?.let { current ->
+            runCatching { CampusNativeApi.loadRole(current) }.onSuccess { fresh ->
+                campusSession = fresh
+                authPrefs.edit().putString("role", fresh.role).apply()
+            }
+        }
+    }
+
     val colorScheme = if (dynamicColor && android.os.Build.VERSION.SDK_INT >= 31) {
         if (dark) androidx.compose.material3.dynamicDarkColorScheme(activity)
         else androidx.compose.material3.dynamicLightColorScheme(activity)
@@ -628,6 +637,11 @@ fun CampusOSApp(activity: Activity) {
                             if (screen == Screen.SCHEDULE) {
                                 IconButton(onClick = { showScheduleDetails = true }) {
                                     Icon(Icons.Default.Info, "Subject details")
+                                }
+                            }
+                            if (campusSession?.role?.equals("admin", true) == true || campusSession?.role?.equals("leader", true) == true) {
+                                IconButton(onClick = { screenName = Screen.ADMIN.name }) {
+                                    Icon(Icons.Default.AdminPanelSettings, "Campus management")
                                 }
                             }
                             IconButton(onClick = { showHomeSettings = true }) {
@@ -682,6 +696,7 @@ fun CampusOSApp(activity: Activity) {
                                         .putString("token", session.accessToken)
                                         .putString("uid", session.userId)
                                         .putString("email", session.email)
+                                        .putString("role", session.role)
                                         .apply()
                                     campusSession = session
                                 }
@@ -730,7 +745,7 @@ fun CampusOSApp(activity: Activity) {
                 }
             }
             if (showHomeSettings) {
-                HomeSettingsDialog(store, onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, onLockNow = { locked = true }, done = { showHomeSettings = false }, openAppLock = { showHomeSettings = false; showAppLock = true }, openBackupRecovery = { showHomeSettings = false; showBackupRecovery = true })
+                HomeSettingsDialog(store, campusSession?.role ?: "student", onManagement = { screenName = Screen.ADMIN.name; showHomeSettings = false }, onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, onLockNow = { locked = true }, done = { showHomeSettings = false }, openAppLock = { showHomeSettings = false; showAppLock = true }, openBackupRecovery = { showHomeSettings = false; showBackupRecovery = true })
             }
             if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
             if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }, dynamicColor, { dynamicColor = it; store.setDynamicColorEnabled(it) }) { showHomeColors = false }
@@ -759,6 +774,8 @@ fun CampusOSApp(activity: Activity) {
 @Composable
 fun HomeSettingsDialog(
     store: LocalStore,
+    campusRole: String,
+    onManagement: () -> Unit,
     onModule:(String)->Unit,
     onAppearance:()->Unit,
     onLockNow:()->Unit,
@@ -777,6 +794,9 @@ fun HomeSettingsDialog(
                     IconButton(onClick = done) { Icon(Icons.Default.Close, "Close") }
                 }
                 SettingsGroupTitle("CampusOS")
+                if (campusRole.equals("admin", true) || campusRole.equals("leader", true)) {
+                    SettingsRow(Icons.Default.AdminPanelSettings, "Campus Management", if (campusRole.equals("admin", true)) "Admin controls, accounts and leaders" else "Leader position and organization access") { onManagement() }
+                }
                 SettingsRow(Icons.Default.Person, "Profile", "Name, student ID, section and photo") { onModule("Homepage") }
                 SettingsRow(Icons.Default.Home, "Homepage", "Dashboard layout and home tiles") { onModule("Homepage") }
                 SettingsRow(Icons.Default.CalendarMonth, "Class Schedule", "Class days, timetable and class editing") { onModule("Class Schedule") }
