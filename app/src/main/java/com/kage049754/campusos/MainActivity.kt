@@ -908,6 +908,18 @@ private fun SettingsRow(icon: androidx.compose.ui.graphics.vector.ImageVector, t
 }
 
 @Composable
+fun AboutDialog(done: () -> Unit) {
+    AlertDialog(onDismissRequest = done, title = { Text("About CampusOS") }, text = {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("CampusOS 1.0.0", fontWeight = FontWeight.Bold)
+            Text("A student-focused offline-first planner for everyday school work.")
+            Text("Included functions", fontWeight = FontWeight.SemiBold)
+            listOf("Homepage dashboard and profile","Class Schedule with Lecture/Lab editing","Notes, calendar and reminders","Tools: Subjects, Calculator and Student Budget","Subject Notepad and Lecture Files","Appearance presets, light/dark mode and app lock","Local backup and recovery by module","Home-screen widgets for classes and tasks").forEach { Text("• $it") }
+            Text("This About page lists local app functions only and intentionally does not describe online or campus-network functions.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }, confirmButton = { TextButton(done) { Text("Done") } })
+}
+@Composable
 fun AppLockSettingsDialog(store: LocalStore, done: () -> Unit, lockNow: () -> Unit) {
     var method by remember { mutableStateOf(store.authMethod()) }
     var showPin by remember { mutableStateOf(false) }
@@ -1292,6 +1304,24 @@ fun ScheduleSettingsDialog(store:LocalStore,done:()->Unit){
             }
         }
     }},confirmButton={Button({if(chosen.isNotEmpty()){store.setScheduleDays(allDays.filter{it in chosen});store.setScheduleHours(start,end)};done()}){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})}
+@Composable
+fun ToolOrderDialog(store: LocalStore, done: () -> Unit) {
+    var order by remember { mutableStateOf(store.toolOrder()) }
+    AlertDialog(onDismissRequest = done, title = { Text("Tool Order") }, text = {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Choose the order of Subjects, Calculator and Budget.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            order.forEachIndexed { index, key ->
+                val label = when (key) { "subjects" -> "Subjects"; "calculator" -> "Calculator"; else -> "Budget" }
+                Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text((index + 1).toString(), Modifier.width(28.dp), fontWeight = FontWeight.Bold)
+                    Text(label, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                    IconButton(enabled = index > 0, onClick = { order = order.toMutableList().also { v -> val x = v[index-1]; v[index-1] = v[index]; v[index] = x } }) { Icon(Icons.Default.KeyboardArrowUp, "Move up") }
+                    IconButton(enabled = index < order.lastIndex, onClick = { order = order.toMutableList().also { v -> val x = v[index+1]; v[index+1] = v[index]; v[index] = x } }) { Icon(Icons.Default.KeyboardArrowDown, "Move down") }
+                }
+            }
+        }
+    }, confirmButton = { Button({ store.setToolOrder(order); done() }) { Text("Save") } }, dismissButton = { TextButton(done) { Text("Cancel") } })
+}
 @Composable
 fun HomeAppearanceDialog(store: LocalStore, theme: String, setTheme: (String) -> Unit, appearancePreset: String, setAppearancePreset: (String) -> Unit, done: () -> Unit) {
     val presets = listOf("forest" to "Forest","sunset" to "Sunset","ocean" to "Ocean","mint" to "Mint","lavender" to "Lavender","rose" to "Rose","mono" to "Monochrome")
