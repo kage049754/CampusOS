@@ -109,7 +109,10 @@ private fun campusColorScheme(preset: String, dark: Boolean): ColorScheme {
         "lavender" -> Triple(Color(0xFF6750A4), Color(0xFFEADDFF), Color(0xFF7D5260))
         "sunset" -> Triple(Color(0xFFB3261E), Color(0xFFFFDAD1), Color(0xFF705E1F))
         "mono" -> Triple(Color(0xFF3F4650), Color(0xFFE0E4E9), Color(0xFF5D636B))
-        else -> Triple(Color(0xFF1565C0), Color(0xFFD6E8FF), Color(0xFF4F5F72))
+        "ocean" -> Triple(Color(0xFF006A6A), Color(0xFFB8F2F0), Color(0xFF315E72))
+        "mint" -> Triple(Color(0xFF2E7D5B), Color(0xFFC8F2DC), Color(0xFF36706A))
+        "rose" -> Triple(Color(0xFF9C4168), Color(0xFFFFD9E5), Color(0xFF70465A))
+        else -> Triple(Color(0xFF176B3A), Color(0xFFB8F2C8), Color(0xFF326B67))
     }
     val (primary, primaryContainer, tertiary) = colors
     return if (dark) darkColorScheme(
@@ -1276,7 +1279,7 @@ fun ScheduleSettingsDialog(store:LocalStore,done:()->Unit){
     }},confirmButton={Button({if(chosen.isNotEmpty()){store.setScheduleDays(allDays.filter{it in chosen});store.setScheduleHours(start,end)};done()}){Text("Save")}},dismissButton={TextButton(done){Text("Cancel")}})}
 @Composable
 fun HomeAppearanceDialog(store: LocalStore, theme: String, setTheme: (String) -> Unit, appearancePreset: String, setAppearancePreset: (String) -> Unit, done: () -> Unit) {
-    val presets = listOf("default" to "Campus Blue","forest" to "Forest","lavender" to "Lavender","sunset" to "Sunset","mono" to "Monochrome")
+    val presets = listOf("forest" to "Forest","sunset" to "Sunset","ocean" to "Ocean","mint" to "Mint","lavender" to "Lavender","rose" to "Rose","mono" to "Monochrome")
     AlertDialog(
         onDismissRequest=done,
         title={Text("Appearance")},
@@ -1290,11 +1293,11 @@ fun HomeAppearanceDialog(store: LocalStore, theme: String, setTheme: (String) ->
                     val selected=appearancePreset==id
                     Card(Modifier.fillMaxWidth().clickable{setAppearancePreset(id)},colors=CardDefaults.cardColors(containerColor=if(selected)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)){
                         Row(Modifier.fillMaxWidth().padding(14.dp),verticalAlignment=Alignment.CenterVertically){
-                            Box(Modifier.size(42.dp).background(when(id){"forest"->Color(0xFF176B3A);"lavender"->Color(0xFF6750A4);"sunset"->Color(0xFFB3261E);"mono"->Color(0xFF3F4650);else->Color(0xFF1565C0)},RoundedCornerShape(12.dp)))
+                            Box(Modifier.size(42.dp).background(when(id){"forest"->Color(0xFF176B3A);"sunset"->Color(0xFFB3261E);"ocean"->Color(0xFF006A6A);"mint"->Color(0xFF2E7D5B);"lavender"->Color(0xFF6750A4);"rose"->Color(0xFF9C4168);"mono"->Color(0xFF3F4650);else->Color(0xFF176B3A)},RoundedCornerShape(12.dp)))
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)){
                                 Text(label,fontWeight=FontWeight.SemiBold)
-                                Text(when(id){"forest"->"Green + teal";"lavender"->"Purple + soft pink";"sunset"->"Warm red + gold";"mono"->"Neutral gray";else->"Blue + cool gray"},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(when(id){"forest"->"Green + teal";"sunset"->"Warm red + gold";"ocean"->"Teal + blue";"mint"->"Fresh green + aqua";"lavender"->"Purple + soft pink";"rose"->"Rose + plum";"mono"->"Neutral gray";else->"Green + teal"},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             if(selected)Icon(Icons.Default.CheckCircle,null,tint=MaterialTheme.colorScheme.primary)
                         }
