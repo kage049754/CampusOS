@@ -688,7 +688,7 @@ fun CampusOSApp(activity: Activity) {
                         }
                         Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }, { showScheduleDetails = true }) { search = "" }
                         Screen.TASKS -> TasksScreen(store, search, { search = "" }, { id -> subjectPageId = id; subjectPageMode = 0 })
-                        Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 })
+                        Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 }, done = { screenName = Screen.HOME.name })
                         Screen.FILES -> FilesScreen()
                         Screen.SETTINGS -> SettingsScreen(
                             store, theme,
@@ -2202,7 +2202,8 @@ fun AcademicsScreen(
     query: String,
     clear: () -> Unit,
     openNotepad: (Record) -> Unit,
-    openLectureFiles: (Record) -> Unit
+    openLectureFiles: (Record) -> Unit,
+    done: () -> Unit
 ) {
     val revision = store.revision
     var tab by remember { mutableIntStateOf(0) }
@@ -2216,24 +2217,53 @@ fun AcademicsScreen(
         }
     }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val activity = context as? Activity
+    BackHandler { done() }
+    LaunchedEffect(Unit) {
+        activity?.window?.decorView?.systemUiVisibility =
+            android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or
+            android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+            android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+    }
+    DisposableEffect(Unit) {
+        onDispose { activity?.window?.decorView?.systemUiVisibility = 0 }
+    }
+    var swipeOffset by remember { mutableFloatStateOf(0f) }
+
     Column(Modifier.fillMaxSize()) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-            Text("Tools", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Text(
-                if (tab == 0) "Your subjects, notes, and lecture files"
-                else "Reviewers and study tools",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .pointerInput(tab) {
+                    detectHorizontalDragGestures(
+                        onHorizontalDrag = { _, amount -> swipeOffset += amount },
+                        onDragEnd = {
+                            if (swipeOffset < -70f && tab < labels.lastIndex) tab++
+                            else if (swipeOffset > 70f && tab > 0) tab--
+                            swipeOffset = 0f
+                        },
+                        onDragCancel = { swipeOffset = 0f }
+                    )
+                }
+                .padding(start = 4.dp, end = 8.dp, top = 8.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = done, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Default.ArrowBack, "Back", modifier = Modifier.size(20.dp))
+            }
+            Text(labels[tab], style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
         }
 
-        ScrollableTabRow(
-            selectedTabIndex = tab,
-            edgePadding = 16.dp,
-            containerColor = Color.Transparent
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             labels.forEachIndexed { i, label ->
-                Tab(tab == i, { tab = i }, text = { Text(label) })
+                FilterChip(selected = tab == i, onClick = { tab = i }, label = { Text(label) })
             }
         }
 
