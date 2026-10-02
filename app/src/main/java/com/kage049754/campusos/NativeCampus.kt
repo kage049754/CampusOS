@@ -30,7 +30,7 @@ import java.net.URL
 private const val CAMPUS_SUPABASE = "https://pgniovlvofvkwjhyoqcg.supabase.co"
 private const val CAMPUS_KEY = "sb_publishable_UghfMQF0mqMdDL3-i8TvUQ_t3pWFwoe"
 
-data class CampusSession(val accessToken: String, val userId: String, val email: String)
+data class CampusSession(val accessToken: String, val userId: String, val email: String, val role: String = "student")
 data class CampusAnnouncement(
     val author: String, val pagePhotoPath: String?, val body: String,
     val createdAt: String, val imagePaths: List<String>
@@ -66,7 +66,7 @@ object CampusNativeApi {
         val o = JSONObject(request("/auth/v1/token?grant_type=password", "POST",
             body = JSONObject().put("email", email).put("password", password).toString()))
         val u = o.getJSONObject("user")
-        CampusSession(o.getString("access_token"), u.getString("id"), email)
+        CampusSession(o.getString("access_token"), u.getString("id"), email, role = "student")
     }
 
     suspend fun register(email: String, password: String, name: String, schoolId: String, section: String) =
@@ -76,6 +76,12 @@ object CampusNativeApi {
                     .put("full_name", name).put("school_id", schoolId).put("year_section", section).toString())
             signIn(email, password)
         }
+
+    suspend fun loadRole(s: CampusSession): CampusSession = withContext(Dispatchers.IO) {
+        val a = JSONArray(request("/rest/v1/profiles?select=role&id=eq." + s.userId + "&limit=1", token = s.accessToken))
+        val role = if (a.length() > 0) a.getJSONObject(0).optString("role", "student") else "student"
+        s.copy(role = role)
+    }
 
     suspend fun announcements(s: CampusSession) = withContext(Dispatchers.IO) {
         val a = JSONArray(request(
@@ -171,6 +177,7 @@ fun NativeLoginScreen(onSuccess: (CampusSession) -> Unit) {
                 runCatching {
                     if (signup) CampusNativeApi.register(email.trim().lowercase(), password, name.trim(), schoolId.trim(), section.trim())
                     else CampusNativeApi.signIn(email.trim().lowercase(), password)
+                }.mapCatching { CampusNativeApi.loadRole(it) }
                 }.onSuccess { onSuccess(it) }
                  .onFailure { error = it.message ?: "Sign in failed"; busy = false }
             }
