@@ -2329,16 +2329,17 @@ fun AcademicsScreen(
     query: String,
     clear: () -> Unit,
     openNotepad: (Record) -> Unit,
-    openLectureFiles: (Record) -> Unit
+    openLectureFiles: (Record) -> Unit,
+    openStudyMaker: () -> Unit
 ) {
     val revision = store.revision
     var selectedKey by rememberSaveable { mutableStateOf(store.toolOrder().firstOrNull() ?: "subjects") }
     var refresh by remember { mutableIntStateOf(0) }
     val keys = remember(store.revision, refresh) { store.toolOrder() }
-    val labels = keys.map { when (it) { "subjects" -> "Subjects"; "calculator" -> "Calculator"; else -> "Budget" } }
+    val labels = keys.map { when (it) { "study_maker" -> "Study Maker"; "subjects" -> "Subjects"; "calculator" -> "Calculator"; else -> "Budget" } }
     val tab = keys.indexOf(selectedKey).coerceAtLeast(0)
     val list = remember(refresh, revision, query, tab) {
-        store.get(keys[tab]).filter {
+        if (keys[tab] == "study_maker") emptyList() else store.get(keys[tab]).filter {
             query.isBlank() || query == "__ADD__" ||
                 (it.title + " " + it.subtitle + " " + it.extra).contains(query, true)
         }
@@ -2348,9 +2349,10 @@ fun AcademicsScreen(
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
             Text("Tools", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text(
-                when (tab) {
-                    0 -> "Your subjects, notes, and lecture files"
-                    2 -> "Track allowance, expenses, savings, and targets"
+                when (keys.getOrNull(tab)) {
+                    "study_maker" -> "Create reviewers, quizzes, flashcards, and study chats from your local materials"
+                    "subjects" -> "Your subjects, notes, and lecture files"
+                    "budget" -> "Track allowance, expenses, savings, and targets"
                     else -> "Study and productivity tools"
                 },
                 style = MaterialTheme.typography.bodyMedium,
@@ -2368,13 +2370,23 @@ fun AcademicsScreen(
             }
         }
 
-        if (tab == 1) {
+        if (keys.getOrNull(tab) == "study_maker") {
+            Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer)) {
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Study Maker + Study AI", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text("Use selected Notepad notes and Lecture Files with your own AI provider. Your source files stay local.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Button(openStudyMaker, Modifier.fillMaxWidth()) { Icon(Icons.Default.AutoAwesome, null); Spacer(Modifier.width(8.dp)); Text("Open Study Maker") }
+            }
+        } else if (keys.getOrNull(tab) == "calculator") {
             CalculatorScreen()
-        } else if (tab == 2) {
+        } else if (keys.getOrNull(tab) == "budget") {
             BudgetScreen(store)
         }
 
-        if (tab != 1 && tab != 2 && list.isEmpty()) {
+        if (keys.getOrNull(tab) != "study_maker" && keys.getOrNull(tab) != "calculator" && keys.getOrNull(tab) != "budget" && list.isEmpty()) {
             Box(
                 Modifier.fillMaxSize().padding(16.dp),
                 contentAlignment = Alignment.Center
