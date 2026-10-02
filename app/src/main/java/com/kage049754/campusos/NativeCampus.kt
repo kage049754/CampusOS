@@ -202,6 +202,17 @@ object CampusNativeApi {
         request("/rest/v1/rpc/delete_chat_group", "POST", s.accessToken, JSONObject().put("p_group", groupId).toString())
     }
 
+    suspend fun searchApprovedStudents(s: CampusSession, query: String): List<CampusProfile> = withContext(Dispatchers.IO) {
+        val q = java.net.URLEncoder.encode(query.trim(), "UTF-8")
+        val path = "/rest/v1/profiles?select=id,full_name,school_id,year_section,status,role&status=eq.approved&or=(full_name.ilike.%25" + q + "%25,school_id.ilike.%25" + q + "%25)&order=full_name.asc&limit=30"
+        val a = JSONArray(request(path, token = s.accessToken))
+        (0 until a.length()).map { i -> val o=a.getJSONObject(i); CampusProfile(o.optString("id"),o.optString("full_name","Student"),o.optString("school_id"),o.optString("year_section"),o.optString("status"),o.optString("role")) }.filter { it.id != s.userId }
+    }
+
+    suspend fun inviteMember(s: CampusSession, groupId: String, userId: String) = withContext(Dispatchers.IO) {
+        request("/rest/v1/rpc/invite_chat_member", "POST", s.accessToken, JSONObject().put("p_group",groupId).put("p_user",userId).toString())
+    }
+
     suspend fun messages(s: CampusSession, groupId: String) = withContext(Dispatchers.IO) {
         val a = JSONArray(request("/rest/v1/chat_messages?select=body,created_at,profiles(full_name)&group_id=eq." + groupId + "&order=created_at.asc&limit=100", token = s.accessToken))
         (0 until a.length()).map {
@@ -367,17 +378,143 @@ fun NativeAnnouncementsScreen() {
 }
 @Composable
 fun NativeChatScreen() {
-    val context=androidx.compose.ui.platform.LocalContext.current;val p=context.getSharedPreferences("campusos_auth",Context.MODE_PRIVATE)
-    val session=remember{CampusSession(p.getString("token","")?:"",p.getString("uid","")?:"",p.getString("email","")?:"",p.getString("role","student")?:"student")}
-    var groups by remember{mutableStateOf<List<CampusGroup>>(emptyList())};var selected by remember{mutableStateOf<CampusGroup?>(null)};var messages by remember{mutableStateOf<List<CampusMessage>>(emptyList())}
-    var text by remember{mutableStateOf("")};var error by remember{mutableStateOf("")};var createDialog by rememberSaveable{mutableStateOf(false)};var groupName by rememberSaveable{mutableStateOf("")}
-    val scope=rememberCoroutineScope();val canCreate=session.role.equals("admin",true)||session.role.equals("leader",true)
-    fun reload(){scope.launch{runCatching{groups=CampusNativeApi.groups(session);if(selected==null)selected=groups.firstOrNull()}.onFailure{error=it.message?:"Unable to load GCs"}}}
-    LaunchedEffect(Unit){reload()};LaunchedEffect(selected?.id){selected?.let{g->runCatching{messages=CampusNativeApi.messages(session,g.id)}.onFailure{error=it.message?:"Unable to load messages"}}}
-    Column(Modifier.fillMaxSize().padding(16.dp)){Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text("Messages",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f));if(canCreate)Button({groupName="";createDialog=true}){Text("New GC")}}
-        if(error.isNotBlank())Text(error,color=MaterialTheme.colorScheme.error);Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())){groups.forEach{g->FilterChip(selected?.id==g.id,{selected=g},label={Text(g.name)})}}
-        selected?.let{g->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text(g.name,Modifier.weight(1f),fontWeight=FontWeight.Bold);TextButton(onClick={val link="https://kage049754.github.io/CampusOS-Web/?gc="+g.inviteToken;context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT,"Join ${g.name} on CampusOS: $link"),"Share invite"))}){Text("Invite link")};if(session.role.equals("admin",true)||g.ownerId==session.userId)TextButton(onClick={scope.launch{runCatching{CampusNativeApi.deleteGroup(session,g.id);selected=null;groups=CampusNativeApi.groups(session)}.onFailure{error=it.message?:"Delete failed"}}}){Text("Delete")}};LazyColumn(Modifier.weight(1f).fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(8.dp)){items(messages){m->Card(Modifier.fillMaxWidth()){Column(Modifier.padding(12.dp)){Text(m.sender,fontWeight=FontWeight.Bold);Text(m.body);Text(m.createdAt.replace("T"," ").replace("Z",""),style=MaterialTheme.typography.bodySmall)}}}};Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){OutlinedTextField(text,{text=it},Modifier.weight(1f),singleLine=true);Spacer(Modifier.width(8.dp));Button({val b=text.trim();if(b.isNotBlank())scope.launch{runCatching{CampusNativeApi.send(session,g.id,b);messages=CampusNativeApi.messages(session,g.id);text=""}.onFailure{error=it.message?:"Send failed"}}}){Text("Send")}}}?:EmptyCampusManagementCard("No GC yet. Admins and leaders can create one.")}
-    if(createDialog)AlertDialog(onDismissRequest={createDialog=false},title={Text("Create private GC")},text={OutlinedTextField(groupName,{groupName=it},label={Text("GC name")},singleLine=true,modifier=Modifier.fillMaxWidth())},confirmButton={Button(enabled=groupName.trim().isNotBlank(),onClick={scope.launch{runCatching{val g=CampusNativeApi.createGroup(session,groupName);groups=CampusNativeApi.groups(session);selected=g;createDialog=false}.onFailure{error=it.message?:"Create GC failed"}}}){Text("Create")}},dismissButton={TextButton({createDialog=false}){Text("Cancel")}})
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = context.getSharedPreferences("campusos_auth", Context.MODE_PRIVATE)
+    val session = remember { CampusSession(prefs.getString("token","") ?: "", prefs.getString("uid","") ?: "", prefs.getString("email","") ?: "", prefs.getString("role","student") ?: "student") }
+    var groups by remember { mutableStateOf<List<CampusGroup>>(emptyList()) }
+    var selected by remember { mutableStateOf<CampusGroup?>(null) }
+    var messages by remember { mutableStateOf<List<CampusMessage>>(emptyList()) }
+    var draft by rememberSaveable { mutableStateOf("") }
+    var search by rememberSaveable { mutableStateOf("") }
+    var people by remember { mutableStateOf<List<CampusProfile>>(emptyList()) }
+    var error by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(false) }
+    var createDialog by rememberSaveable { mutableStateOf(false) }
+    var inviteDialog by rememberSaveable { mutableStateOf(false) }
+    var groupName by rememberSaveable { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    val canCreate = session.role.equals("admin", true) || session.role.equals("leader", true)
+    val isAdmin = session.role.equals("admin", true)
+    fun reload() {
+        scope.launch {
+            loading = true
+            runCatching {
+                val fresh = CampusNativeApi.groups(session)
+                groups = fresh
+                if (selected == null || fresh.none { it.id == selected?.id }) selected = fresh.firstOrNull()
+            }.onFailure { error = it.message ?: "Unable to load GCs" }
+            loading = false
+        }
+    }
+    LaunchedEffect(session.userId) { reload() }
+    LaunchedEffect(selected?.id) {
+        val id = selected?.id
+        if (id != null) runCatching { messages = CampusNativeApi.messages(session, id) }.onFailure { error = it.message ?: "Unable to load messages" }
+        else messages = emptyList()
+    }
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Messages", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("Private groups", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (canCreate) Button(onClick = { groupName = ""; createDialog = true }) { Text("＋ New") }
+        }
+        OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp), singleLine = true, placeholder = { Text("Search conversations") }, leadingIcon = { Text("⌕") })
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            groups.filter { it.name.contains(search, true) }.forEach { g ->
+                FilterChip(selected?.id == g.id, { selected = g }, label = { Text(g.name) })
+            }
+        }
+        if (error.isNotBlank()) Text(error, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error)
+        selected?.let { g ->
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(Modifier.size(42.dp), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.primaryContainer) { Box(contentAlignment = Alignment.Center) { Text(g.name.take(1).uppercase(), fontWeight = FontWeight.Bold) } }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) { Text(g.name, fontWeight = FontWeight.Bold); Text("Group conversation", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                TextButton(onClick = { inviteDialog = true }) { Text("＋ Invite") }
+                var menu by remember(g.id) { mutableStateOf(false) }
+                Box {
+                    TextButton(onClick = { menu = true }) { Text("⋮") }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        TextButton(onClick = {
+                            menu = false
+                            val link = "https://kage049754.github.io/CampusOS-Web/?gc=" + g.inviteToken
+                            context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "Join " + g.name + " on CampusOS: " + link), "Share invite"))
+                        }) { Text("Share invite link") }
+                        if (isAdmin || g.ownerId == session.userId) TextButton(onClick = {
+                            menu = false
+                            scope.launch {
+                                runCatching { CampusNativeApi.deleteGroup(session, g.id); selected = null; reload() }
+                                    .onFailure { error = it.message ?: "Delete failed" }
+                            }
+                        }) { Text("Delete group", color = MaterialTheme.colorScheme.error) }
+                    }
+                }
+            }
+            Divider()
+            LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
+                items(messages) { m ->
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = if (m.sender == session.email) Alignment.End else Alignment.Start) {
+                        Surface(color = if (m.sender == session.email) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.large) {
+                            Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) {
+                                Text(m.sender, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                Text(m.body)
+                            }
+                        }
+                        Text(m.createdAt.replace("T"," ").replace("Z",""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(draft, { draft = it }, Modifier.weight(1f), placeholder = { Text("Message…") }, maxLines = 4)
+                Spacer(Modifier.width(8.dp))
+                IconButton(onClick = {
+                    val body = draft.trim()
+                    if (body.isNotBlank()) scope.launch {
+                        runCatching { CampusNativeApi.send(session, g.id, body); messages = CampusNativeApi.messages(session, g.id); draft = "" }
+                            .onFailure { error = it.message ?: "Send failed" }
+                    }
+                }, enabled = draft.trim().isNotBlank()) { Text("➤") }
+            }
+        } ?: Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(if (loading) "Loading conversations…" else "No conversations yet", fontWeight = FontWeight.Bold)
+                Text(if (canCreate) "Create a private group to get started." else "Ask a group leader to invite you.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (canCreate) Button(onClick = { createDialog = true }) { Text("Create group") }
+            }
+        }
+    }
+    if (createDialog) AlertDialog(
+        onDismissRequest = { createDialog = false },
+        title = { Text("Create private group") },
+        text = { OutlinedTextField(groupName, { groupName = it }, label = { Text("Group name") }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
+        confirmButton = { Button(enabled = groupName.trim().isNotBlank(), onClick = { scope.launch {
+            runCatching { val made = CampusNativeApi.createGroup(session, groupName); groups = CampusNativeApi.groups(session); selected = made; createDialog = false }
+                .onFailure { error = it.message ?: "Create group failed" }
+        } }) { Text("Create") } },
+        dismissButton = { TextButton(onClick = { createDialog = false }) { Text("Cancel") } }
+    )
+    if (inviteDialog) AlertDialog(
+        onDismissRequest = { inviteDialog = false; people = emptyList() },
+        title = { Text("Invite approved students") },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp)) {
+                OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth(), label = { Text("Search name or school ID") }, singleLine = true)
+                TextButton(onClick = { scope.launch { runCatching { people = CampusNativeApi.searchApprovedStudents(session, search) }.onFailure { error = it.message ?: "Search failed" } } }) { Text("Search students") }
+                LazyColumn { items(people) { person ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) { Text(person.fullName, fontWeight = FontWeight.Medium); Text(person.schoolId + " • " + person.section, style = MaterialTheme.typography.bodySmall) }
+                        TextButton(onClick = { val gid = selected?.id ?: return@TextButton; scope.launch {
+                            runCatching { CampusNativeApi.inviteMember(session, gid, person.id); people = people.filterNot { it.id == person.id }; error = "Invite sent" }
+                                .onFailure { error = it.message ?: "Invite failed" }
+                        } }) { Text("Invite") }
+                    }
+                } }
+            }
+        },
+        confirmButton = { TextButton(onClick = { inviteDialog = false; people = emptyList() }) { Text("Done") } }
+    )
 }
 @Composable
 fun NativeCampusManagementScreen(session: CampusSession) {
