@@ -130,7 +130,7 @@ fun NativeLoginScreen(onSuccess: (CampusSession) -> Unit) {
         OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true)
         if (error.isNotBlank()) { Spacer(Modifier.height(8.dp)); Text(error, color = MaterialTheme.colorScheme.error) }
         Spacer(Modifier.height(12.dp))
-        Button(enabled = !busy, onClick = {
+        Button(onClick = {
             scope.launch {
                 busy = true
                 error = ""
@@ -140,7 +140,7 @@ fun NativeLoginScreen(onSuccess: (CampusSession) -> Unit) {
                 }.onSuccess { onSuccess(it) }
                  .onFailure { error = it.message ?: "Sign in failed"; busy = false }
             }
-        }, Modifier.fillMaxWidth()) { Text(if (busy) "Signing in…" else if (signup) "Create account" else "Sign in") }
+        }, modifier = Modifier.fillMaxWidth(), enabled = !busy) { Text(if (busy) "Signing in…" else if (signup) "Create account" else "Sign in") }
         TextButton(onClick = { signup = !signup; error = "" }) {
             Text(if (signup) "Sign in" else "Create account")
         }
