@@ -2280,8 +2280,8 @@ fun AcademicsScreen(
     val revision = store.revision
     var tab by remember { mutableIntStateOf(0) }
     var refresh by remember { mutableIntStateOf(0) }
-    val labels = listOf("Subjects", "Reviewers", "Calculator", "Budget")
-    val keys = listOf("subjects", "reviewers", "calculator", "budget")
+    val labels = listOf("Subjects", "Calculator", "Budget")
+    val keys = listOf("subjects", "calculator", "budget")
     val list = remember(refresh, revision, query, tab) {
         store.get(keys[tab]).filter {
             query.isBlank() || query == "__ADD__" ||
@@ -2295,8 +2295,8 @@ fun AcademicsScreen(
             Text(
                 when (tab) {
                     0 -> "Your subjects, notes, and lecture files"
-                    3 -> "Track allowance, expenses, savings, and targets"
-                    else -> "Reviewers and study tools"
+                    2 -> "Track allowance, expenses, savings, and targets"
+                    else -> "Study and productivity tools"
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2313,46 +2313,13 @@ fun AcademicsScreen(
             }
         }
 
-        if (tab == 2) {
+        if (tab == 1) {
             CalculatorScreen()
-        } else if (tab == 3) {
+        } else if (tab == 2) {
             BudgetScreen(store)
-        } else if (tab == 1) {
-            Card(
-                Modifier.fillMaxWidth().padding(16.dp),
-                shape = MaterialTheme.shapes.medium,
-                colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerLow)
-            ) {
-                Column(
-                    Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            modifier = Modifier.size(42.dp),
-                            shape = MaterialTheme.shapes.small,
-                            color = MaterialTheme.colorScheme.secondaryContainer
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.Construction, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
-                            }
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text("Feature development", fontWeight = FontWeight.Bold)
-                            Text("Reviewer tools", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    Text(
-                        "Reviewer categories, question banks, practice mode, search, sorting, and import/export can be added here.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
         }
 
-        if (tab != 2 && tab != 3 && list.isEmpty()) {
+        if (tab != 1 && tab != 2 && list.isEmpty()) {
             Box(
                 Modifier.fillMaxSize().padding(16.dp),
                 contentAlignment = Alignment.Center
@@ -2374,7 +2341,7 @@ fun AcademicsScreen(
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    if (tab == 0) Icons.Default.School else Icons.Default.MenuBook,
+                                    Icons.Default.School,
                                     null,
                                     Modifier.size(30.dp),
                                     tint = MaterialTheme.colorScheme.onPrimaryContainer
@@ -2388,15 +2355,14 @@ fun AcademicsScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            if (tab == 0) "Add a class from Schedule to create a subject here."
-                            else "Your reviewer tools will appear here when available.",
+                            "Add a class from Schedule to create a subject here.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
             }
-        } else if (tab != 3) {
+        } else if (tab != 1 && tab != 2) {
             val sortedList = list.sortedWith(
                 compareByDescending<Record> { store.subjectFavorite(it.id) }
                     .thenBy { it.title.trim().lowercase(Locale.getDefault()) }
@@ -2501,7 +2467,7 @@ fun AcademicsScreen(
         }
     }
 
-    if (query == "__ADD__" && tab < 2) AddRecordDialog(
+    if (query == "__ADD__" && tab == 0) AddRecordDialog(
         labels[tab],
         keys[tab],
         store,
