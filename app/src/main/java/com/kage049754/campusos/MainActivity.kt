@@ -706,6 +706,7 @@ fun CampusOSApp(activity: Activity) {
 }private fun iconFor(s: Screen) = when(s) {
     Screen.HOME -> Icons.Default.Home
     Screen.CHAT -> Icons.Default.Chat
+    Screen.ANNOUNCEMENTS -> Icons.Default.Campaign
     Screen.SCHEDULE -> Icons.Default.CalendarMonth
     Screen.TASKS -> Icons.Default.CheckCircle
     Screen.ACADEMICS -> Icons.Default.School
