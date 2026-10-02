@@ -9,6 +9,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
@@ -460,6 +461,7 @@ class LocalStore(context: Context) {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContent { CampusOSApp(this) }
         CampusReminders.reschedule(this)
         CampusWidgets.updateAll(this)
@@ -468,7 +470,7 @@ class MainActivity : ComponentActivity() {
 
 enum class Screen(val label: String) {
     HOME("Home"), SCHEDULE("Class Schedule"), TASKS("Notes"), ACADEMICS("Subjects"),
-    FILES("Files"), CHAT("Chats"), SETTINGS("Settings")
+    FILES("Files"), CHAT("Chats"), ANNOUNCEMENTS("Announcements"), SETTINGS("Settings")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -623,6 +625,7 @@ fun CampusOSApp(activity: Activity) {
                         listOf(
                             Screen.HOME,
                             Screen.CHAT,
+                            Screen.ANNOUNCEMENTS,
                             Screen.SCHEDULE,
                             Screen.TASKS,
                             Screen.ACADEMICS
@@ -656,7 +659,8 @@ fun CampusOSApp(activity: Activity) {
                 ) { targetScreen ->
                     when (Screen.valueOf(targetScreen)) {
                         Screen.HOME -> HomeScreen(store, { screenName = it.name }, homeEditRequest)
-                        Screen.CHAT -> PrivateGcAndroidScreen()
+                        Screen.CHAT -> CampusWebEmbeddedScreen("https://kage049754.github.io/CampusOS-Web/?embed=android#chat")
+                        Screen.ANNOUNCEMENTS -> CampusWebEmbeddedScreen("https://kage049754.github.io/CampusOS-Web/?embed=android#announcements")
                         Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }, { showScheduleDetails = true }) { search = "" }
                         Screen.TASKS -> TasksScreen(store, search, { search = "" }, { id -> subjectPageId = id; subjectPageMode = 0 })
                         Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 })
@@ -3323,7 +3327,7 @@ fun HomeTasksTile(pendingTasks: List<Record>) {
 
 
 @Composable
-fun PrivateGcAndroidScreen() {
+fun CampusWebEmbeddedScreen(url: String) {
     val context = androidx.compose.ui.platform.LocalContext.current
     AndroidView(
         modifier = Modifier.fillMaxSize(),
@@ -3334,7 +3338,7 @@ fun PrivateGcAndroidScreen() {
                 settings.allowFileAccess = false
                 settings.allowContentAccess = false
                 webViewClient = WebViewClient()
-                loadUrl("https://kage049754.github.io/CampusOS-Web/#chat")
+                loadUrl("https://kage049754.github.io/CampusOS-Web/?embed=android#chat")
             }
         },
         update = { webView ->
