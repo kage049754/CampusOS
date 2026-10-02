@@ -103,6 +103,21 @@ private val CampusShapes = Shapes(
     extraLarge = RoundedCornerShape(24.dp)
 )
 
+private fun applyLauncherIcon(context: Context, preset: String) {
+    val pm = context.packageManager
+    val pkg = context.packageName
+    val main = android.content.ComponentName(pkg, MainActivity::class.java)
+    val forest = android.content.ComponentName(pkg, "com.kage049754.campusos.ForestLauncher")
+    val sunset = android.content.ComponentName(pkg, "com.kage049754.campusos.SunsetLauncher")
+    runCatching {
+        pm.setComponentEnabledSetting(main, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED, android.content.pm.PackageManager.DONT_KILL_APP)
+        pm.setComponentEnabledSetting(forest, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED, android.content.pm.PackageManager.DONT_KILL_APP)
+        pm.setComponentEnabledSetting(sunset, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED, android.content.pm.PackageManager.DONT_KILL_APP)
+        val target = if (preset == "sunset") sunset else forest
+        pm.setComponentEnabledSetting(target, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED, android.content.pm.PackageManager.DONT_KILL_APP)
+    }
+}
+
 private fun campusColorScheme(preset: String, dark: Boolean): ColorScheme {
     val colors = when (preset) {
         "forest" -> Triple(Color(0xFF176B3A), Color(0xFFB8F2C8), Color(0xFF326B67))
