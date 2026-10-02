@@ -1376,6 +1376,7 @@ fun ColorChoiceCircle(value: Long, selected: Boolean, click: () -> Unit) {
 @Composable
 fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFullscreen: (Boolean) -> Unit, openDetails: () -> Unit, clear: () -> Unit) {
     val revision = store.revision
+    val chartColors = listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary, MaterialTheme.colorScheme.tertiary, MaterialTheme.colorScheme.error, MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.tertiaryContainer)
     var refresh by remember { mutableIntStateOf(0) }
     var showAdd by remember { mutableStateOf(false) }
     var showDaySetup by remember { mutableStateOf(!store.scheduleDaysConfigured()) }
