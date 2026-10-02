@@ -798,7 +798,7 @@ fun CampusOSApp(activity: Activity) {
                         }
                         Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }, { showScheduleDetails = true }) { search = "" }
                         Screen.TASKS -> TasksScreen(store, search, { search = "" }, { id -> subjectPageId = id; subjectPageMode = 0 })
-                        Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 })
+                        Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 }, { screenName = Screen.STUDY_MAKER.name })
                         Screen.FILES -> FilesScreen()
                         Screen.SETTINGS -> SettingsScreen(
                             store, theme,
@@ -1319,9 +1319,9 @@ fun ToolOrderDialog(store: LocalStore, done: () -> Unit) {
     var order by remember { mutableStateOf(store.toolOrder()) }
     AlertDialog(onDismissRequest = done, title = { Text("Tool Order") }, text = {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Choose the order of Subjects, Calculator and Budget.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Choose the order of Study Maker, Subjects, Calculator and Budget.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             order.forEachIndexed { index, key ->
-                val label = when (key) { "subjects" -> "Subjects"; "calculator" -> "Calculator"; else -> "Budget" }
+                val label = when (key) { "study_maker" -> "Study Maker"; "subjects" -> "Subjects"; "calculator" -> "Calculator"; else -> "Budget" }
                 Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text((index + 1).toString(), Modifier.width(28.dp), fontWeight = FontWeight.Bold)
                     Text(label, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
