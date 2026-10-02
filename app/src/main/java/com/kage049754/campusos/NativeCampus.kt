@@ -41,7 +41,7 @@ data class CampusAnnouncement(
     val createdAt: String, val imagePaths: List<String>
 )
 data class CampusGroup(val id: String, val name: String, val ownerId: String = "", val inviteToken: String = "")
-data class CampusMessage(val sender: String, val body: String, val createdAt: String)
+data class CampusMessage(val senderId: String, val sender: String, val body: String, val createdAt: String)
 data class CampusProfile(val id: String, val fullName: String, val schoolId: String, val section: String, val status: String, val role: String)
 data class CampusLeaderAssignment(
     val userId: String, val title: String, val organizationType: String,
@@ -214,7 +214,7 @@ object CampusNativeApi {
     }
 
     suspend fun messages(s: CampusSession, groupId: String) = withContext(Dispatchers.IO) {
-        val a = JSONArray(request("/rest/v1/chat_messages?select=body,created_at,profiles(full_name)&group_id=eq." + groupId + "&order=created_at.asc&limit=100", token = s.accessToken))
+        val a = JSONArray(request("/rest/v1/chat_messages?select=sender_id,body,created_at,profiles(full_name)&group_id=eq." + groupId + "&order=created_at.asc&limit=100", token = s.accessToken))
         (0 until a.length()).map {
             val o = a.getJSONObject(it)
             CampusMessage(o.optJSONObject("profiles")?.optString("full_name", "Member") ?: "Member",
@@ -455,8 +455,8 @@ fun NativeChatScreen() {
             Divider()
             LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
                 items(messages) { m ->
-                    Column(Modifier.fillMaxWidth(), horizontalAlignment = if (m.sender == session.email) Alignment.End else Alignment.Start) {
-                        Surface(color = if (m.sender == session.email) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.large) {
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = if (m.senderId == session.userId) Alignment.End else Alignment.Start) {
+                        Surface(color = if (m.senderId == session.userId) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.large) {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) {
                                 Text(m.sender, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                                 Text(m.body)
