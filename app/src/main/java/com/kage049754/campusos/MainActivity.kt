@@ -590,18 +590,6 @@ fun CampusOSApp(activity: Activity) {
     } else if (dark) CampusDarkColors else CampusLightColors
 
     MaterialTheme(colorScheme = colorScheme, shapes = CampusShapes) {
-        if (campusSession == null) {
-            NativeLoginScreen { session ->
-                authPrefs.edit()
-                    .putString("token", session.accessToken)
-                    .putString("uid", session.userId)
-                    .putString("email", session.email)
-                    .apply()
-                campusSession = session
-            }
-            return@MaterialTheme
-        }
-
         if (subjectPageId != 0L) {
             AnimatedVisibility(
                 visible = subjectPageVisible,
@@ -686,8 +674,34 @@ fun CampusOSApp(activity: Activity) {
                 ) { targetScreen ->
                     when (Screen.valueOf(targetScreen)) {
                         Screen.HOME -> HomeScreen(store, { screenName = it.name }, homeEditRequest)
-                        Screen.CHAT -> NativeChatScreen()
-                        Screen.ANNOUNCEMENTS -> NativeAnnouncementsScreen()
+                        Screen.CHAT -> {
+                            if (campusSession == null) {
+                                NativeLoginScreen { session ->
+                                    authPrefs.edit()
+                                        .putString("token", session.accessToken)
+                                        .putString("uid", session.userId)
+                                        .putString("email", session.email)
+                                        .apply()
+                                    campusSession = session
+                                }
+                            } else {
+                                NativeChatScreen()
+                            }
+                        }
+                        Screen.ANNOUNCEMENTS -> {
+                            if (campusSession == null) {
+                                NativeLoginScreen { session ->
+                                    authPrefs.edit()
+                                        .putString("token", session.accessToken)
+                                        .putString("uid", session.userId)
+                                        .putString("email", session.email)
+                                        .apply()
+                                    campusSession = session
+                                }
+                            } else {
+                                NativeAnnouncementsScreen()
+                            }
+                        }
                         Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }, { showScheduleDetails = true }) { search = "" }
                         Screen.TASKS -> TasksScreen(store, search, { search = "" }, { id -> subjectPageId = id; subjectPageMode = 0 })
                         Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 })
