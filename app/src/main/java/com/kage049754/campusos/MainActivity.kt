@@ -255,6 +255,8 @@ class LocalStore(context: Context) {
                 .putBoolean("schedule_time_range_extended_v1", true)
                 .apply()
         }
+        // Repair/synchronize existing schedule data when an older build did not create subjects.
+        syncSubjectsFromSchedule(this, read("schedule"))
     }
     private fun read(key: String): MutableList<Record> = runCatching {
         val out = mutableListOf<Record>()
@@ -279,9 +281,10 @@ class LocalStore(context: Context) {
             put("day", r.day); put("startTime", r.startTime); put("endTime", r.endTime); put("room", r.room); put("professor", r.professor); put("color", r.color); put("classType", r.classType); put("subjectId", r.subjectId); put("dueDate", r.dueDate); put("dueTime", r.dueTime)
         }) }
         prefs.edit().putString(key, a.toString()).apply()
-        // Keep Academics synchronized for both manual schedule entry and imported schedules.
-        // Never delete subject records here: their notes, favorites, and lecture files must survive.
-        if (key == "schedule") list.forEach { syncSubjectFromClass(this, it) }
+        // Schedule is the source of truth for automatically-created subject records.
+        // Sync the complete schedule in one pass so Lecture/Lab entries cannot overwrite
+        // each other's subject metadata or prevent a missing subject from being created.
+        if (key == "schedule") syncSubjectsFromSchedule(this, list)
         revision++
         CampusReminders.reschedule(appContext)
         CampusWidgets.updateAll(appContext)
@@ -526,7 +529,13 @@ class LocalStore(context: Context) {
                 target.writeBytes(Base64.decode(o.getString("data"), Base64.DEFAULT))
             }
         }
-        e.apply(); revision++; CampusReminders.reschedule(appContext); CampusWidgets.updateAll(appContext)
+        e.apply()
+        if ("schedule" in selected && root.has("schedule")) {
+            syncSubjectsFromSchedule(this, read("schedule"))
+        }
+        revision++
+        CampusReminders.reschedule(appContext)
+        CampusWidgets.updateAll(appContext)
     }
 }
 
@@ -1911,24 +1920,58 @@ private fun deleteScheduleAndSync(store: LocalStore, classRecord: Record) {
     }
 }
 
+private fun syncSubjectsFromSchedule(store: LocalStore, schedule: List<Record>) {
+    val validClasses = schedule.filter { it.title.trim().isNotBlank() }
+    if (validClasses.isEmpty()) return
+
+    val existingSubjects = store.get("subjects").toMutableList()
+    var changed = false
+
+    // Group by subject code so a subject with both Lecture and Lab is represented by
+    // exactly one Academics subject. Prefer non-empty metadata and never replace a
+    // user-created subject id, notes, favorites, or files.
+    validClasses.groupBy { it.title.trim().lowercase(Locale.getDefault()) }
+        .values
+        .forEach { classes ->
+            val first = classes.first()
+            val code = first.title.trim()
+            val existing = existingSubjects.firstOrNull { it.title.trim().equals(code, true) }
+            val bestName = classes.firstOrNull { it.subtitle.isNotBlank() }?.subtitle ?: ""
+            val bestProfessor = classes.firstOrNull { it.professor.isNotBlank() }?.professor ?: ""
+            val bestRoom = classes.firstOrNull { it.room.isNotBlank() }?.room ?: ""
+            val bestType = classes.firstOrNull { it.classType.isNotBlank() }?.classType ?: "Lecture"
+
+            if (existing == null) {
+                existingSubjects += Record(
+                    title = code,
+                    subtitle = bestName,
+                    extra = first.extra,
+                    professor = bestProfessor,
+                    room = bestRoom,
+                    classType = bestType
+                )
+                changed = true
+            } else {
+                val updated = existing.copy(
+                    subtitle = if (bestName.isNotBlank()) bestName else existing.subtitle,
+                    extra = if (first.extra.isNotBlank()) first.extra else existing.extra,
+                    professor = if (bestProfessor.isNotBlank()) bestProfessor else existing.professor,
+                    room = if (bestRoom.isNotBlank()) bestRoom else existing.room,
+                    classType = bestType
+                )
+                if (updated != existing) {
+                    val index = existingSubjects.indexOfFirst { it.id == existing.id }
+                    if (index >= 0) existingSubjects[index] = updated
+                    changed = true
+                }
+            }
+        }
+
+    if (changed) store.put("subjects", existingSubjects)
+}
+
 private fun syncSubjectFromClass(store: LocalStore, classRecord: Record) {
-    val code = classRecord.title.trim()
-    if (code.isBlank()) return
-    val subjects = store.get("subjects")
-    val existing = subjects.firstOrNull { it.title.equals(code, true) }
-    val synced = if (existing == null) {
-        Record(title=code, subtitle=classRecord.subtitle, extra=classRecord.extra,
-            professor=classRecord.professor, room=classRecord.room, classType=classRecord.classType)
-    } else {
-        existing.copy(
-            subtitle=if (classRecord.subtitle.isNotBlank()) classRecord.subtitle else existing.subtitle,
-            professor=if (classRecord.professor.isNotBlank()) classRecord.professor else existing.professor,
-            room=if (classRecord.room.isNotBlank()) classRecord.room else existing.room,
-            classType=classRecord.classType
-        )
-    }
-    store.put("subjects", if (existing == null) subjects + synced
-        else subjects.map { if (it.id == existing.id) synced else it })
+    syncSubjectsFromSchedule(store, listOf(classRecord))
 }
 
 @Composable
