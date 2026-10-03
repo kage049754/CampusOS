@@ -91,11 +91,13 @@ private class StudyAiSecureStore(context: Context) {
     fun getApiKey(provider: String): String {
         val name = keyName(provider)
         var encoded = prefs.getString(name, "") ?: ""
-        if (encoded.isBlank()) {
+        if (!prefs.getBoolean("api_keys_migrated", false)) {
             val legacy = prefs.getString("api_key", "") ?: ""
             if (legacy.isNotBlank()) {
-                prefs.edit().putString(name, legacy).remove("api_key").apply()
+                prefs.edit().putString(name, legacy).remove("api_key").putBoolean("api_keys_migrated", true).apply()
                 encoded = legacy
+            } else {
+                prefs.edit().putBoolean("api_keys_migrated", true).apply()
             }
         }
         if (encoded.isBlank()) return ""
@@ -437,14 +439,14 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
             }
             "chat" -> Column(Modifier.fillMaxSize().padding(padding)) {
                 LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
-                    if (chat.isEmpty()) item { Text("Ask questions about the selected notes and lecture files.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    if (chat.isEmpty()) item { Text("Ask anything — no notes or lecture files required.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     items(chat) { pair -> Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(if (pair.first == "You") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)) {
                         Column(Modifier.padding(12.dp)) { Text(pair.first, fontWeight = FontWeight.Bold); Spacer(Modifier.height(4.dp)); Text(pair.second) }
                     }}
                     if (busy) item { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Thinking…") } }
                 }
                 Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.Bottom) {
-                    OutlinedTextField(chatInput, { chatInput = it }, Modifier.weight(1f), label = { Text("Ask about your materials") }, maxLines = 4)
+                    OutlinedTextField(chatInput, { chatInput = it }, Modifier.weight(1f), label = { Text("Ask anything") }, maxLines = 4)
                     IconButton(enabled = chatInput.isNotBlank() && !busy, onClick = {
                         val q = chatInput.trim(); chatInput = ""; chat = chat + ("You" to q)
                     }) { Icon(Icons.Default.Send, "Send") }
@@ -486,7 +488,7 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                         .onFailure { error = it.message ?: "Could not save the API key on this device." }
                 }, Modifier.fillMaxWidth()) { Text("Save API Key") }
                 OutlinedButton({
-                    runCatching { secure.setApiKey(apiKey.trim()); apiKey = secure.getApiKey() }
+                    runCatching { secure.setApiKey(provider, apiKey.trim()); apiKey = secure.getApiKey(provider) }
                         .onSuccess { testRequest++ }
                         .onFailure { error = it.message ?: "Could not save the API key on this device." }
                 }, Modifier.fillMaxWidth(), enabled = !testingConnection && apiKey.isNotBlank()) {
