@@ -426,6 +426,16 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onClose: () -> Unit) {
     var messages by remember { mutableStateOf(listOf<Pair<String,String>>()) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
+    var actionGate by remember { mutableStateOf<CampusAiConfirmState?>(null) }
+
+    suspend fun gateTool(name: String): Boolean {
+        if (!store.aiActionNeedsApproval(name)) return true
+        val decision = CompletableDeferred<Boolean>()
+        withContext(Dispatchers.Main) { actionGate = CampusAiConfirmState(name, decision) }
+        val allowed = decision.await()
+        withContext(Dispatchers.Main) { if (actionGate?.decision === decision) actionGate = null }
+        return allowed
+    }
 
     LaunchedEffect(Unit) {
         activity.window.decorView.systemUiVisibility = 0
@@ -489,7 +499,8 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onClose: () -> Unit) {
                         studyAiCall(
                             provider,model,key,
                             "You are the CampusOS AI assistant. You can read and modify the student's CampusOS schedule, tasks, and subjects using the provided tools. Use tools when the student asks to add, edit, delete, or check CampusOS data. Be concise. If a requested change is ambiguous, ask a question instead of guessing. Student request: " + q,
-                            store=store
+                            store=store,
+                            toolApproval = { name, _ -> gateTool(name) }
                         ).onSuccess { messages=messages+("assistant" to it) }
                          .onFailure { error=it.message ?: "AI request failed." }
                         busy=false
@@ -499,6 +510,7 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onClose: () -> Unit) {
             if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.labelSmall)
         }
     }
+    CampusAiConfirmDialog(actionGate) { allowed -> actionGate?.decision?.complete(allowed) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -517,6 +529,16 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
     var result by rememberSaveable { mutableStateOf("") }
     var resultTitle by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    var actionGate by remember { mutableStateOf<CampusAiConfirmState?>(null) }
+
+    suspend fun gateTool(name: String): Boolean {
+        if (!store.aiActionNeedsApproval(name)) return true
+        val decision = CompletableDeferred<Boolean>()
+        withContext(Dispatchers.Main) { actionGate = CampusAiConfirmState(name, decision) }
+        val allowed = decision.await()
+        withContext(Dispatchers.Main) { if (actionGate?.decision === decision) actionGate = null }
+        return allowed
+    }
     var error by remember { mutableStateOf("") }
     var chatInput by rememberSaveable { mutableStateOf("") }
     var chat by remember { mutableStateOf(listOf<AiChatMessage>()) }
@@ -581,6 +603,8 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
         }.onFailure { error = it.message ?: "AI request failed." }
         busy = false
     }
+
+    CampusAiConfirmDialog(actionGate) { allowed -> actionGate?.decision?.complete(allowed) }
 
     Scaffold(topBar = {
         TopAppBar(
@@ -707,7 +731,7 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                             chatStore.save(AiChatConversation(chatId,safeChatTitle(q.ifBlank{attachment?.name.orEmpty()}),chat.first().createdAt,System.currentTimeMillis(),chat)); chatHistory=chatStore.list(); busy=true; error=""
                             val prompt=aiChatPrompt(chat.dropLast(1),q.ifBlank{"Please analyze the attached file."})+(if(attachment!=null) "\\n\\n"+chatAttachmentPrompt(listOf(attachment)) else "")
                             kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch{
-                                studyAiCall(provider,model,apiKey.trim(),prompt,listOfNotNull(attachment)).onSuccess{
+                                studyAiCall(provider,model,apiKey.trim(),prompt,listOfNotNull(attachment),store,{ name, _ -> gateTool(name) }).onSuccess{
                                     chat=chat+AiChatMessage("assistant",it)
                                     chatStore.save(AiChatConversation(chatId,safeChatTitle(chat.firstOrNull()?.text.orEmpty()),chat.firstOrNull()?.createdAt ?: System.currentTimeMillis(),System.currentTimeMillis(),chat)); chatHistory=chatStore.list()
                                 }.onFailure{error=it.message?:"AI request failed."}
