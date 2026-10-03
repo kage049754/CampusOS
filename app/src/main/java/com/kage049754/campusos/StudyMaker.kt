@@ -337,7 +337,7 @@ private fun studyPrompt(action: String, context: String): String {
         "Weak Topics" -> "Create a targeted mini-review of concepts that are easy to confuse or commonly misunderstood."
         else -> "Help the student study the material."
     }
-    return "You are CampusOS Study Maker. Use the supplied student materials as the primary source. Do not invent facts. If something cannot be verified from the sources, say so clearly.\n\nTASK:\n" + task + "\n\nSTUDENT MATERIALS:\n" + context
+    return "You are CampusOS AI. Use the supplied student materials as the primary source. Do not invent facts. If something cannot be verified from the sources, say so clearly.\n\nTASK:\n" + task + "\n\nSTUDENT MATERIALS:\n" + context
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -423,9 +423,9 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
 
     Scaffold(topBar = {
         TopAppBar(
-            title = { Text(if (page == "home") "Study Maker" else when (page) {
+            title = { Text(if (page == "home") "CampusOS AI" else when (page) {
                 "sources" -> "Select Materials"; "builder" -> "Create Study Material"; "result" -> resultTitle
-                "chat" -> "Study AI"; "packs" -> "My Study Packs"; "settings" -> "AI Settings"; else -> "Study Maker"
+                "chat" -> "Chat"; "packs" -> "My Study Packs"; "settings" -> "AI Settings"; else -> "CampusOS AI"
             }, fontWeight = FontWeight.Bold) },
             navigationIcon = { IconButton({ if (page == "home") done() else page = "home" }) { Icon(Icons.Default.ArrowBack, "Back") } },
             actions = { if (page == "home") IconButton({ page = "settings"; error = "" }) { Icon(Icons.Default.Settings, "AI settings") } }
@@ -435,7 +435,7 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
             "home" -> LazyColumn(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 item { Card(campusTileModifier(Modifier.fillMaxWidth()), colors = CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer)) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Study Maker + Study AI", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text("CampusOS AI", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Text(if (apiKey.isBlank()) "Connect your own AI provider to generate study material and chat." else provider + " connected • " + selectedIds.size + " source(s) selected", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }}
@@ -443,7 +443,7 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                 item { Button({ chatId=System.currentTimeMillis().toString(); chat=emptyList(); chatAttachment=null; page="chat"; error="" },Modifier.fillMaxWidth()){ Icon(Icons.Default.AddComment,null); Spacer(Modifier.width(8.dp)); Text("New AI Chat") } }
                 item { OutlinedButton({ chatHistory=chatStore.list(); page="chat_history" },Modifier.fillMaxWidth()){ Icon(Icons.Default.History,null); Spacer(Modifier.width(8.dp)); Text("Chat History ("+chatHistory.size+")") } }
                 item { OutlinedButton({ page = "packs" }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Bookmark, null); Spacer(Modifier.width(8.dp)); Text("My Study Packs (" + packs.size + ")") } }
-                item { Text("Custom Study Maker", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                item { Text("Study tools", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
                 item { Card(campusTileModifier(Modifier.fillMaxWidth()).clickable { if (hasSources()) page = "builder" }) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text("Reviewer • Quiz • ABCD • Flashcards • More", fontWeight = FontWeight.SemiBold)
