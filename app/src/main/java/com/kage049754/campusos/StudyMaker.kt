@@ -50,7 +50,7 @@ data class StudySource(val id: String, val title: String, val subject: String, v
 data class StudyPack(val title: String, val type: String, val body: String, val createdAt: Long)
 
 private fun defaultStudyModel(provider: String) = when (provider) {
-    "Gemini" -> "gemini-3.8-flash"
+    "Gemini" -> "gemini-3.5-flash-lite"
     "OpenRouter" -> "openrouter/free"
     else -> "gemini-3.8-flash"
 }
@@ -59,7 +59,7 @@ private fun allowedStudyProvider(provider: String) = if (provider == "OpenRouter
 
 private fun enforceFreeStudyModel(provider: String, model: String): String = when (provider) {
     "OpenRouter" -> "openrouter/free"
-    "Gemini" -> "gemini-3.8-flash"
+    "Gemini" -> "gemini-3.5-flash-lite"
     else -> error("Unsupported AI provider.")
 }
 
@@ -86,15 +86,37 @@ private class StudyAiSecureStore(context: Context) {
             }.doFinal(raw.copyOfRange(12, raw.size)).toString(StandardCharsets.UTF_8)
         }.getOrDefault("")
     }
-    fun setApiKey(value: String) {
-        if (value.isBlank()) { prefs.edit().remove("api_key").apply(); return }
-        // Android Keystore requires a fresh provider-generated IV for encryption.
-        // Supplying our own IV causes "IV not permitted" on affected devices.
+    private fun keyName(provider: String) = if (allowedStudyProvider(provider) == "OpenRouter") "api_key_openrouter" else "api_key_gemini"
+
+    fun getApiKey(provider: String): String {
+        val name = keyName(provider)
+        var encoded = prefs.getString(name, "") ?: ""
+        if (encoded.isBlank()) {
+            val legacy = prefs.getString("api_key", "") ?: ""
+            if (legacy.isNotBlank()) {
+                prefs.edit().putString(name, legacy).remove("api_key").apply()
+                encoded = legacy
+            }
+        }
+        if (encoded.isBlank()) return ""
+        return runCatching {
+            val raw = Base64.decode(encoded, Base64.DEFAULT)
+            require(raw.size > 12)
+            Cipher.getInstance("AES/GCM/NoPadding").apply {
+                init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, raw.copyOfRange(0, 12)))
+            }.doFinal(raw.copyOfRange(12, raw.size)).toString(StandardCharsets.UTF_8)
+        }.getOrDefault("")
+    }
+
+    fun setApiKey(provider: String, value: String) {
+        val name = keyName(provider)
+        if (value.isBlank()) { prefs.edit().remove(name).apply(); return }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
             init(Cipher.ENCRYPT_MODE, key())
         }
         val iv = cipher.iv
-        prefs.edit().putString("api_key", Base64.encodeToString(iv + cipher.doFinal(value.toByteArray(StandardCharsets.UTF_8)), Base64.NO_WRAP)).apply()
+        prefs.edit().putString(name, Base64.encodeToString(iv + cipher.doFinal(value.toByteArray(StandardCharsets.UTF_8)), Base64.NO_WRAP)).apply()
+        prefs.edit().remove("api_key").apply()
     }
     fun provider() = allowedStudyProvider(prefs.getString("provider", "Gemini") ?: "Gemini")
     fun setProvider(value: String) = prefs.edit().putString("provider", allowedStudyProvider(value)).apply()
@@ -198,7 +220,7 @@ private suspend fun studyAiCall(provider: String, model: String, key: String, pr
             headers["Authorization"] = "Bearer " + key
         }
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"; connectTimeout = 20_000; readTimeout = 120_000; doOutput = true
+            requestMethod = "POST"; connectTimeout = 15_000; readTimeout = 45_000; doOutput = true
             headers.forEach { (k, v) -> setRequestProperty(k, v) }
         }
         connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
@@ -219,7 +241,16 @@ private suspend fun studyAiCall(provider: String, model: String, key: String, pr
             val parts = json.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
             buildString { if (parts != null) for (i in 0 until parts.length()) append(parts.optJSONObject(i)?.optString("text").orEmpty()) }
         } else {
-            json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.optString("content").orEmpty()
+            run {
+                val content = json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.opt("content")
+                when (content) {
+                    is String -> content
+                    is JSONArray -> buildString {
+                        for (i in 0 until content.length()) append(content.optJSONObject(i)?.optString("text").orEmpty())
+                    }
+                    else -> ""
+                }
+            }
         }.trim()
         if (text.isBlank()) error("AI returned an empty response.")
         text
@@ -252,7 +283,7 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
     val secure = remember { StudyAiSecureStore(context) }
     var provider by remember { mutableStateOf(secure.provider()) }
     var model by remember { mutableStateOf(secure.model()) }
-    var apiKey by remember { mutableStateOf(secure.getApiKey()) }
+    var apiKey by remember { mutableStateOf(secure.getApiKey(provider)) }
     var page by rememberSaveable { mutableStateOf("home") }
     var sources by remember { mutableStateOf(emptyList<StudySource>()) }
     var selectedIds by rememberSaveable { mutableStateOf(setOf<String>()) }
@@ -444,13 +475,13 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                 Text("BYOK: your provider key is encrypted locally with Android Keystore. CampusOS does not put it in Supabase or source code.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Provider", fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("Gemini","OpenRouter").forEach { p ->
-                    FilterChip(provider == p, { provider = p; secure.setProvider(p); model = defaultStudyModel(p); secure.setModel(model) }, label = { Text(p) })
+                    FilterChip(provider == p, { secure.setApiKey(provider, apiKey.trim()); provider = p; secure.setProvider(p); model = defaultStudyModel(p); secure.setModel(model); apiKey = secure.getApiKey(p) }, label = { Text(p) })
                 }}
-                OutlinedTextField(apiKey, { apiKey = it }, Modifier.fillMaxWidth(), label = { Text("API key") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
+                OutlinedTextField(apiKey, { apiKey = it }, Modifier.fillMaxWidth(), label = { Text(if (provider == "Gemini") "Gemini API key" else "OpenRouter API key") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
                 OutlinedTextField(model, {}, Modifier.fillMaxWidth(), label = { Text("Free model") }, singleLine = true, readOnly = true)
                 Text(if (provider == "OpenRouter") "OpenRouter automatically selects an available free model. CampusOS only sends requests to the free router and will never select or fall back to a paid model." else "Gemini uses the fixed free-tier model configured by CampusOS. Paid model choices and fallback models are not used.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button({
-                    runCatching { secure.setApiKey(apiKey.trim()); apiKey = secure.getApiKey() }
+                    runCatching { secure.setApiKey(provider, apiKey.trim()); apiKey = secure.getApiKey(provider) }
                         .onSuccess { error = "API key saved securely on this device." }
                         .onFailure { error = it.message ?: "Could not save the API key on this device." }
                 }, Modifier.fillMaxWidth()) { Text("Save API Key") }
