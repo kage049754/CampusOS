@@ -367,12 +367,14 @@ class LocalStore(context: Context) {
     fun resetHomeLayout() { prefs.edit().remove("home_layout_order").remove("home_hidden_tiles").apply(); revision++ }
     fun setTheme(v: String) { prefs.edit().putString("theme", v).apply(); revision++ }
     fun toolOrder(): List<String> {
-        val allowed = listOf("study_maker", "subjects", "calculator", "budget")
+        // Campus AI is a primary app screen, not a reorderable tool. Keep legacy study_maker
+        // out of the visible tool list while preserving the existing subjects storage key.
+        val allowed = listOf("subjects", "calculator", "budget")
         val saved = (prefs.getString("tool_order", "") ?: "").split(",").filter { it in allowed }
         return (saved + allowed).distinct()
     }
     fun setToolOrder(order: List<String>) {
-        prefs.edit().putString("tool_order", order.filter { it in listOf("study_maker","subjects","calculator","budget") }.distinct().joinToString(",")).apply()
+        prefs.edit().putString("tool_order", order.filter { it in listOf("subjects","calculator","budget") }.distinct().joinToString(",")).apply()
         revision++
     }
 
@@ -641,7 +643,7 @@ class MainActivity : ComponentActivity() {
 }
 
 enum class Screen(val label: String) {
-    HOME("Home"), SCHEDULE("Schedule"), TASKS("Notes"), ACADEMICS("Tools"), STUDY_MAKER("CampusOS AI"),
+    HOME("Home"), SCHEDULE("Schedule"), TASKS("Notes"), ACADEMICS("Tools"), CAMPUS_AI("CampusOS AI"),
     FILES("Files"), CHAT("Chats"), ANNOUNCEMENTS("Announcements"), ADMIN("Campus Management"), SETTINGS("Settings")
 }
 
@@ -721,7 +723,7 @@ fun CampusOSApp(activity: Activity) {
                 showHomeSettings = true
             }
             scheduleFullscreen -> scheduleFullscreen = false
-            screen == Screen.STUDY_MAKER -> screenName = Screen.ACADEMICS.name
+            screen == Screen.CAMPUS_AI -> screenName = Screen.ACADEMICS.name
             screen != Screen.HOME -> screenName = Screen.HOME.name
         }
     }
@@ -797,7 +799,7 @@ fun CampusOSApp(activity: Activity) {
         Scaffold(
             contentWindowInsets = WindowInsets.safeDrawing,
             topBar = {
-                if (!scheduleFullscreen && screen != Screen.STUDY_MAKER) {
+                if (!scheduleFullscreen && screen != Screen.CAMPUS_AI) {
                     TopAppBar(
                         title = { Text("CampusOS", fontWeight = FontWeight.Bold) },
                         actions = {
@@ -825,7 +827,7 @@ fun CampusOSApp(activity: Activity) {
                 }
             },
             bottomBar = {
-                if (!scheduleFullscreen && screen != Screen.STUDY_MAKER) {
+                if (!scheduleFullscreen && screen != Screen.CAMPUS_AI) {
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                         listOf(
                             Screen.HOME,
@@ -870,7 +872,7 @@ fun CampusOSApp(activity: Activity) {
                 ) { targetScreen ->
                     when (Screen.valueOf(targetScreen)) {
                         Screen.HOME -> HomeScreen(store, { screenName = it.name }, homeEditRequest)
-                        Screen.STUDY_MAKER -> StudyMakerScreen(activity, store) { screenName = Screen.ACADEMICS.name }
+                        Screen.CAMPUS_AI -> StudyMakerScreen(activity, store) { screenName = Screen.ACADEMICS.name }
                         Screen.CHAT -> {
                             if (campusSession == null) {
                                 NativeLoginScreen { session ->
@@ -910,7 +912,7 @@ fun CampusOSApp(activity: Activity) {
                         }
                         Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }, { showScheduleDetails = true }) { search = "" }
                         Screen.TASKS -> TasksScreen(store, search, { search = "" }, { id -> subjectPageId = id; subjectPageMode = 0 })
-                        Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 }, { screenName = Screen.STUDY_MAKER.name }, academicsToolRequest, { academicsToolRequest = null })
+                        Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 }, { screenName = Screen.CAMPUS_AI.name }, academicsToolRequest, { academicsToolRequest = null })
                         Screen.FILES -> FilesScreen()
                         Screen.SETTINGS -> SettingsScreen(
                             store, theme,
@@ -918,11 +920,11 @@ fun CampusOSApp(activity: Activity) {
                             { locked = true },
                             { showScheduleSettings = true },
                             { showScheduleManager = true },
-                            { screenName = Screen.STUDY_MAKER.name }
+                            { screenName = Screen.CAMPUS_AI.name }
                         )
                     }
                 }
-                if (!scheduleFullscreen && screen != Screen.HOME && screen != Screen.SETTINGS && screen != Screen.FILES && screen != Screen.TASKS && screen != Screen.STUDY_MAKER) {
+                if (!scheduleFullscreen && screen != Screen.HOME && screen != Screen.SETTINGS && screen != Screen.FILES && screen != Screen.TASKS && screen != Screen.CAMPUS_AI) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                         OutlinedTextField(
                             value = search.takeUnless { it == "__ADD__" } ?: "",
@@ -935,7 +937,7 @@ fun CampusOSApp(activity: Activity) {
                     }
                 }
                 }
-                if (store.aiFloatingEnabled() && !scheduleFullscreen && screen != Screen.STUDY_MAKER) {
+                if (store.aiFloatingEnabled() && !scheduleFullscreen && screen != Screen.CAMPUS_AI) {
                     if (aiBubbleOpen) {
                         Box(Modifier.fillMaxSize().padding(bottom = 8.dp, end = 8.dp), contentAlignment = Alignment.BottomEnd) {
                             CampusAiBubble(activity, store, onModuleChanged = { toolName ->
@@ -957,7 +959,7 @@ fun CampusOSApp(activity: Activity) {
                         if (showHomeSettings) {
                 HomeSettingsDialog(store, campusSession?.role ?: "student", onManagement = { screenName = Screen.ADMIN.name; showHomeSettings = false }, onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, onAiSettings = { showAiSettings = true; showHomeSettings = false }, onLockNow = { locked = true }, done = { showHomeSettings = false }, openAppLock = { showHomeSettings = false; showAppLock = true }, openBackupRecovery = { showHomeSettings = false; showBackupRecovery = true }, openAbout = { showHomeSettings = false; showAbout = true })
             }
-            if (showAiSettings) CampusAiSettingsDialog(store, { showAiSettings = false }, { showAiSettings = false; screenName = Screen.STUDY_MAKER.name })
+            if (showAiSettings) CampusAiSettingsDialog(store, { showAiSettings = false }, { showAiSettings = false; screenName = Screen.CAMPUS_AI.name })
             if (showAbout) AboutDialog { showAbout = false }
             if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
             if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }, appearancePreset, { appearancePreset = it; store.setAppearancePreset(it) }) { showHomeColors = false }
@@ -978,7 +980,7 @@ fun CampusOSApp(activity: Activity) {
     Screen.SCHEDULE -> Icons.Default.CalendarMonth
     Screen.TASKS -> Icons.Default.CheckCircle
     Screen.ACADEMICS -> Icons.Default.School
-    Screen.STUDY_MAKER -> Icons.Default.AutoAwesome
+    Screen.CAMPUS_AI -> Icons.Default.AutoAwesome
     Screen.FILES -> Icons.Default.Folder
     Screen.ADMIN -> Icons.Default.AdminPanelSettings
     Screen.SETTINGS -> Icons.Default.Settings
@@ -1572,9 +1574,9 @@ fun ToolOrderDialog(store: LocalStore, done: () -> Unit) {
     var order by remember { mutableStateOf(store.toolOrder()) }
     AlertDialog(onDismissRequest = done, title = { Text("Tool Order") }, text = {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Choose the order of Study Maker, Notepad, Calculator and Budget.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Choose the order of Notepad, Calculator and Budget.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             order.forEachIndexed { index, key ->
-                val label = when (key) { "study_maker" -> "Study Maker"; "subjects" -> "Notepad"; "calculator" -> "Calculator"; else -> "Budget" }
+                val label = when (key) { "subjects" -> "Notepad"; "calculator" -> "Calculator"; else -> "Budget" }
                 Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text((index + 1).toString(), Modifier.width(28.dp), fontWeight = FontWeight.Bold)
                     Text(label, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
