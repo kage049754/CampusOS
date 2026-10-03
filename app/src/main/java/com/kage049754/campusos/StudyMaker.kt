@@ -385,6 +385,8 @@ private fun studyPrompt(action: String, context: String): String {
     return "You are CampusOS AI. Use the supplied student materials as the primary source. Do not invent facts. If something cannot be verified from the sources, say so clearly.\n\nTASK:\n" + task + "\n\nSTUDENT MATERIALS:\n" + context
 }
 
+private data class CampusAiConfirmState(val toolName: String, val decision: CompletableDeferred<Boolean>)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CampusAiBubble(activity: Activity, store: LocalStore, onClose: () -> Unit) {
