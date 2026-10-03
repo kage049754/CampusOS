@@ -43,7 +43,9 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
+import java.text.SimpleDateFormat
 import java.security.KeyStore
+import java.util.Date
 import java.util.Locale
 import java.util.zip.ZipFile
 import javax.crypto.Cipher
@@ -67,6 +69,8 @@ class AiChatStore(private val context: Context) {
     fun setHistoryEnabled(value: Boolean) { prefs.edit().putBoolean("chat_history_enabled", value).apply(); if (!value) deleteAll() }
     fun recallEnabled(): Boolean = prefs.getBoolean("chat_recall_enabled", true)
     fun setRecallEnabled(value: Boolean) { prefs.edit().putBoolean("chat_recall_enabled", value).apply() }
+    fun chatBackground(): String = prefs.getString("chat_background", "default") ?: "default"
+    fun setChatBackground(value: String) { prefs.edit().putString("chat_background", value).apply() }
     private val dir get() = File(context.filesDir, "ai_chats").apply { mkdirs() }
     private val prefs get() = context.getSharedPreferences(STUDY_AI_PREFS, Context.MODE_PRIVATE)
 
@@ -186,6 +190,14 @@ class AiChatStore(private val context: Context) {
         return AiChatConversation(o.optString("id"), o.optString("title").ifBlank { "New chat" },
             o.optLong("createdAt"), o.optLong("updatedAt"), messages)
     }
+}
+
+private fun aiChatBackgroundColor(background: String): androidx.compose.ui.graphics.Color = when (background) {
+    "primary" -> MaterialTheme.colorScheme.primaryContainer
+    "secondary" -> MaterialTheme.colorScheme.secondaryContainer
+    "tertiary" -> MaterialTheme.colorScheme.tertiaryContainer
+    "neutral" -> MaterialTheme.colorScheme.surfaceContainerHighest
+    else -> MaterialTheme.colorScheme.surfaceContainerHigh
 }
 
 private fun safeChatTitle(text: String): String = text.trim().replace(Regex("\\s+"), " ").take(48).ifBlank { "New chat" }
@@ -654,6 +666,7 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (Stri
     val model = secure.model()
     val key = secure.getApiKey(provider)
     val bubbleFraction = store.aiBubbleSize() / 100f
+    val aiBackground = chatStore.chatBackground()
     val initialChat = remember { chatStore.list().firstOrNull() }
     var chatId by rememberSaveable { mutableStateOf(initialChat?.id ?: "") }
     var messages by remember { mutableStateOf(initialChat?.messages.orEmpty()) }
@@ -703,7 +716,7 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (Stri
     Surface(
         modifier = Modifier.fillMaxWidth(bubbleFraction.coerceIn(0.70f, 0.96f))
             .fillMaxHeight(bubbleFraction.coerceIn(0.70f, 0.96f)).padding(8.dp),
-        shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, shadowElevation = 18.dp
+        shape = RoundedCornerShape(28.dp), color = aiChatBackgroundColor(aiBackground), shadowElevation = 18.dp
     ) {
         Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -752,7 +765,7 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (Stri
                 items(messages) { message ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.role == "user") Arrangement.End else Arrangement.Start) {
                         Surface(shape = RoundedCornerShape(18.dp),
-                            color = if (message.role == "user") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest) {
+                            color = if (message.role == "user") MaterialTheme.colorScheme.primaryContainer else aiChatBackgroundColor(aiBackground)) {
                             Column(Modifier.padding(4.dp)) {
                                 if (message.attachmentName.isNotBlank()) {
                                     Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -768,8 +781,9 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (Stri
                                 }
                                 TextButton(onClick = {
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("message", message.text))
-                                }) { Icon(Icons.Default.ContentCopy, null, Modifier.size(15.dp)); Spacer(Modifier.width(3.dp)); Text("Copy") }
+                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("CampusOS AI message", message.text))
+                                    android.widget.Toast.makeText(context, "AI text copied", android.widget.Toast.LENGTH_SHORT).show()
+                                }, enabled = message.text.isNotBlank()) { Icon(Icons.Default.ContentCopy, null, Modifier.size(15.dp)); Spacer(Modifier.width(3.dp)); Text("Copy AI text") }
                             }
                         }
                     }
