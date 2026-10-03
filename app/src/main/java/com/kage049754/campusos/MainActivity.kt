@@ -1223,7 +1223,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit, editRequest: Int = 0) {
             Spacer(Modifier.height(6.dp))
             if (pendingTasks.isEmpty()) EmptyCard("No pending tasks. You're all caught up.")
             else pendingTasks.forEach { task ->
-                Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.EventNote, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(10.dp))
@@ -1237,7 +1237,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit, editRequest: Int = 0) {
             }
         }
         item {
-            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                 Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                     Column(Modifier.weight(1f)) { Text("Subjects", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(subjects.size.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
                     Column(Modifier.weight(1f)) { Text("Today", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(todaySchedule.size.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
@@ -1604,18 +1604,18 @@ fun SubjectDetailsDialog(all: List<Record>, done: () -> Unit) {
                 val r=group.subject
                 val lecture=group.classes.filter { it.classType.equals("Lecture",true) }
                 val lab=group.classes.filter { it.classType.equals("Lab",true) }
-                Card(Modifier.fillMaxWidth()) {
+                Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
                     Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         Text(r.title,fontWeight=FontWeight.Bold,style=MaterialTheme.typography.titleMedium)
                         if(r.subtitle.isNotBlank()) Text(r.subtitle,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         if(r.professor.isNotBlank()) Text("Professor • "+r.professor,fontWeight=FontWeight.SemiBold)
                         if(lecture.isNotEmpty()) {
                             Row(verticalAlignment=Alignment.CenterVertically) { Icon(Icons.Default.MenuBook,null,Modifier.size(18.dp)); Spacer(Modifier.width(7.dp)); Text("Lecture",fontWeight=FontWeight.Bold) }
-                            lecture.forEach { c -> Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerLow)) { Column(Modifier.padding(9.dp),verticalArrangement=Arrangement.spacedBy(2.dp)) { Text(c.day.take(3)+" • "+c.startTime+"–"+c.endTime,fontWeight=FontWeight.SemiBold); if(c.room.isNotBlank()) Text("Room "+c.room,style=MaterialTheme.typography.bodySmall) } } }
+                            lecture.forEach { c -> Card(campusTileModifier(Modifier.fillMaxWidth()),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerLow)) { Column(Modifier.padding(9.dp),verticalArrangement=Arrangement.spacedBy(2.dp)) { Text(c.day.take(3)+" • "+c.startTime+"–"+c.endTime,fontWeight=FontWeight.SemiBold); if(c.room.isNotBlank()) Text("Room "+c.room,style=MaterialTheme.typography.bodySmall) } } }
                         }
                         if(lab.isNotEmpty()) {
                             Row(verticalAlignment=Alignment.CenterVertically) { Icon(Icons.Default.Science,null,Modifier.size(18.dp)); Spacer(Modifier.width(7.dp)); Text("Lab",fontWeight=FontWeight.Bold) }
-                            lab.forEach { c -> Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerLow)) { Column(Modifier.padding(9.dp),verticalArrangement=Arrangement.spacedBy(2.dp)) { Text(c.day.take(3)+" • "+c.startTime+"–"+c.endTime,fontWeight=FontWeight.SemiBold); if(c.room.isNotBlank()) Text("Room "+c.room,style=MaterialTheme.typography.bodySmall) } } }
+                            lab.forEach { c -> Card(campusTileModifier(Modifier.fillMaxWidth()),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerLow)) { Column(Modifier.padding(9.dp),verticalArrangement=Arrangement.spacedBy(2.dp)) { Text(c.day.take(3)+" • "+c.startTime+"–"+c.endTime,fontWeight=FontWeight.SemiBold); if(c.room.isNotBlank()) Text("Room "+c.room,style=MaterialTheme.typography.bodySmall) } } }
                         }
                         if(r.extra.isNotBlank()) Text("Notes • "+r.extra,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -2495,7 +2495,7 @@ fun AcademicsScreen(
 
         if (keys.getOrNull(tab) == "study_maker") {
             Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer)) {
+                Card(campusTileModifier(Modifier.fillMaxWidth()), colors = CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer)) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Study Maker + Study AI", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Text("Use selected Notepad notes and Lecture Files with your own AI provider. Your source files stay local.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -2718,7 +2718,7 @@ fun BudgetScreen(store: LocalStore) {
             }
         }
         item {
-            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Money left", style = MaterialTheme.typography.labelLarge)
                     Text("₱" + String.format(Locale.getDefault(), "%,.2f", remaining), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
@@ -2763,7 +2763,7 @@ fun BudgetScreen(store: LocalStore) {
             }
         }
         item {
-            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Quick insight", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
@@ -2779,7 +2779,7 @@ fun BudgetScreen(store: LocalStore) {
             }
         }
         item {
-            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -2796,7 +2796,7 @@ fun BudgetScreen(store: LocalStore) {
             }
         }
         if (entries.isNotEmpty()) item {
-            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Recent", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     entries.take(5).forEach { entry ->
@@ -3039,7 +3039,7 @@ fun SubjectNotepadPage(subject: Record, store: LocalStore, done: () -> Unit) {
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf("Modified", "Created", "Alphabetical", "Manual").forEach { option -> FilterChip(sort == option, { sort = option }, label = { Text(option) }) } }
                         if (list.isEmpty()) {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                                Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                                     Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Icon(Icons.Default.StickyNote2, null, Modifier.size(44.dp), tint = MaterialTheme.colorScheme.primary)
                                         Text(if (query.isBlank()) "No notes yet" else "No matching notes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -3143,7 +3143,7 @@ fun SubjectLectureFilesPage(subject: Record, openFile: (String) -> Unit, done: (
             }
             if (entries.isEmpty()) {
                 Box(Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.Center) {
-                    Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                    Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                         Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Icon(Icons.Default.FolderOpen, null, Modifier.size(44.dp), tint = MaterialTheme.colorScheme.primary)
                             Text("No files in " + currentFolder, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -3331,7 +3331,7 @@ fun InAppFileViewerPage(file: File, done: () -> Unit) {
                 val text = remember(file) { readDisplayText(file) }
                 LazyColumn(Modifier.fillMaxSize().padding(20.dp)) {
                     item {
-                        Card(Modifier.fillMaxWidth()) {
+                        Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
                             Text(text, Modifier.padding(20.dp), style = MaterialTheme.typography.bodyLarge, lineHeight = 25.sp)
                         }
                     }
@@ -3381,7 +3381,7 @@ private fun BoxScope.ViewerPageIndicator(current: Int, total: Int) {
 
 @Composable
 fun RecordCard(r: Record, key: String, store: LocalStore, refresh: () -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
+    Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(r.title, fontWeight = FontWeight.SemiBold)
@@ -3507,7 +3507,7 @@ fun FilesScreen() {
         if (files.isEmpty()) EmptyCard("Import PDFs, documents, images, or other school files.")
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(files, key = { it.name }) { f ->
-                Card(Modifier.fillMaxWidth()) { ListItem(
+                Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) { ListItem(
                     headlineContent = { Text(f.name) }, supportingContent = { Text(formatSize(f.size)) },
                     leadingContent = { Icon(Icons.Default.InsertDriveFile, null) },
                     trailingContent = { IconButton({ File(context.filesDir, f.name).delete(); files = listFiles(context) }) { Icon(Icons.Default.Delete, "Delete") } }
@@ -3586,7 +3586,7 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
         item { Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
 
         item {
-            Card(Modifier.fillMaxWidth()) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Notifications", fontWeight = FontWeight.Bold)
                     Text("Get reminders before your next class and upcoming notes.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -3615,7 +3615,7 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
 
         item { Text("Schedule", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
         item {
-            Card(Modifier.fillMaxWidth()) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Class schedule", fontWeight = FontWeight.Bold)
                     Text("Edit entries, correct Lecture/Lab type, delete classes, and configure the timetable.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -3635,7 +3635,7 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
 
         item { Text("Academics", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
         item {
-            Card(Modifier.fillMaxWidth()) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Subjects & lecture files", fontWeight = FontWeight.Bold)
                     Text("Manage Notepad and Lecture Files from the Tools screen.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -3644,7 +3644,7 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
         }
         item { Text("Notes", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
         item {
-            Card(Modifier.fillMaxWidth()) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Notes & Reminders", fontWeight = FontWeight.Bold)
                     Text("Manage notes and reminders from the Notes screen.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -3652,7 +3652,7 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
             }
         }
         item {
-            Card(Modifier.fillMaxWidth()) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Appearance", fontWeight = FontWeight.Bold)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -3665,7 +3665,7 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
         }
 
         item {
-            Card(Modifier.fillMaxWidth()) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
                 ListItem(
                     headlineContent = { Text("App lock") },
                     supportingContent = { Text(if (pin.isBlank()) "Set a PIN first" else "Require PIN when opening CampusOS") },
@@ -3687,7 +3687,7 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
         }
 
         item {
-            Card(Modifier.fillMaxWidth()) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
                 Column(Modifier.padding(16.dp)) {
                     Text("Backup & Recovery", fontWeight = FontWeight.Bold)
                     Text("Save a backup file or recover only the CampusOS modules you choose.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -3778,7 +3778,7 @@ fun PatternUnlockScreen(store: LocalStore, unlock: () -> Unit) {
     Card(modifier) { Column(Modifier.padding(14.dp)) { Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
 }
 @Composable fun SectionTitle(text: String) { Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-@Composable fun EmptyCard(text: String) { Card(Modifier.fillMaxWidth()) { Text(text, Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+@Composable fun EmptyCard(text: String) { Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) { Text(text, Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) } }
 @Composable fun SmallAction(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, click: () -> Unit) {
     OutlinedButton(onClick = click, modifier = Modifier.fillMaxWidth()) { Icon(icon, null); Spacer(Modifier.width(4.dp)); Text(text) }
 }@Composable
@@ -3796,7 +3796,7 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
         Spacer(Modifier.height(8.dp))
         current?.let{(r,st,en)->
             val duration=(en-st).coerceAtLeast(1);val elapsed=(currentMinutes-st).coerceAtLeast(0)
-            Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer),shape=RoundedCornerShape(16.dp)){
+            Card(campusTileModifier(Modifier.fillMaxWidth()),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer),shape=RoundedCornerShape(16.dp)){
                 Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){
                     Text("CURRENT CLASS",fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
                     Text(r.title,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
@@ -3814,7 +3814,7 @@ fun HomeClassesTile(todaySchedule: List<Record>) {
             Spacer(Modifier.height(8.dp))
         }
         next?.let{(r,st,en)->
-            Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.secondaryContainer),shape=RoundedCornerShape(16.dp)){
+            Card(campusTileModifier(Modifier.fillMaxWidth()),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.secondaryContainer),shape=RoundedCornerShape(16.dp)){
                 Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){
                     Text("NEXT CLASS",fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.secondary)
                     Text("UPCOMING • Starts in ${formatClassCountdown((st-currentMinutes).coerceAtLeast(0))}",fontWeight=FontWeight.Bold)
@@ -3877,7 +3877,7 @@ fun HomeTasksTile(pendingTasks: List<Record>) {
         Spacer(Modifier.height(8.dp))
         if (pendingTasks.isEmpty()) EmptyCard("You're all caught up.")
         else for (r in pendingTasks) {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = RoundedCornerShape(16.dp)) {
                 ListItem(headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) }, supportingContent = { Column { if (r.subtitle.isNotBlank()) Text(r.subtitle, maxLines = 2); if (r.dueDate.isNotBlank()) Text("Due ${r.dueDate} ${r.dueTime}") } }, leadingContent = { Icon(Icons.Default.CheckCircleOutline, null) })
             }
             Spacer(Modifier.height(8.dp))
