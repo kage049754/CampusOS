@@ -215,8 +215,8 @@ private fun attachmentForFile(context: Context, chatId: String, uri: android.net
 }.getOrNull()
 
 private fun aiChatPrompt(history: List<AiChatMessage>, newText: String): String {
-    val previous=history.takeLast(20).joinToString("\\n") { (if(it.role=="user") "STUDENT" else "ASSISTANT")+": "+it.text }
-    return "You are CampusOS AI, a helpful student assistant. Understand the student's INTENTION, not just exact spelling. The student may write in English, Filipino/Tagalog, Taglish, slang, abbreviations, missing spaces, wrong capitalization, phonetic spelling, or typos. Silently normalize obvious variants and use surrounding context and existing CampusOS data. Examples: 'Gatos pamasahe 30', 'gastos pamasahe 30', or 'pamasahe 30' means add an expense of ₱30 in Transportation; 'add expnse 50 food' means an expense of ₱50 in Food; 'add budjet 100' means budget; 'add savng 200' means saving; 'add task tomorow submit assgnment' means a task due tomorrow. Filipino examples: gastos/gastusin -> expense, pamasahe -> Transportation, pagkain -> Food, eskwela/paaralan -> School, ipon/pag-iipon -> saving, gawain -> task, klase -> schedule/class, tala/nota -> note, aralin -> subject/study. Understand common misspellings such as expnse/ex pense, budjet, savng, schedue, tomorow, transpotation, lectr/lectre, and labratory/laboratry. Do not require exact words or spacing. When an obvious correction is safe, use the canonical CampusOS value. For requests that add, edit, delete, or otherwise change CampusOS data, use the appropriate CampusOS tool instead of merely describing what the student could do. When the meaning is genuinely ambiguous, ask a short clarification instead of making a risky change. For financial amounts, use Philippine pesos and write the currency as ₱, never $. Preserve Markdown formatting when useful. When showing source code, ALWAYS put executable code inside fenced Markdown code blocks with the language name. Never put code in ordinary prose.\\n\\n"+(if(previous.isBlank()) "" else "CONVERSATION:\\n"+previous+"\\n\\n")+"STUDENT QUESTION:\\n"+newText
+    val previous=history.takeLast(20).joinToString("\n") { (if(it.role=="user") "STUDENT" else "ASSISTANT")+": "+it.text }
+    return "You are CampusOS AI, the semantic interpreter and assistant for a student planner. The AI model itself must understand the student's intent; do NOT depend on a hardcoded word dictionary in the Android app. Interpret meaning from natural language, context, and the CampusOS tool schemas. The student may write in English, Filipino/Tagalog, Taglish, slang, abbreviations, phonetic spelling, missing spaces, wrong capitalization, or arbitrary typos. Do not require exact command words. Different phrasings with the same meaning should produce the same CampusOS action.\n\nBATCH REQUESTS ARE IMPORTANT: One student message can contain many independent actions. Extract and execute ALL requested actions in the same message, not just the first one. You may call the same tool multiple times with different arguments and may call different tools in one response. Examples: 'set my weekly budget to 600, add expenses 300 transportation and 200 food, and save 50' means set the weekly budget to 600, add a 300 Transportation expense, add a 200 Food expense, and add 50 to the saving goal. 'Add ITEC65 Monday 8-10 room CCL201 lecture and MATH Tuesday 10-12 room 204 lab' means add both schedule entries. A request can contain several subjects, classes, tasks, notes, files, expenses, savings, or edits. Never stop after the first understood action when more actions are clearly requested.\n\nThe examples are semantic examples, NOT an exhaustive dictionary. Infer intent from the complete message and conversation context rather than matching hardcoded words. For data changes, ALWAYS use the appropriate structured CampusOS function tool(s) instead of merely describing what the student should do. Tool arguments must use the canonical values required by each schema. If an action needs an existing record and no id is provided, use the relevant read tool first. Never invent existing records. If one part is genuinely ambiguous, clarify that part while still safely executing the other unambiguous requested actions when possible. The Android app validates and executes structured tool calls; the AI model is responsible for understanding the student's language and splitting a compound request into the required tool calls.\n\nFor financial requests, amount is a numeric Philippine-peso value; do not put the currency symbol inside numeric tool arguments. The app displays Philippine peso amounts as ₱. Preserve Markdown formatting when useful. When showing source code, ALWAYS put executable code inside fenced Markdown code blocks with the language name. Never put code in ordinary prose.\n\n"+(if(previous.isBlank()) "" else "CONVERSATION:\n"+previous+"\n\n")+"STUDENT QUESTION:\n"+newText
 }
 private fun chatAttachmentPrompt(attachments: List<AiChatAttachment>): String = attachments.filter { it.extractedText.isNotBlank() }.joinToString("\\n\\n") { "ATTACHED FILE: "+it.name+"\\n"+it.extractedText.take(120000) }
 
@@ -512,9 +512,9 @@ private fun campusAiToolDefinitions(): JSONArray = JSONArray().apply {
     tool("rename_lecture_file","Rename a lecture file.",fileProps,listOf("fileName","newName"))
     tool("delete_lecture_file","Delete a lecture file.",fileProps,listOf("fileName"))
     tool("get_budget","Read allowance, expenses, saving goal, and recent budget entries.",JSONObject())
-    tool("add_budget","Add a budget income, expense, or saving entry. Understand English, Filipino/Tagalog, Taglish, typos, abbreviations, and missing spaces. Example: gastos pamasahe 30 means a ₱30 Transportation expense. Normalize type and category before executing.",budgetProps,listOf("type","amount"))
+    tool("add_budget","Add exactly ONE budget income, expense, or saving entry. For a compound financial request, call this tool once for EACH separate entry. The AI model must infer type, amount, and canonical category from the full natural-language request; do not rely on an app-side word dictionary. Example: 'expenses 300 transportation and 200 food' requires TWO add_budget calls.",budgetProps,listOf("type","amount"))
     tool("delete_budget","Delete a budget entry by id.",budgetProps,listOf("id"))
-    tool("set_budget_plan","Set the budget period and allowance.",JSONObject().apply { put("period",JSONObject().put("type","string")); put("amount",JSONObject().put("type","number")) },listOf("period","amount"))
+    tool("set_budget_plan","Set the budget period and allowance. This is separate from expense/saving entries. In a compound request, execute this together with all requested add_budget calls. Example: 'weekly budget 600, expenses 300 transportation and 200 food, saving 50' requires one set_budget_plan call plus three financial entry calls.",JSONObject().apply { put("period",JSONObject().put("type","string").put("description","Budget period such as Daily, Weekly, or Monthly, inferred from the request.")); put("amount",JSONObject().put("type","number")) },listOf("period","amount"))
     tool("set_saving_goal","Set the saving goal name and target amount.",JSONObject().apply { put("name",JSONObject().put("type","string")); put("amount",JSONObject().put("type","number")) },listOf("name","amount"))
     tool("add_saving","Add money to the current saving goal.",JSONObject().put("amount",JSONObject().put("type","number")),listOf("amount"))
     tool("calculate","Use the CampusOS calculator for a basic arithmetic expression.",JSONObject().put("expression",JSONObject().put("type","string")),listOf("expression"))
@@ -629,7 +629,7 @@ private suspend fun studyAiCall(provider: String, model: String, key: String, pr
         require(key.isNotBlank()){"Add your AI API key first."}
         val safeProvider=allowedStudyProvider(provider); val safeModel=enforceFreeStudyModel(safeProvider,model); val tools=if(store!=null) campusAiToolDefinitions() else JSONArray()
         var currentPrompt=prompt
-        for (round in 0 until 3) {
+        for (round in 0 until 4) {
             val endpoint:String; val body:String; val headers=mutableMapOf("Content-Type" to "application/json")
             if(safeProvider=="Gemini"){
                 endpoint="https://generativelanguage.googleapis.com/v1beta/models/"+safeModel+":generateContent"
@@ -657,11 +657,38 @@ private suspend fun studyAiCall(provider: String, model: String, key: String, pr
             val json=JSONObject(response)
             if(store!=null && safeProvider=="Gemini"){
                 val parts=json.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
-                val fc=parts?.let{a->(0 until a.length()).mapNotNull{a.optJSONObject(it)}.firstOrNull{it.has("functionCall")}}
-                if(fc!=null && round<2){ val call=fc.optJSONObject("functionCall")!!; val name=call.optString("name"); val args=call.optJSONObject("args")?:JSONObject(); val approved=toolApproval?.invoke(name,args) ?: !store.aiActionNeedsApproval(name); val result=if(approved) executeCampusAiTool(store,name,args) else "The student did not approve this CampusOS action."; if(approved && toolExecuted != null) withContext(Dispatchers.Main) { toolExecuted.invoke(name) }; currentPrompt="CampusOS tool "+name+" was "+(if(approved) "executed" else "not approved")+". Result: "+result+". Now reply naturally. Do not call another tool unless necessary."; continue }
+                val calls=parts?.let { a -> (0 until a.length()).mapNotNull { a.optJSONObject(it)?.optJSONObject("functionCall") } }
+                if (!calls.isNullOrEmpty() && round < 3) {
+                    val results = calls.map { call ->
+                        val name = call.optString("name")
+                        val args = call.optJSONObject("args") ?: JSONObject()
+                        val approved = toolApproval?.invoke(name, args) ?: !store.aiActionNeedsApproval(name)
+                        val result = if (approved) executeCampusAiTool(store, name, args) else "The student did not approve this CampusOS action."
+                        if (approved && toolExecuted != null) withContext(Dispatchers.Main) { toolExecuted.invoke(name) }
+                        "[$name] " + (if (approved) "executed" else "not approved") + ": " + result
+                    }
+                    currentPrompt = "CampusOS processed these requested actions in this batch:\n" + results.joinToString("\n") +
+                        "\nNow reply naturally with a concise summary of ALL completed actions. Do not omit successful actions. Do not call another tool unless a necessary dependent action is still missing."
+                    continue
+                }
             } else if(store!=null){
                 val message=json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message"); val calls=message?.optJSONArray("tool_calls")
-                if(calls!=null&&calls.length()>0&&round<2){ val call=calls.optJSONObject(0)!!; val fn=call.optJSONObject("function"); val name=fn?.optString("name").orEmpty(); val args=runCatching{JSONObject(fn?.optString("arguments").orEmpty())}.getOrElse{JSONObject()}; val approved=toolApproval?.invoke(name,args) ?: !store.aiActionNeedsApproval(name); val result=if(approved) executeCampusAiTool(store,name,args) else "The student did not approve this CampusOS action."; if(approved && toolExecuted != null) withContext(Dispatchers.Main) { toolExecuted.invoke(name) }; currentPrompt="CampusOS tool "+name+" was "+(if(approved) "executed" else "not approved")+". Result: "+result+". Now reply naturally. Do not call another tool unless necessary."; continue }
+                if (calls != null && calls.length() > 0 && round < 3) {
+                    val results = (0 until calls.length()).mapNotNull { index ->
+                        val call = calls.optJSONObject(index) ?: return@mapNotNull null
+                        val fn = call.optJSONObject("function") ?: return@mapNotNull null
+                        val name = fn.optString("name").orEmpty()
+                        if (name.isBlank()) return@mapNotNull null
+                        val args = runCatching { JSONObject(fn.optString("arguments").orEmpty()) }.getOrElse { JSONObject() }
+                        val approved = toolApproval?.invoke(name, args) ?: !store.aiActionNeedsApproval(name)
+                        val result = if (approved) executeCampusAiTool(store, name, args) else "The student did not approve this CampusOS action."
+                        if (approved && toolExecuted != null) withContext(Dispatchers.Main) { toolExecuted.invoke(name) }
+                        "[$name] " + (if (approved) "executed" else "not approved") + ": " + result
+                    }
+                    currentPrompt = "CampusOS processed these requested actions in this batch:\n" + results.joinToString("\n") +
+                        "\nNow reply naturally with a concise summary of ALL completed actions. Do not omit successful actions. Do not call another tool unless a necessary dependent action is still missing."
+                    continue
+                }
             }
             val text=if(safeProvider=="Gemini"){val parts=json.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts");buildString{if(parts!=null)for(i in 0 until parts.length())append(parts.optJSONObject(i)?.optString("text").orEmpty())}}else{val content=json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.opt("content");when(content){is String->content;is JSONArray->buildString{for(i in 0 until content.length())append(content.optJSONObject(i)?.optString("text").orEmpty())};else->""}}.trim()
             if(text.isBlank()) error("AI returned an empty response."); return@runCatching text
