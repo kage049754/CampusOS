@@ -595,7 +595,8 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (Stri
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var actionGate by remember { mutableStateOf<CampusAiConfirmState?>(null) }
-    var showHistory by remember { mutableStateOf(false) }\n    var lastChangedTool by remember { mutableStateOf<String?>(null) }
+    var showHistory by remember { mutableStateOf(false) }
+    var lastChangedTool by remember { mutableStateOf<String?>(null) }
 
     suspend fun gateTool(name: String): Boolean {
         if (!store.aiActionNeedsApproval(name)) return true
@@ -726,7 +727,9 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (Stri
                             provider,model,key,
                             "You are CampusOS AI, the student's assistant inside CampusOS. You can read and, when permitted, modify the student's schedule, tasks, subjects, subject Notepad notes, subject Lecture Files, student Budget/Saving Goal, and use the Calculator. Use the appropriate CampusOS tools instead of only explaining how to do the action. Be concise. If a requested change is ambiguous, ask a question instead of guessing. Student request: " + q,
                             store=store,
-                            toolApproval = { name, _ ->\n                                val allowed = gateTool(name)\n                                if (allowed && !name.startsWith("get_") && name != "calculate") lastChangedTool = name\n                                allowed\n                            }
+                            toolApproval = { name, _ ->
+                                val allowed = gateTool(name)\n                                if (allowed && !name.startsWith("get_") && name != "calculate") lastChangedTool = name
+                                allowed\n                            }
                         ).onSuccess {
                             val next=userMessages+("assistant" to it)
                             messages=next
@@ -997,7 +1000,8 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                 OutlinedTextField(model, {}, Modifier.fillMaxWidth(), label = { Text("Free model") }, singleLine = true, readOnly = true)
                 Text(if (provider == "OpenRouter") "OpenRouter automatically selects an available free model. CampusOS only sends requests to the free router and will never select or fall back to a paid model." else "Gemini uses the fixed free-tier model configured by CampusOS. Paid model choices and fallback models are not used.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 var historyLimit by remember { mutableIntStateOf(chatStore.historyLimit()) }
-                var historyDays by remember { mutableIntStateOf(chatStore.historyDays()) }\n                var openChangedModule by remember { mutableStateOf(store.aiOpenChangedModule()) }
+                var historyDays by remember { mutableIntStateOf(chatStore.historyDays()) }
+                var openChangedModule by remember { mutableStateOf(store.aiOpenChangedModule()) }
                 Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
                     Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
