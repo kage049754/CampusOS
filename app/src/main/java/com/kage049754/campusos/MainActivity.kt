@@ -374,8 +374,8 @@ class LocalStore(context: Context) {
     fun resetHomeLayout() { prefs.edit().remove("home_layout_order").remove("home_hidden_tiles").apply(); revision++ }
     fun setTheme(v: String) { prefs.edit().putString("theme", "light").apply(); revision++ }
     fun toolOrder(): List<String> {
-        // Campus AI is a primary app screen, not a reorderable tool. Keep legacy study_maker
-        // out of the visible tool list while preserving the existing subjects storage key.
+        // Campus AI is a direct Tools shortcut. Keep legacy study_maker out of the visible list
+        // while preserving the existing subjects storage key.
         val allowed = listOf("campus_ai", "subjects", "calculator", "budget")
         val saved = (prefs.getString("tool_order", "") ?: "").split(",").filter { it in allowed }
         return (saved + allowed).distinct()
@@ -1611,7 +1611,7 @@ fun HomeAppearanceDialog(store: LocalStore, theme: String, setTheme: (String) ->
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)){
                                 Text(label,fontWeight=FontWeight.SemiBold)
-                                Text(when(id){"forest"->"Green + teal";"sunset"->"Warm red + gold";"ocean"->"Teal + blue";"mint"->"Fresh green + aqua";"lavender"->"Purple + soft pink";"rose"->"Rose + plum";"mono"->"Neutral gray";else->"Green + teal"},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(when(id){"forest"->"Green + teal";"ocean"->"Teal + blue";"mint"->"Fresh green + aqua";"sky"->"Sky blue + slate";"lavender"->"Purple + soft pink";"plum"->"Plum + lilac";"rose"->"Rose + plum";"coral"->"Coral + cream";"sunset"->"Warm red + gold";"amber"->"Amber + sand";"teal"->"Teal + mint";"mono"->"Neutral gray";else->"Green + teal"},style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             if(selected)Icon(Icons.Default.CheckCircle,null,tint=MaterialTheme.colorScheme.primary)
                         }
@@ -4124,11 +4124,8 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
             Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Appearance", fontWeight = FontWeight.Bold)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        listOf("system", "light", "dark").forEach { mode ->
-                            FilterChip(theme == mode, { setTheme(mode) }, label = { Text(mode.replaceFirstChar { it.uppercase() }) })
-                        }
-                    }
+                    Text("Light mode only", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Use Appearance settings to choose the app's color combination.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
