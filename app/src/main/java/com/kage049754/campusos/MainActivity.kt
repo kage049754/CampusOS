@@ -120,17 +120,36 @@ private val CampusShapes = Shapes(
 private fun applyLauncherIcon(context: Context, preset: String) {
     val pm = context.packageManager
     val pkg = context.packageName
+
+    // Run #570 only registered these two launcher aliases. Do not reference
+    // removed aliases here: PackageManager can throw when a component is absent,
+    // which would make MainActivity crash during startup.
+    val presets = listOf("forest", "sunset")
     val main = android.content.ComponentName(context, MainActivity::class.java)
-    val presets = listOf("forest","ocean","mint","sky","lavender","plum","rose","coral","sunset","amber","teal","mono")
+
     runCatching {
-        pm.setComponentEnabledSetting(main, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED, android.content.pm.PackageManager.DONT_KILL_APP)
+        pm.setComponentEnabledSetting(
+            main,
+            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+            android.content.pm.PackageManager.DONT_KILL_APP
+        )
+
         presets.forEach { name ->
             val componentName = name.replaceFirstChar { it.uppercase() } + "Launcher"
-            pm.setComponentEnabledSetting(android.content.ComponentName(pkg, componentName), android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED, android.content.pm.PackageManager.DONT_KILL_APP)
+            pm.setComponentEnabledSetting(
+                android.content.ComponentName(pkg, componentName),
+                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                android.content.pm.PackageManager.DONT_KILL_APP
+            )
         }
+
         val selected = if (preset in presets) preset else "forest"
         val selectedName = selected.replaceFirstChar { it.uppercase() } + "Launcher"
-        pm.setComponentEnabledSetting(android.content.ComponentName(pkg, selectedName), android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED, android.content.pm.PackageManager.DONT_KILL_APP)
+        pm.setComponentEnabledSetting(
+            android.content.ComponentName(pkg, selectedName),
+            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+            android.content.pm.PackageManager.DONT_KILL_APP
+        )
     }
 }
 
