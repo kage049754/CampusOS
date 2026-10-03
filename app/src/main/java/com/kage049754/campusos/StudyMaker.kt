@@ -2,9 +2,12 @@ package com.kage049754.campusos
 
 import android.app.Activity
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.content.SharedPreferences
 import android.util.Base64
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,6 +34,7 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -50,6 +54,57 @@ private const val STUDY_AI_EXPERIMENT = true
 
 data class StudySource(val id: String, val title: String, val subject: String, val kind: String, val text: String)
 data class StudyPack(val title: String, val type: String, val body: String, val createdAt: Long)
+data class AiChatAttachment(val name: String, val mimeType: String, val localPath: String = "", val base64: String = "", val extractedText: String = "")
+data class AiChatMessage(val role: String, val text: String, val attachmentName: String = "", val attachmentMime: String = "", val attachmentPath: String = "", val createdAt: Long = System.currentTimeMillis())
+data class AiChatConversation(val id: String, val title: String, val createdAt: Long, val updatedAt: Long, val messages: List<AiChatMessage>)
+
+private class AiChatStore(private val context: Context) {
+    private val dir get() = File(context.filesDir, "ai_chats").apply { mkdirs() }
+    fun list(): List<AiChatConversation> = dir.listFiles()?.filter { it.extension == "json" }?.mapNotNull { runCatching { fromJson(JSONObject(it.readText())) }.getOrNull() }?.sortedByDescending { it.updatedAt }.orEmpty()
+    fun save(chat: AiChatConversation) { File(dir, chat.id + ".json").writeText(toJson(chat).toString()) }
+    fun delete(id: String) { File(dir, id + ".json").delete(); File(context.filesDir, "ai_chat_attachments").listFiles()?.filter { it.name.startsWith(id + "_") }?.forEach { it.delete() } }
+    private fun toJson(c: AiChatConversation) = JSONObject().apply { put("id", c.id); put("title", c.title); put("createdAt", c.createdAt); put("updatedAt", c.updatedAt); put("messages", JSONArray().apply { c.messages.forEach { m -> put(JSONObject().apply { put("role", m.role); put("text", m.text); put("attachmentName", m.attachmentName); put("attachmentMime", m.attachmentMime); put("attachmentPath", m.attachmentPath); put("createdAt", m.createdAt) }) } }) }
+    private fun fromJson(o: JSONObject): AiChatConversation {
+        val messages = mutableListOf<AiChatMessage>(); val a = o.optJSONArray("messages")
+        if (a != null) for (i in 0 until a.length()) { val m=a.optJSONObject(i) ?: continue; messages += AiChatMessage(m.optString("role"),m.optString("text"),m.optString("attachmentName"),m.optString("attachmentMime"),m.optString("attachmentPath"),m.optLong("createdAt")) }
+        return AiChatConversation(o.optString("id"), o.optString("title").ifBlank { "New chat" }, o.optLong("createdAt"), o.optLong("updatedAt"), messages)
+    }
+}
+
+private fun safeChatTitle(text: String): String = text.trim().replace(Regex("\\s+"), " ").take(48).ifBlank { "New chat" }
+private fun persistChatAttachment(context: Context, chatId: String, name: String, bytes: ByteArray): File { val dir=File(context.filesDir,"ai_chat_attachments").apply { mkdirs() }; val safe=name.replace(Regex("[^A-Za-z0-9._-]+"),"_").take(80).ifBlank { "attachment" }; return File(dir,chatId+"_"+System.currentTimeMillis()+"_"+safe).also { it.writeBytes(bytes) } }
+
+private fun attachmentForFile(context: Context, chatId: String, uri: android.net.Uri, isImage: Boolean): AiChatAttachment? = runCatching {
+    val resolver=context.contentResolver
+    val originalName=resolver.query(uri,null,null,null,null)?.use { cursor -> val index=cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME); if(cursor.moveToFirst() && index>=0) cursor.getString(index) else null } ?: "attachment"
+    val mime=resolver.getType(uri).orEmpty().ifBlank { if(isImage) "image/jpeg" else "application/octet-stream" }
+    val raw=resolver.openInputStream(uri)?.use { it.readBytes() } ?: return@runCatching null
+    if(raw.isEmpty()) return@runCatching null
+    if(isImage) { val bitmap=BitmapFactory.decodeByteArray(raw,0,raw.size) ?: return@runCatching null; val out=ByteArrayOutputStream(); bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,82,out); val bytes=out.toByteArray(); val file=persistChatAttachment(context,chatId,originalName.substringBeforeLast(".",originalName)+".jpg",bytes); AiChatAttachment(file.name,"image/jpeg",file.absolutePath,Base64.encodeToString(bytes,Base64.NO_WRAP)) }
+    else { val file=persistChatAttachment(context,chatId,originalName,raw); AiChatAttachment(originalName,mime,file.absolutePath,extractedText=studyFileText(file).orEmpty()) }
+}.getOrNull()
+
+private fun aiChatPrompt(history: List<AiChatMessage>, newText: String): String { val previous=history.takeLast(20).joinToString("\\n") { (if(it.role=="user") "STUDENT" else "ASSISTANT")+": "+it.text }; return "You are CampusOS AI, a helpful student assistant. Answer directly and clearly. Preserve Markdown formatting when useful. When showing source code, ALWAYS put executable code inside fenced Markdown code blocks with the language name. Never put code in ordinary prose.\\n\\n"+(if(previous.isBlank()) "" else "CONVERSATION:\\n"+previous+"\\n\\n")+"STUDENT QUESTION:\\n"+newText }
+private fun chatAttachmentPrompt(attachments: List<AiChatAttachment>): String = attachments.filter { it.extractedText.isNotBlank() }.joinToString("\\n\\n") { "ATTACHED FILE: "+it.name+"\\n"+it.extractedText.take(120000) }
+
+@Composable private fun AiRichMessage(text: String) {
+    val clipboard=LocalContext.current.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+    val fence="`"+"`"+"`"; val regex=Regex("(?s)"+fence+"([\\\\w+-]*)\\\\n?(.*?)"+fence); val matches=regex.findAll(text).toList()
+    if(matches.isEmpty()){ Text(text,style=MaterialTheme.typography.bodyLarge); return }
+    var cursor=0
+    Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+        matches.forEach { match ->
+            if(match.range.first>cursor) Text(text.substring(cursor,match.range.first),style=MaterialTheme.typography.bodyLarge)
+            val language=match.groupValues[1].ifBlank { "code" }; val code=match.groupValues[2].trimEnd()
+            Card(colors=CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerHighest)){ Column {
+                Row(Modifier.fillMaxWidth().padding(start=12.dp,top=8.dp,end=6.dp),verticalAlignment=Alignment.CenterVertically){ Text(language,style=MaterialTheme.typography.labelMedium,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f)); TextButton(onClick={clipboard.setPrimaryClip(android.content.ClipData.newPlainText("code",code))}){ Icon(Icons.Default.ContentCopy,null,Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Copy") } }
+                Text(code,Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(12.dp),style=MaterialTheme.typography.bodySmall.copy(fontFamily=androidx.compose.ui.text.font.FontFamily.Monospace))
+            } }
+            cursor=match.range.last+1
+        }
+        if(cursor<text.length) Text(text.substring(cursor),style=MaterialTheme.typography.bodyLarge)
+    }
+}
 
 private fun defaultStudyModel(provider: String) = when (provider) {
     "Gemini" -> "gemini-3.5-flash-lite"
@@ -200,7 +255,7 @@ private fun studyContext(sources: List<StudySource>, maxChars: Int = 180_000): S
     return out.toString().trim()
 }
 
-private suspend fun studyAiCall(provider: String, model: String, key: String, prompt: String): Result<String> = withContext(Dispatchers.IO) {
+private suspend fun studyAiCall(provider: String, model: String, key: String, prompt: String, attachments: List<AiChatAttachment> = emptyList()): Result<String> = withContext(Dispatchers.IO) {
     runCatching {
         require(key.isNotBlank()) { "Add your AI API key first." }
         val safeProvider = allowedStudyProvider(provider)
@@ -211,16 +266,20 @@ private suspend fun studyAiCall(provider: String, model: String, key: String, pr
         if (safeProvider == "Gemini") {
             endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + safeModel + ":generateContent"
             body = JSONObject().apply {
-                put("contents", JSONArray().put(JSONObject().apply { put("parts", JSONArray().put(JSONObject().put("text", prompt))) }))
-                put("generationConfig", JSONObject().put("temperature", 0.35).put("maxOutputTokens", 6000))
+                val parts=JSONArray().put(JSONObject().put("text",prompt))
+                attachments.filter { it.base64.isNotBlank() }.forEach { a -> parts.put(JSONObject().put("inline_data",JSONObject().put("mime_type",a.mimeType).put("data",a.base64))) }
+                put("contents",JSONArray().put(JSONObject().apply { put("parts",parts) }))
+                put("generationConfig",JSONObject().put("temperature",0.35).put("maxOutputTokens",6000))
             }.toString()
             headers["x-goog-api-key"] = key
         } else {
             endpoint = "https://openrouter.ai/api/v1/chat/completions"
             body = JSONObject().apply {
-                put("model", safeModel)
-                put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
-                put("temperature", 0.35)
+                put("model",safeModel)
+                val content=JSONArray().put(JSONObject().put("type","text").put("text",prompt))
+                attachments.filter { it.base64.isNotBlank() }.forEach { a -> content.put(JSONObject().put("type","image_url").put("image_url",JSONObject().put("url","data:"+a.mimeType+";base64,"+a.base64))) }
+                put("messages",JSONArray().put(JSONObject().put("role","user").put("content",content)))
+                put("temperature",0.35)
             }.toString()
             headers["Authorization"] = "Bearer " + key
         }
@@ -298,14 +357,23 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var chatInput by rememberSaveable { mutableStateOf("") }
-    var chat by rememberSaveable { mutableStateOf(listOf<Pair<String,String>>()) }
+    var chat by remember { mutableStateOf(listOf<AiChatMessage>()) }
+    var chatId by rememberSaveable { mutableStateOf("") }
+    var chatAttachment by remember { mutableStateOf<AiChatAttachment?>(null) }
+    var chatHistory by remember { mutableStateOf(emptyList<AiChatConversation>()) }
+    var attachmentMenu by remember { mutableStateOf(false) }
+    val chatStore=remember { AiChatStore(context) }
     var packs by remember { mutableStateOf(secure.packs(context)) }
     var testingConnection by remember { mutableStateOf(false) }
     var testRequest by remember { mutableIntStateOf(0) }
 
+    val imagePicker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> if(uri!=null) chatAttachment=attachmentForFile(context,if(chatId.isBlank()) "new" else chatId,uri,true) }
+    val filePicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if(uri!=null) chatAttachment=attachmentForFile(context,if(chatId.isBlank()) "new" else chatId,uri,false) }
+
     LaunchedEffect(Unit) {
         runCatching { PDFBoxResourceLoader.init(context) }
         sources = studySources(context, store)
+        chatHistory = chatStore.list()
         activity.window.decorView.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
     }
     LaunchedEffect(testRequest) {
@@ -324,7 +392,7 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
         }
     }
     DisposableEffect(Unit) { onDispose { activity.window.decorView.systemUiVisibility = 0 } }
-    BackHandler { if (page == "home") done() else page = "home" }
+    BackHandler { when { page=="chat" -> { chatHistory=chatStore.list(); page="home" }; page=="chat_history" -> page="home"; page=="home" -> done(); else -> page="home" } }
 
     fun selectedSources() = sources.filter { it.id in selectedIds }
     fun hasSources(): Boolean {
@@ -347,7 +415,7 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                 secure.savePack(context, StudyPack((selectedSources().firstOrNull()?.subject ?: "Study") + " " + type, type, it, System.currentTimeMillis()))
                 packs = secure.packs(context)
                 page = "result"
-            } else chat = chat + ("Study AI" to it)
+            } else { chat += AiChatMessage("assistant",it); chatStore.save(AiChatConversation(chatId,safeChatTitle(chat.firstOrNull()?.text.orEmpty()),chat.firstOrNull()?.createdAt ?: System.currentTimeMillis(),System.currentTimeMillis(),chat)); chatHistory=chatStore.list() }
         }.onFailure { error = it.message ?: "AI request failed." }
         busy = false
     }
@@ -371,7 +439,8 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                     }
                 }}
                 item { Button({ sources = studySources(context, store); page = "sources"; error = "" }, Modifier.fillMaxWidth()) { Icon(Icons.Default.FolderOpen, null); Spacer(Modifier.width(8.dp)); Text("Select Notes & Lecture Files") } }
-                item { OutlinedButton({ page = "chat"; error = ""; chat = emptyList() }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Chat, null); Spacer(Modifier.width(8.dp)); Text("AI Chat — Ask Anything") } }
+                item { Button({ chatId=System.currentTimeMillis().toString(); chat=emptyList(); chatAttachment=null; page="chat"; error="" },Modifier.fillMaxWidth()){ Icon(Icons.Default.AddComment,null); Spacer(Modifier.width(8.dp)); Text("New AI Chat") } }
+                item { OutlinedButton({ chatHistory=chatStore.list(); page="chat_history" },Modifier.fillMaxWidth()){ Icon(Icons.Default.History,null); Spacer(Modifier.width(8.dp)); Text("Chat History ("+chatHistory.size+")") } }
                 item { OutlinedButton({ page = "packs" }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Bookmark, null); Spacer(Modifier.width(8.dp)); Text("My Study Packs (" + packs.size + ")") } }
                 item { Text("Custom Study Maker", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
                 item { Card(campusTileModifier(Modifier.fillMaxWidth()).clickable { if (hasSources()) page = "builder" }) {
@@ -441,49 +510,60 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                 if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
             }
             "chat" -> Column(Modifier.fillMaxSize().padding(padding)) {
-                LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
-                    if (chat.isEmpty()) item { Text("Ask anything — no notes or lecture files required.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    items(chat) { pair ->
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = if (pair.first == "You") Arrangement.End else Arrangement.Start
-                        ) {
-                            Surface(
-                                modifier = Modifier.widthIn(max = 320.dp),
-                                shape = RoundedCornerShape(18.dp),
-                                color = if (pair.first == "You") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow
-                            ) {
-                                Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                                    Text(pair.second, style = MaterialTheme.typography.bodyLarge)
+                LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal=12.dp),verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(vertical=12.dp)){
+                    if(chat.isEmpty()) item { Text("Ask anything. You can also attach a photo, screenshot, PDF, document, or text file.",color=MaterialTheme.colorScheme.onSurfaceVariant) }
+                    items(chat){ message ->
+                        Row(Modifier.fillMaxWidth(),horizontalArrangement=if(message.role=="user") Arrangement.End else Arrangement.Start){
+                            Surface(Modifier.widthIn(max=340.dp),shape=RoundedCornerShape(18.dp),color=if(message.role=="user") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow){
+                                Column(Modifier.padding(horizontal=14.dp,vertical=10.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){
+                                    if(message.attachmentName.isNotBlank()) Row(verticalAlignment=Alignment.CenterVertically){ Icon(if(message.attachmentMime.startsWith("image/")) Icons.Default.Image else Icons.Default.AttachFile,null,Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(message.attachmentName,style=MaterialTheme.typography.labelMedium,fontWeight=FontWeight.Bold) }
+                                    if(message.text.isNotBlank()){ if(message.role=="assistant") AiRichMessage(message.text) else Text(message.text,style=MaterialTheme.typography.bodyLarge) }
                                 }
                             }
                         }
                     }
-                    if (busy) item { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Thinking…") } }
+                    if(busy) item { Row(verticalAlignment=Alignment.CenterVertically){ CircularProgressIndicator(Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Thinking…") } }
                 }
-                Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.Bottom) {
-                    OutlinedTextField(chatInput, { chatInput = it }, Modifier.weight(1f), label = { Text("Message CampusOS AI") }, maxLines = 4)
-                    IconButton(enabled = chatInput.isNotBlank() && !busy, onClick = {
-                        val q = chatInput.trim()
-                        chatInput = ""
-                        if (q.isNotBlank()) {
-                            chat = chat + ("You" to q)
-                            busy = true
-                            error = ""
-                            val prompt = "You are CampusOS AI, a helpful general-purpose assistant. Answer the student's question directly and clearly. You may discuss any topic. Do not require notes or lecture files.\n\nSTUDENT QUESTION:\n" + q
-                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
-                                studyAiCall(provider, model, apiKey.trim(), prompt).onSuccess {
-                                    chat = chat + ("Study AI" to it)
-                                }.onFailure {
-                                    error = it.message ?: "AI request failed."
-                                }
-                                busy = false
+                if(chatAttachment!=null) Surface(Modifier.fillMaxWidth().padding(horizontal=10.dp),color=MaterialTheme.colorScheme.primaryContainer,shape=RoundedCornerShape(12.dp)){
+                    Row(Modifier.padding(8.dp),verticalAlignment=Alignment.CenterVertically){ Icon(if(chatAttachment!!.mimeType.startsWith("image/")) Icons.Default.Image else Icons.Default.AttachFile,null); Spacer(Modifier.width(8.dp)); Text(chatAttachment!!.name,Modifier.weight(1f),maxLines=1); IconButton(onClick={chatAttachment=null}){Icon(Icons.Default.Close,"Remove attachment")} }
+                }
+                Row(Modifier.fillMaxWidth().padding(10.dp),verticalAlignment=Alignment.Bottom){
+                    Box{
+                        IconButton(onClick={attachmentMenu=true}){Icon(Icons.Default.AttachFile,"Attach")}
+                        DropdownMenu(expanded=attachmentMenu,onDismissRequest={attachmentMenu=false}){
+                            DropdownMenuItem(text={Text("Photo or screenshot")},onClick={attachmentMenu=false;imagePicker.launch("image/*")},leadingIcon={Icon(Icons.Default.Image,null)})
+                            DropdownMenuItem(text={Text("File")},onClick={attachmentMenu=false;filePicker.launch(arrayOf("application/pdf","text/*","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.openxmlformats-officedocument.presentationml.presentation","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","*/*"))},leadingIcon={Icon(Icons.Default.InsertDriveFile,null)})
+                        }
+                    }
+                    OutlinedTextField(chatInput,{chatInput=it},Modifier.weight(1f),label={Text("Message CampusOS AI")},maxLines=4)
+                    IconButton(enabled=(chatInput.isNotBlank()||chatAttachment!=null)&&!busy,onClick={
+                        val q=chatInput.trim(); val attachment=chatAttachment; chatInput=""; chatAttachment=null
+                        if(q.isNotBlank()||attachment!=null){
+                            if(chatId.isBlank()) chatId=System.currentTimeMillis().toString()
+                            val userMessage=AiChatMessage("user",q,attachment?.name.orEmpty(),attachment?.mimeType.orEmpty(),attachment?.localPath.orEmpty())
+                            chat=chat+userMessage
+                            chatStore.save(AiChatConversation(chatId,safeChatTitle(q.ifBlank{attachment?.name.orEmpty()}),chat.first().createdAt,System.currentTimeMillis(),chat)); chatHistory=chatStore.list(); busy=true; error=""
+                            val prompt=aiChatPrompt(chat.dropLast(1),q.ifBlank{"Please analyze the attached file."})+(if(attachment!=null) "\\n\\n"+chatAttachmentPrompt(listOf(attachment)) else "")
+                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch{
+                                studyAiCall(provider,model,apiKey.trim(),prompt,listOfNotNull(attachment)).onSuccess{
+                                    chat=chat+AiChatMessage("assistant",it)
+                                    chatStore.save(AiChatConversation(chatId,safeChatTitle(chat.firstOrNull()?.text.orEmpty()),chat.firstOrNull()?.createdAt ?: System.currentTimeMillis(),System.currentTimeMillis(),chat)); chatHistory=chatStore.list()
+                                }.onFailure{error=it.message?:"AI request failed."}
+                                busy=false
                             }
                         }
-                    }) { Icon(Icons.Default.Send, "Send") }
+                    }){Icon(Icons.Default.Send,"Send")}
                 }
-                
-                if (error.isNotBlank()) Text(error, Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.error)
+                if(error.isNotBlank()) Text(error,Modifier.padding(horizontal=12.dp),color=MaterialTheme.colorScheme.error)
+            }
+            "chat_history" -> LazyColumn(Modifier.fillMaxSize().padding(padding).padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
+                item { Button({chatId=System.currentTimeMillis().toString();chat=emptyList();page="chat"},Modifier.fillMaxWidth()){Icon(Icons.Default.AddComment,null);Spacer(Modifier.width(8.dp));Text("New Chat")} }
+                if(chatHistory.isEmpty()) item { Text("No saved chats yet.",color=MaterialTheme.colorScheme.onSurfaceVariant) }
+                items(chatHistory,key={it.id}){ conversation ->
+                    Card(campusTileModifier(Modifier.fillMaxWidth()).clickable{chatId=conversation.id;chat=conversation.messages;chatAttachment=null;page="chat"}){
+                        Column(Modifier.padding(14.dp)){Text(conversation.title,fontWeight=FontWeight.Bold);Text(conversation.messages.count{it.role=="user"}.toString()+" messages",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+                    }
+                }
             }
             "packs" -> LazyColumn(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (packs.isEmpty()) item { Text("No saved Study Packs yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
