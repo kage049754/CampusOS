@@ -963,6 +963,7 @@ fun CampusOSApp(activity: Activity) {
                     }
                     CampusAiFloatingButton(store) { aiBubbleOpen = !aiBubbleOpen }
                 }
+            }
                 if (showHomeSettings) {
                 HomeSettingsDialog(store, campusSession?.role ?: "student", onManagement = { screenName = Screen.ADMIN.name; showHomeSettings = false }, onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, onAiSettings = { showAiSettings = true; showHomeSettings = false }, onLockNow = { locked = true }, done = { showHomeSettings = false }, openAppLock = { showHomeSettings = false; showAppLock = true }, openBackupRecovery = { showHomeSettings = false; showBackupRecovery = true }, openAbout = { showHomeSettings = false; showAbout = true })
             }
