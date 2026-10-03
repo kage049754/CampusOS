@@ -513,7 +513,7 @@ private fun executeCampusAiTool(store: LocalStore, name: String, args: JSONObjec
     }
 }
 
-private suspend fun studyAiCall(provider: String, model: String, key: String, prompt: String, attachments: List<AiChatAttachment> = emptyList(), store: LocalStore? = null, toolApproval: (suspend (String, JSONObject) -> Boolean)? = null): Result<String> = withContext(Dispatchers.IO) {
+private suspend fun studyAiCall(provider: String, model: String, key: String, prompt: String, attachments: List<AiChatAttachment> = emptyList(), store: LocalStore? = null, toolApproval: (suspend (String, JSONObject) -> Boolean)? = null, toolExecuted: (suspend (String) -> Unit)? = null): Result<String> = withContext(Dispatchers.IO) {
     runCatching {
         require(key.isNotBlank()){"Add your AI API key first."}
         val safeProvider=allowedStudyProvider(provider); val safeModel=enforceFreeStudyModel(safeProvider,model); val tools=if(store!=null) campusAiToolDefinitions() else JSONArray()
@@ -547,7 +547,7 @@ private suspend fun studyAiCall(provider: String, model: String, key: String, pr
             if(store!=null && safeProvider=="Gemini"){
                 val parts=json.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
                 val fc=parts?.let{a->(0 until a.length()).mapNotNull{a.optJSONObject(it)}.firstOrNull{it.has("functionCall")}}
-                if(fc!=null && round<2){ val call=fc.optJSONObject("functionCall")!!; val name=call.optString("name"); val args=call.optJSONObject("args")?:JSONObject(); val approved=toolApproval?.invoke(name,args) ?: !store.aiActionNeedsApproval(name); val result=if(approved) executeCampusAiTool(store,name,args) else "The student did not approve this CampusOS action."; currentPrompt="CampusOS tool "+name+" was "+(if(approved) "executed" else "not approved")+". Result: "+result+". Now reply naturally. Do not call another tool unless necessary."; continue }
+                if(fc!=null && round<2){ val call=fc.optJSONObject("functionCall")!!; val name=call.optString("name"); val args=call.optJSONObject("args")?:JSONObject(); val approved=toolApproval?.invoke(name,args) ?: !store.aiActionNeedsApproval(name); val result=if(approved) executeCampusAiTool(store,name,args) else "The student did not approve this CampusOS action."; if(approved && toolExecuted != null) withContext(Dispatchers.Main) { toolExecuted.invoke(name) }; currentPrompt="CampusOS tool "+name+" was "+(if(approved) "executed" else "not approved")+". Result: "+result+". Now reply naturally. Do not call another tool unless necessary."; continue }
             } else if(store!=null){
                 val message=json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message"); val calls=message?.optJSONArray("tool_calls")
                 if(calls!=null&&calls.length()>0&&round<2){ val call=calls.optJSONObject(0)!!; val fn=call.optJSONObject("function"); val name=fn?.optString("name").orEmpty(); val args=runCatching{JSONObject(fn?.optString("arguments").orEmpty())}.getOrElse{JSONObject()}; val approved=toolApproval?.invoke(name,args) ?: !store.aiActionNeedsApproval(name); val result=if(approved) executeCampusAiTool(store,name,args) else "The student did not approve this CampusOS action."; currentPrompt="CampusOS tool "+name+" was "+(if(approved) "executed" else "not approved")+". Result: "+result+". Now reply naturally. Do not call another tool unless necessary."; continue }
@@ -792,7 +792,7 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (Stri
                             val prompt = aiChatPrompt(previous, q.ifBlank { "Please analyze the attached file." }) +
                                 (if (attachment != null) "\n\n" + chatAttachmentPrompt(listOf(attachment)) else "") +
                                 (if (recall.isNotBlank()) "\n\nRELEVANT PAST CHAT RECALL:\n" + recall else "")
-                            studyAiCall(provider, model, key, prompt, listOfNotNull(attachment), store) { name, _ -> gateTool(name) }
+                            studyAiCall(provider, model, key, prompt, listOfNotNull(attachment), store, { name, _ -> gateTool(name) }, { name -> onModuleChanged(name) })
                                 .onSuccess { messages = messages + AiChatMessage("assistant", it); saveMessages(messages) }
                                 .onFailure { error = it.message ?: "AI request failed." }
                             busy = false
