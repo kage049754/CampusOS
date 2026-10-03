@@ -332,6 +332,22 @@ private fun campusAiFindSubject(store: LocalStore, args: JSONObject): Record? {
 private fun campusAiSafeFileName(raw: String, fallback: String = "Lecture.txt"): String =
     raw.replace(Regex("[^A-Za-z0-9._-]+"), "_").trim('_').take(100).ifBlank { fallback }
 
+private fun campusAiCalculate(raw: String): String = runCatching {
+    val text = raw.replace("×","*").replace("÷","/").replace("−","-").replace(" ","")
+    if (text.isBlank()) return@runCatching "Error"
+    var total = 0.0
+    text.split("+").forEach { part ->
+        if (part.contains("*")) {
+            val a = part.split("*")
+            total += a[0].toDouble() * a[1].toDouble()
+        } else if (part.contains("/")) {
+            val a = part.split("/")
+            total += a[0].toDouble() / a[1].toDouble()
+        } else if (part.isNotBlank()) total += part.toDouble()
+    }
+    if (total == total.toLong().toDouble()) total.toLong().toString() else "%.8f".format(Locale.US, total)
+}.getOrElse { "Error" }
+
 private fun executeCampusAiTool(store: LocalStore, name: String, args: JSONObject): String {
     fun find(list: List<Record>): Record? {
         val id=args.optLong("id",0L); val title=args.optString("title").trim(); val day=args.optString("day").trim()
@@ -369,16 +385,16 @@ private fun executeCampusAiTool(store: LocalStore, name: String, args: JSONObjec
         "edit_note" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; val notes=store.subjectNotes(subject.id).toMutableList(); val id=args.optLong("noteId",0L); val index=notes.indexOfFirst{it.id==id || (id==0L && it.title.equals(args.optString("title"),true))}; if(index<0) return "No matching note was found."; val old=notes[index]; notes[index]=old.copy(title=args.optString("title").takeIf{it.isNotBlank()}?:old.title,body=args.optString("body").takeIf{it.isNotBlank()}?:old.body,updatedAt=System.currentTimeMillis()); store.saveSubjectNotes(subject.id,notes); "Updated note "+notes[index].title+"." }
         "delete_note" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; val notes=store.subjectNotes(subject.id); val id=args.optLong("noteId",0L); val old=notes.firstOrNull{it.id==id || (id==0L && it.title.equals(args.optString("title"),true))} ?: return "No matching note was found."; store.saveSubjectNotes(subject.id,notes.filterNot{it.id==old.id}); "Deleted note "+old.title+"." }
         "get_lecture_files" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; val files=store.subjectFilesFolder(subject.id).listFiles()?.filter{it.isFile}.orEmpty(); JSONArray(files.map{JSONObject().apply{put("name",it.name);put("size",it.length());put("modifiedAt",it.lastModified())}}).toString() }
-        "add_lecture_file" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; val folder=subjectStudyFolder(store.appContext,subject.id).apply{mkdirs()}; val file=File(folder,campusAiSafeFileName(args.optString("fileName"))); file.writeText(args.optString("content")); "Created lecture file "+file.name+" for "+subject.title+"." }
+        "add_lecture_file" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; val folder=store.subjectFilesFolder(subject.id).apply{mkdirs()}; val file=File(folder,campusAiSafeFileName(args.optString("fileName"))); file.writeText(args.optString("content")); "Created lecture file "+file.name+" for "+subject.title+"." }
         "rename_lecture_file" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; val folder=subjectStudyFolder(store.appContext,subject.id); val old=File(folder,campusAiSafeFileName(args.optString("fileName"))); val target=File(folder,campusAiSafeFileName(args.optString("newName"))); if(!old.exists()) return "Lecture file not found."; if(target.exists()) return "A lecture file with that name already exists."; if(!old.renameTo(target)) return "Could not rename lecture file."; "Renamed lecture file to "+target.name+"." }
-        "delete_lecture_file" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; val file=File(subjectStudyFolder(store.appContext,subject.id),campusAiSafeFileName(args.optString("fileName"))); if(!file.exists()) return "Lecture file not found."; file.delete(); "Deleted lecture file "+file.name+"." }
+        "delete_lecture_file" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; val file=File(store.subjectFilesFolder(subject.id),campusAiSafeFileName(args.optString("fileName"))); if(!file.exists()) return "Lecture file not found."; file.delete(); "Deleted lecture file "+file.name+"." }
         "get_budget" -> JSONObject().apply { put("period",store.budgetPeriod());put("allowance",store.budgetAllowance());put("savingGoal",store.budgetTargetName());put("savingTarget",store.budgetTargetAmount());put("savingSaved",store.budgetTargetSaved());put("entries",JSONArray(store.budgetEntries().map{e->JSONObject().apply{put("id",e.id);put("type",e.type);put("amount",e.amount);put("category",e.category);put("note",e.note);put("date",e.date);put("target",e.target)}})) }.toString()
         "add_budget" -> { val type=args.optString("type","expense"); val e=BudgetEntry(type=type,amount=args.optDouble("amount",0.0),category=args.optString("category"),note=args.optString("note"),date=args.optString("date"),target=args.optString("target")); store.addBudgetEntry(e); "Added "+type+" of "+e.amount+" to budget." }
         "delete_budget" -> { val id=args.optLong("id",0L); if(id<=0) return "A budget entry id is required."; store.deleteBudgetEntry(id); "Deleted budget entry "+id+"." }
         "set_budget_plan" -> { store.setBudgetPlan(args.optString("period","Weekly"),args.optDouble("amount",0.0)); "Budget plan updated." }
         "set_saving_goal" -> { store.setBudgetTarget(args.optString("name"),args.optDouble("amount",0.0)); "Saving goal updated." }
         "add_saving" -> { val amount=args.optDouble("amount",0.0); store.addBudgetTargetSaved(amount); "Added "+amount+" to the saving goal." }
-        "calculate" -> { val expression=args.optString("expression"); "Calculator result: "+basicCalc(expression) }
+        "calculate" -> { val expression=args.optString("expression"); "Calculator result: "+campusAiCalculate(expression) }
         else -> "Unknown CampusOS action."
     }
 }
