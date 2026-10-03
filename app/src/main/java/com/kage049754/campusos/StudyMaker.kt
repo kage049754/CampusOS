@@ -214,7 +214,10 @@ private fun attachmentForFile(context: Context, chatId: String, uri: android.net
     else { val file=persistChatAttachment(context,chatId,originalName,raw); AiChatAttachment(originalName,mime,file.absolutePath,extractedText=studyFileText(file).orEmpty()) }
 }.getOrNull()
 
-private fun aiChatPrompt(history: List<AiChatMessage>, newText: String): String { val previous=history.takeLast(20).joinToString("\\n") { (if(it.role=="user") "STUDENT" else "ASSISTANT")+": "+it.text }; return "You are CampusOS AI, a helpful student assistant. Answer directly and clearly. Preserve Markdown formatting when useful. When showing source code, ALWAYS put executable code inside fenced Markdown code blocks with the language name. Never put code in ordinary prose.\\n\\n"+(if(previous.isBlank()) "" else "CONVERSATION:\\n"+previous+"\\n\\n")+"STUDENT QUESTION:\\n"+newText }
+private fun aiChatPrompt(history: List<AiChatMessage>, newText: String): String {
+    val previous=history.takeLast(20).joinToString("\\n") { (if(it.role=="user") "STUDENT" else "ASSISTANT")+": "+it.text }
+    return "You are CampusOS AI, a helpful student assistant. Understand the student's INTENTION, not just exact spelling. The student may write in English, Filipino/Tagalog, Taglish, slang, abbreviations, missing spaces, wrong capitalization, phonetic spelling, or typos. Silently normalize obvious variants and use surrounding context and existing CampusOS data. Examples: 'Gatos pamasahe 30', 'gastos pamasahe 30', or 'pamasahe 30' means add an expense of ₱30 in Transportation; 'add expnse 50 food' means an expense of ₱50 in Food; 'add budjet 100' means budget; 'add savng 200' means saving; 'add task tomorow submit assgnment' means a task due tomorrow. Filipino examples: gastos/gastusin -> expense, pamasahe -> Transportation, pagkain -> Food, eskwela/paaralan -> School, ipon/pag-iipon -> saving, gawain -> task, klase -> schedule/class, tala/nota -> note, aralin -> subject/study. Understand common misspellings such as expnse/ex pense, budjet, savng, schedue, tomorow, transpotation, lectr/lectre, and labratory/laboratry. Do not require exact words or spacing. When an obvious correction is safe, use the canonical CampusOS value. When the meaning is genuinely ambiguous, ask a short clarification instead of making a risky change. For financial amounts, use Philippine pesos and write the currency as ₱, never $. Preserve Markdown formatting when useful. When showing source code, ALWAYS put executable code inside fenced Markdown code blocks with the language name. Never put code in ordinary prose.\\n\\n"+(if(previous.isBlank()) "" else "CONVERSATION:\\n"+previous+"\\n\\n")+"STUDENT QUESTION:\\n"+newText
+}
 private fun chatAttachmentPrompt(attachments: List<AiChatAttachment>): String = attachments.filter { it.extractedText.isNotBlank() }.joinToString("\\n\\n") { "ATTACHED FILE: "+it.name+"\\n"+it.extractedText.take(120000) }
 
 @Composable private fun AiRichMessage(text: String) {
@@ -385,6 +388,79 @@ private fun studyContext(sources: List<StudySource>, maxChars: Int = 180_000): S
     return out.toString().trim()
 }
 
+private fun campusAiCompact(raw: String): String =
+    raw.lowercase(Locale.getDefault()).replace(Regex("[^\\p{L}\\p{N}]"), "")
+
+private fun campusAiEditDistance(a: String, b: String): Int {
+    if (a == b) return 0
+    if (a.isEmpty()) return b.length
+    if (b.isEmpty()) return a.length
+    var prev = IntArray(b.length + 1) { it }
+    for (i in a.indices) {
+        val cur = IntArray(b.length + 1)
+        cur[0] = i + 1
+        for (j in b.indices) cur[j + 1] = minOf(cur[j] + 1, prev[j + 1] + 1, prev[j] + if (a[i] == b[j]) 0 else 1)
+        prev = cur
+    }
+    return prev[b.length]
+}
+
+private fun campusAiCloseEnough(raw: String, canonical: String): Boolean {
+    val a = campusAiCompact(raw); val b = campusAiCompact(canonical)
+    if (a.isBlank() || b.isBlank()) return false
+    if (a == b || a.contains(b) || b.contains(a)) return true
+    val maxDistance = when { b.length <= 4 -> 1; b.length <= 7 -> 2; else -> 3 }
+    return campusAiEditDistance(a, b) <= maxDistance
+}
+
+private fun campusAiNormalizeBudgetType(raw: String): String {
+    val n = campusAiCompact(raw)
+    return when {
+        n in setOf("saving","savings","save","savng","ipon","pagipon") || campusAiCloseEnough(n, "saving") -> "saving"
+        n in setOf("income","allowance","baon","kita","sahod","pasok") || campusAiCloseEnough(n, "income") -> "income"
+        n in setOf("expense","expenses","expnse","expenditure","spent","spend","gastos","gastusin") || campusAiCloseEnough(n, "expense") -> "expense"
+        else -> "expense"
+    }
+}
+
+private fun campusAiNormalizeBudgetCategory(raw: String): String {
+    val n = campusAiCompact(raw)
+    return when {
+        n.isBlank() -> ""
+        n in setOf("food","pagkain","kain","meal","meals") || campusAiCloseEnough(n, "food") -> "Food"
+        n in setOf("transportation","transport","pamasahe","commute","commuting","biyahe","byahe") || campusAiCloseEnough(n, "transportation") -> "Transportation"
+        n in setOf("school","schooling","eskwela","paaralan","aral","study") || campusAiCloseEnough(n, "school") -> "School"
+        n in setOf("project","projects","proyekto") || campusAiCloseEnough(n, "projects") -> "Projects"
+        n in setOf("bill","bills","bayarin","bayad") || campusAiCloseEnough(n, "bills") -> "Bills"
+        n in setOf("personal","sarili") || campusAiCloseEnough(n, "personal") -> "Personal"
+        n in setOf("other","others","iba") || campusAiCloseEnough(n, "other") -> "Other"
+        else -> raw.trim()
+    }
+}
+
+private fun campusAiNormalizeDay(raw: String): String {
+    val n = campusAiCompact(raw)
+    return when (n) {
+        "monday","lunes","mon" -> "Monday"
+        "tuesday","martes","tue","tues" -> "Tuesday"
+        "wednesday","miyerkules","wed" -> "Wednesday"
+        "thursday","huwebes","thu","thur","thurs" -> "Thursday"
+        "friday","biyernes","fri" -> "Friday"
+        "saturday","sabado","sat" -> "Saturday"
+        "sunday","linggo","sun" -> "Sunday"
+        else -> raw.trim()
+    }
+}
+
+private fun campusAiNormalizeClassType(raw: String): String {
+    val n = campusAiCompact(raw)
+    return when {
+        n in setOf("lab","labs","laboratory","labratory","laboratry") || campusAiCloseEnough(n, "laboratory") -> "Lab"
+        n in setOf("lec","lecture","lectr","lectre") || campusAiCloseEnough(n, "lecture") -> "Lecture"
+        else -> raw.trim()
+    }
+}
+
 private fun campusAiToolDefinitions(): JSONArray = JSONArray().apply {
     fun tool(name: String, description: String, properties: JSONObject, required: List<String> = emptyList()) {
         put(JSONObject().apply {
@@ -436,7 +512,7 @@ private fun campusAiToolDefinitions(): JSONArray = JSONArray().apply {
     tool("rename_lecture_file","Rename a lecture file.",fileProps,listOf("fileName","newName"))
     tool("delete_lecture_file","Delete a lecture file.",fileProps,listOf("fileName"))
     tool("get_budget","Read allowance, expenses, saving goal, and recent budget entries.",JSONObject())
-    tool("add_budget","Add a budget income or expense entry.",budgetProps,listOf("type","amount"))
+    tool("add_budget","Add a budget income, expense, or saving entry. Understand English, Filipino/Tagalog, Taglish, typos, abbreviations, and missing spaces. Example: gastos pamasahe 30 means a ₱30 Transportation expense. Normalize type and category before executing.",budgetProps,listOf("type","amount"))
     tool("delete_budget","Delete a budget entry by id.",budgetProps,listOf("id"))
     tool("set_budget_plan","Set the budget period and allowance.",JSONObject().apply { put("period",JSONObject().put("type","string")); put("amount",JSONObject().put("type","number")) },listOf("period","amount"))
     tool("set_saving_goal","Set the saving goal name and target amount.",JSONObject().apply { put("name",JSONObject().put("type","string")); put("amount",JSONObject().put("type","number")) },listOf("name","amount"))
@@ -451,9 +527,19 @@ private fun campusAiRecordJson(r: Record) = JSONObject().apply {
 private fun campusAiFindSubject(store: LocalStore, args: JSONObject): Record? {
     val id=args.optLong("subjectId",0L)
     val name=args.optString("subject").trim()
-    return if(id>0) store.get("subjects").firstOrNull { it.id==id }
-    else if(name.isNotBlank()) store.get("subjects").firstOrNull { it.title.equals(name,true) || it.subtitle.equals(name,true) }
-    else null
+    if (id > 0) return store.get("subjects").firstOrNull { it.id == id }
+    if (name.isBlank()) return null
+    val subjects = store.get("subjects")
+    val exact = subjects.firstOrNull {
+        it.title.equals(name,true) || it.subtitle.equals(name,true) ||
+            campusAiCompact(it.title) == campusAiCompact(name) ||
+            campusAiCompact(it.subtitle) == campusAiCompact(name)
+    }
+    if (exact != null) return exact
+    return subjects.map { it to minOf(
+        campusAiEditDistance(campusAiCompact(name), campusAiCompact(it.title)),
+        campusAiEditDistance(campusAiCompact(name), campusAiCompact(it.subtitle))
+    )}.filter { it.second <= 3 }.minByOrNull { it.second }?.first
 }
 
 private fun campusAiSafeFileName(raw: String, fallback: String = "Lecture.txt"): String =
@@ -498,7 +584,7 @@ private fun executeCampusAiTool(store: LocalStore, name: String, args: JSONObjec
         }.toString()
         "get_schedule" -> JSONArray(store.get("schedule").map(::campusAiRecordJson)).toString()
         "get_tasks" -> JSONArray(store.get("tasks").map(::campusAiRecordJson)).toString()
-        "add_schedule" -> { val r=Record(title=args.optString("title"),subtitle=args.optString("subtitle"),day=args.optString("day"),startTime=args.optString("startTime"),endTime=args.optString("endTime"),room=args.optString("room"),classType=args.optString("classType","Lecture")); store.put("schedule",store.get("schedule")+r); "Added schedule entry "+r.title+" on "+r.day+" "+r.startTime+"-"+r.endTime+"." }
+        "add_schedule" -> { val r=Record(title=args.optString("title"),subtitle=args.optString("subtitle"),day=campusAiNormalizeDay(args.optString("day")),startTime=args.optString("startTime"),endTime=args.optString("endTime"),room=args.optString("room"),classType=campusAiNormalizeClassType(args.optString("classType","Lecture"))); store.put("schedule",store.get("schedule")+r); "Added schedule entry "+r.title+" on "+r.day+" "+r.startTime+"-"+r.endTime+"." }
         "edit_schedule" -> { val list=store.get("schedule").toMutableList(); val old=find(list) ?: return "No matching schedule entry was found."; val index=list.indexOfFirst{it.id==old.id}; list[index]=updated(old); store.put("schedule",list); "Updated schedule entry "+list[index].title+"." }
         "delete_schedule" -> { val list=store.get("schedule"); val old=find(list) ?: return "No matching schedule entry was found."; store.put("schedule",list.filterNot{it.id==old.id}); "Deleted schedule entry "+old.title+"." }
         "add_task" -> { val r=Record(title=args.optString("title"),subtitle=args.optString("subtitle"),extra=args.optString("extra"),dueDate=args.optString("dueDate"),dueTime=args.optString("dueTime")); store.put("tasks",store.get("tasks")+r); "Added task "+r.title+"." }
@@ -517,28 +603,17 @@ private fun executeCampusAiTool(store: LocalStore, name: String, args: JSONObjec
         "delete_lecture_file" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; val file=File(store.subjectFilesFolder(subject.id),campusAiSafeFileName(args.optString("fileName"))); if(!file.exists()) return "Lecture file not found."; file.delete(); "Deleted lecture file "+file.name+"." }
         "get_budget" -> JSONObject().apply { put("period",store.budgetPeriod());put("allowance",store.budgetAllowance());put("savingGoal",store.budgetTargetName());put("savingTarget",store.budgetTargetAmount());put("savingSaved",store.budgetTargetSaved());put("entries",JSONArray(store.budgetEntries().map{e->JSONObject().apply{put("id",e.id);put("type",e.type);put("amount",e.amount);put("category",e.category);put("note",e.note);put("date",e.date);put("target",e.target)}})) }.toString()
         "add_budget" -> {
-            // AI may omit the date or return "Expense"/"EXPENSE". Normalize it exactly like
-            // the manual Budget dialog so the entry belongs to the current budget period.
-            val rawType = args.optString("type","expense").trim().lowercase(Locale.getDefault())
-            val type = when {
-                rawType.contains("saving") -> "saving"
-                rawType.contains("income") || rawType.contains("allowance") -> "income"
-                else -> "expense"
-            }
+            val rawType = args.optString("type","expense").trim()
+            val type = campusAiNormalizeBudgetType(rawType)
             val amount = kotlin.math.abs(args.optDouble("amount",0.0))
             val date = args.optString("date").trim().ifBlank {
                 SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             }
-            val e = BudgetEntry(
-                type = type,
-                amount = amount,
-                category = args.optString("category"),
-                note = args.optString("note"),
-                date = date,
-                target = args.optString("target")
-            )
+            val category = campusAiNormalizeBudgetCategory(args.optString("category"))
+            val e = BudgetEntry(type=type, amount=amount, category=category, note=args.optString("note"), date=date, target=args.optString("target"))
             store.addBudgetEntry(e)
-            "Added "+type+" of "+amount+" to budget for "+date+"."
+            val money = "₱" + String.format(Locale.getDefault(), "%,.2f", amount)
+            "Added " + type + " of " + money + (if (category.isNotBlank()) " in " + category else "") + " for " + date + "."
         }
         "delete_budget" -> { val id=args.optLong("id",0L); if(id<=0) return "A budget entry id is required."; store.deleteBudgetEntry(id); "Deleted budget entry "+id+"." }
         "set_budget_plan" -> { store.setBudgetPlan(args.optString("period","Weekly"),args.optDouble("amount",0.0)); "Budget plan updated." }
