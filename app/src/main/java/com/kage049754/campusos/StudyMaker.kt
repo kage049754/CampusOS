@@ -1134,7 +1134,7 @@ fun CampusAiScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                         chatListState.animateScrollToItem(chat.size - 1)
                     }
                 }
-                LazyColumn(state=chatListState,Modifier.weight(1f).fillMaxWidth().padding(horizontal=12.dp),verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(vertical=12.dp)){
+                LazyColumn(modifier=Modifier.weight(1f).fillMaxWidth().padding(horizontal=12.dp),state=chatListState,verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(vertical=12.dp)){
                     if(chat.isEmpty()) item { Text("Ask anything. You can also attach a photo, screenshot, PDF, document, or text file.",color=MaterialTheme.colorScheme.onSurfaceVariant) }
                     items(chat){ message ->
                         Row(Modifier.fillMaxWidth(),horizontalArrangement=if(message.role=="user") Arrangement.End else Arrangement.Start){
