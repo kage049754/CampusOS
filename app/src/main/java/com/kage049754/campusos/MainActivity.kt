@@ -95,6 +95,17 @@ data class BudgetEntry(
     val target: String = ""
 )
 
+@Composable
+fun campusTileModifier(modifier: Modifier = Modifier): Modifier =
+    modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f), MaterialTheme.shapes.medium)
+
+@Composable
+fun campusTileColors(accent: Boolean = false): CardColors =
+    CardDefaults.cardColors(
+        containerColor = if (accent) MaterialTheme.colorScheme.primaryContainer
+        else MaterialTheme.colorScheme.surfaceContainerLow
+    )
+
 private val CampusShapes = Shapes(
     extraSmall = RoundedCornerShape(10.dp),
     small = RoundedCornerShape(12.dp),
@@ -1330,7 +1341,7 @@ private fun formatClassCountdown(totalMinutes: Int): String {
 @Composable
 fun HomeTodayClassCard(r: Record,status:String?=null){
     val completed=status=="✓ Completed"
-    Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(16.dp),colors=CardDefaults.cardColors(containerColor=if(completed)MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surface)){
+    Card(campusTileModifier(Modifier.fillMaxWidth()),shape=RoundedCornerShape(16.dp),colors=CardDefaults.cardColors(containerColor=if(completed)MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surfaceContainer)){
         Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){
             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
                 Text(r.title,Modifier.weight(1f),fontWeight=FontWeight.Bold)
@@ -2731,7 +2742,7 @@ fun BudgetScreen(store: LocalStore) {
             }
         }
         if (categoryTotals.isNotEmpty()) item {
-            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium, colors = campusTileColors()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Where your money goes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -3852,7 +3863,7 @@ fun HomePinnedTile(pinnedTasks: List<Record>) {
         Spacer(Modifier.height(8.dp))
         if (pinnedTasks.isEmpty()) EmptyCard("Nothing pinned yet.")
         else for (r in pinnedTasks) {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = RoundedCornerShape(16.dp), colors = campusTileColors()) {
                 ListItem(headlineContent = { Text(r.title, fontWeight = FontWeight.SemiBold) }, supportingContent = { if (r.dueDate.isNotBlank()) Text("Due " + r.dueDate + " " + r.dueTime) }, leadingContent = { Icon(Icons.Default.PushPin, "Pinned") })
             }
             Spacer(Modifier.height(8.dp))
