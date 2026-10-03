@@ -422,11 +422,15 @@ class LocalStore(context: Context) {
             a.optJSONObject(i)?.let { o ->
                 BudgetEntry(
                     id = o.optLong("id"),
-                    type = o.optString("type"),
-                    amount = o.optDouble("amount", 0.0),
+                    type = when {
+                        o.optString("type").trim().lowercase(Locale.getDefault()).contains("saving") -> "saving"
+                        o.optString("type").trim().lowercase(Locale.getDefault()).contains("income") || o.optString("type").trim().lowercase(Locale.getDefault()).contains("allowance") -> "income"
+                        else -> "expense"
+                    },
+                    amount = kotlin.math.abs(o.optDouble("amount", 0.0)),
                     category = o.optString("category"),
                     note = o.optString("note"),
-                    date = o.optString("date"),
+                    date = o.optString("date").trim().ifBlank { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) },
                     target = o.optString("target")
                 )
             }
@@ -1057,6 +1061,7 @@ fun CampusAiSettingsDialog(store: LocalStore, done: () -> Unit, openAi: () -> Un
     var opacity by remember { mutableFloatStateOf(store.aiFloatingOpacity()) }
     var buttonSize by remember { mutableFloatStateOf(store.aiFloatingSize()) }
     var bubbleSize by remember { mutableFloatStateOf(store.aiBubbleSize()) }
+    var aiChatBackground by remember { mutableStateOf(chatStore.chatBackground()) }
     var permission by remember { mutableStateOf(store.aiActionPermission()) }
     var openChangedModule by remember { mutableStateOf(store.aiOpenChangedModule()) }
     var historyEnabled by remember { mutableStateOf(chatStore.historyEnabled()) }
@@ -1092,6 +1097,13 @@ fun CampusAiSettingsDialog(store: LocalStore, done: () -> Unit, openAi: () -> Un
                 Slider(buttonSize, { buttonSize = it; store.setAiFloatingSize(it) }, valueRange = 44f..76f, steps = 7)
                 Text("Floating chat size: ${bubbleSize.roundToInt()}% of screen width", style = MaterialTheme.typography.labelLarge)
                 Slider(bubbleSize, { bubbleSize = it; store.setAiBubbleSize(it) }, valueRange = 70f..96f, steps = 12)
+                Text("AI chat background", style = MaterialTheme.typography.labelLarge)
+                Text("Choose the background used by the CampusOS AI chat and AI replies.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("default" to "Default", "primary" to "Primary", "secondary" to "Secondary", "tertiary" to "Tertiary", "neutral" to "Neutral").forEach { (value, label) ->
+                        FilterChip(selected = aiChatBackground == value, onClick = { aiChatBackground = value; chatStore.setChatBackground(value) }, label = { Text(label) })
+                    }
+                }
                 OutlinedButton({ store.resetAiFloatingPosition() }, Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text("Reset floating button position")
                 }
