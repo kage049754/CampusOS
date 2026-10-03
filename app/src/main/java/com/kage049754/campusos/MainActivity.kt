@@ -97,13 +97,13 @@ data class BudgetEntry(
 
 @Composable
 fun campusTileModifier(modifier: Modifier = Modifier): Modifier =
-    modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f), MaterialTheme.shapes.medium)
+    modifier
 
 @Composable
 fun campusTileColors(accent: Boolean = false): CardColors =
     CardDefaults.cardColors(
         containerColor = if (accent) MaterialTheme.colorScheme.primaryContainer
-        else MaterialTheme.colorScheme.surfaceContainerLow
+        else MaterialTheme.colorScheme.surfaceContainerHigh
     )
 
 private val CampusShapes = Shapes(
@@ -173,10 +173,10 @@ private fun campusColorScheme(preset: String, dark: Boolean): ColorScheme {
         tertiary=tertiary, tertiaryContainer=primaryContainer.copy(alpha=.65f),
         background=darkSurface, surface=darkSurface, surfaceVariant=darkVariant,
         surfaceContainerLowest=darkSurface,
-        surfaceContainerLow=darkVariant.copy(alpha=.72f),
+        surfaceContainerLow=darkVariant,
         surfaceContainer=darkVariant,
-        surfaceContainerHigh=darkVariant.copy(alpha=.86f),
-        surfaceContainerHighest=darkVariant.copy(alpha=.96f),
+        surfaceContainerHigh=darkVariant,
+        surfaceContainerHighest=darkVariant,
         surfaceDim=darkSurface,
         surfaceBright=darkVariant
     ) else lightColorScheme(
@@ -185,10 +185,10 @@ private fun campusColorScheme(preset: String, dark: Boolean): ColorScheme {
         tertiary=tertiary, tertiaryContainer=primaryContainer.copy(alpha=.68f),
         background=lightSurface, surface=lightSurfaceVariant, surfaceVariant=lightSurfaceVariant,
         surfaceContainerLowest=lightSurface,
-        surfaceContainerLow=lightSurface.copy(alpha=.72f),
-        surfaceContainer=lightSurface,
-        surfaceContainerHigh=lightSurface.copy(alpha=.86f),
-        surfaceContainerHighest=lightSurface.copy(alpha=.96f),
+        surfaceContainerLow=lightSurfaceVariant,
+        surfaceContainer=lightSurfaceVariant,
+        surfaceContainerHigh=lightSurfaceVariant,
+        surfaceContainerHighest=lightSurfaceVariant,
         surfaceDim=lightSurface,
         surfaceBright=Color.White
     )
@@ -1250,7 +1250,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit, editRequest: Int = 0) {
 
 @Composable
 private fun HomeQuickAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Surface(modifier.clickable(onClick = onClick), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    Surface(modifier.clickable(onClick = onClick), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Column(Modifier.padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.height(4.dp))
