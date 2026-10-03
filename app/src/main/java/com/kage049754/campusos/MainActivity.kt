@@ -28,6 +28,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -51,6 +52,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -372,6 +375,17 @@ class LocalStore(context: Context) {
         revision++
     }
 
+    fun aiFloatingEnabled() = prefs.getBoolean("ai_floating_enabled", true)
+    fun setAiFloatingEnabled(value: Boolean) { prefs.edit().putBoolean("ai_floating_enabled", value).apply(); revision++ }
+    fun aiFloatingOpacity() = prefs.getFloat("ai_floating_opacity", 0.30f).coerceIn(0.30f, 1f)
+    fun setAiFloatingOpacity(value: Float) { prefs.edit().putFloat("ai_floating_opacity", value.coerceIn(0.30f, 1f)).apply(); revision++ }
+    fun aiFloatingSize() = prefs.getFloat("ai_floating_size", 52f).coerceIn(44f, 76f)
+    fun setAiFloatingSize(value: Float) { prefs.edit().putFloat("ai_floating_size", value.coerceIn(44f, 76f)).apply(); revision++ }
+    fun aiFloatingX() = prefs.getFloat("ai_floating_x", -1f)
+    fun aiFloatingY() = prefs.getFloat("ai_floating_y", -1f)
+    fun setAiFloatingPosition(x: Float, y: Float) { prefs.edit().putFloat("ai_floating_x", x).putFloat("ai_floating_y", y).apply() }
+    fun resetAiFloatingPosition() { prefs.edit().remove("ai_floating_x").remove("ai_floating_y").apply(); revision++ }
+
     fun budgetPeriod() = prefs.getString("budget_period", "Weekly") ?: "Weekly"
     fun budgetAllowance() = prefs.getFloat("budget_allowance", 0f).toDouble()
     fun setBudgetPlan(period: String, amount: Double) {
@@ -605,7 +619,7 @@ class MainActivity : ComponentActivity() {
 }
 
 enum class Screen(val label: String) {
-    HOME("Home"), SCHEDULE("Schedule"), TASKS("Notes"), ACADEMICS("Tools"), STUDY_MAKER("Study Maker"),
+    HOME("Home"), SCHEDULE("Schedule"), TASKS("Notes"), ACADEMICS("Tools"), STUDY_MAKER("CampusOS AI"),
     FILES("Files"), CHAT("Chats"), ANNOUNCEMENTS("Announcements"), ADMIN("Campus Management"), SETTINGS("Settings")
 }
 
@@ -808,13 +822,14 @@ fun CampusOSApp(activity: Activity) {
             },
             floatingActionButton = { }
         ) { padding ->
-            Column(
+            Box(
                 Modifier
                     .fillMaxSize()
                     .consumeWindowInsets(padding)
                     .padding(padding)
                     .imePadding()
             ) {
+                Column(Modifier.fillMaxSize()) {
                 AnimatedContent(
                     targetState = screenName,
                     transitionSpec = {
@@ -872,7 +887,8 @@ fun CampusOSApp(activity: Activity) {
                             { theme = it; store.setTheme(it) },
                             { locked = true },
                             { showScheduleSettings = true },
-                            { showScheduleManager = true }
+                            { showScheduleManager = true },
+                            { screenName = Screen.STUDY_MAKER.name }
                         )
                     }
                 }
@@ -887,6 +903,10 @@ fun CampusOSApp(activity: Activity) {
                             leadingIcon = { Icon(Icons.Default.Search, null) }
                         )
                     }
+                }
+                }
+                if (store.aiFloatingEnabled() && !scheduleFullscreen && screen != Screen.STUDY_MAKER) {
+                    CampusAiFloatingButton(store) { screenName = Screen.STUDY_MAKER.name }
                 }
             }
             if (showHomeSettings) {
@@ -3567,7 +3587,62 @@ fun ModuleBackupDialog(title:String, selected:Set<String>, onSelected:(Set<Strin
 }
 
 @Composable
-fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit, lock: () -> Unit, openScheduleSettings: () -> Unit, openScheduleManager: () -> Unit) {
+private fun CampusAiFloatingButton(store: LocalStore, onClick: () -> Unit) {
+    val density = LocalDensity.current
+    val sizeDp = store.aiFloatingSize().dp
+    val opacity = store.aiFloatingOpacity()
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val sizePx = with(density) { sizeDp.toPx() }
+        val edgePx = with(density) { 8.dp.toPx() }
+        val maxX = (constraints.maxWidth.toFloat() - sizePx - edgePx).coerceAtLeast(0f)
+        val maxY = (constraints.maxHeight.toFloat() - sizePx - edgePx).coerceAtLeast(0f)
+        var x by remember { mutableFloatStateOf(store.aiFloatingX()) }
+        var y by remember { mutableFloatStateOf(store.aiFloatingY()) }
+
+        LaunchedEffect(maxX, maxY, sizePx) {
+            if (x < 0f || y < 0f) {
+                x = maxX
+                y = maxY
+            } else {
+                x = x.coerceIn(0f, maxX)
+                y = y.coerceIn(0f, maxY)
+            }
+        }
+
+        Box(
+            Modifier
+                .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
+                .size(sizeDp)
+                .graphicsLayer(alpha = opacity)
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragEnd = { store.setAiFloatingPosition(x.coerceIn(0f, maxX), y.coerceIn(0f, maxY)) },
+                        onDragCancel = { store.setAiFloatingPosition(x.coerceIn(0f, maxX), y.coerceIn(0f, maxY)) }
+                    ) { change, amount ->
+                        change.consume()
+                        x = (x + amount.x).coerceIn(0f, maxX)
+                        y = (y + amount.y).coerceIn(0f, maxY)
+                    }
+                }
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                shadowElevation = 6.dp
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.SmartToy, contentDescription = "CampusOS AI", tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit, lock: () -> Unit, openScheduleSettings: () -> Unit, openCampusAi: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var pin by remember { mutableStateOf(store.pin()) }
     var lockOn by remember { mutableStateOf(store.lockEnabled()) }
@@ -3667,6 +3742,48 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
                 }
             }
         }
+        item { Text("CampusOS AI", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+        item {
+            var aiEnabled by remember { mutableStateOf(store.aiFloatingEnabled()) }
+            var aiOpacity by remember { mutableFloatStateOf(store.aiFloatingOpacity()) }
+            var aiSize by remember { mutableFloatStateOf(store.aiFloatingSize()) }
+            Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Floating AI button", fontWeight = FontWeight.Bold)
+                            Text("Open CampusOS AI from anywhere inside the app.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = aiEnabled, onCheckedChange = {
+                            aiEnabled = it
+                            store.setAiFloatingEnabled(it)
+                        })
+                    }
+                    OutlinedButton(onClick = openCampusAi, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.SmartToy, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Open CampusOS AI")
+                    }
+                    Text("Opacity: " + (aiOpacity * 100).roundToInt() + "%", style = MaterialTheme.typography.labelLarge)
+                    Slider(value = aiOpacity, onValueChange = {
+                        aiOpacity = it
+                        store.setAiFloatingOpacity(it)
+                    }, valueRange = 0.30f..1f, steps = 13)
+                    Text("Size: " + aiSize.roundToInt() + " dp", style = MaterialTheme.typography.labelLarge)
+                    Slider(value = aiSize, onValueChange = {
+                        aiSize = it
+                        store.setAiFloatingSize(it)
+                    }, valueRange = 44f..76f, steps = 7)
+                    Text("Drag the floating AI button anywhere on the current CampusOS screen. Its position is saved on this device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedButton(onClick = { store.resetAiFloatingPosition() }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.RestartAlt, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Reset Floating Button Position")
+                    }
+                }
+            }
+        }
+
         item {
             Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
