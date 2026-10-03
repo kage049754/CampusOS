@@ -1999,6 +1999,9 @@ private fun syncSubjectsFromSchedule(store: LocalStore, schedule: List<Record>) 
         .forEach { entries ->
             val classes = entries.map { it.first }
             val code = entries.first().second
+            val bestName = classes.firstOrNull { it.subtitle.isNotBlank() }?.subtitle?.trim().orEmpty()
+            val bestProfessor = classes.firstOrNull { it.professor.isNotBlank() }?.professor?.trim().orEmpty()
+            val bestRoom = classes.firstOrNull { it.room.isNotBlank() }?.room?.trim().orEmpty()
             var existingIndex = existingSubjects.indexOfFirst {
                 normalizeScheduleSubjectCode(it.title).equals(code, true)
             }
@@ -2018,9 +2021,6 @@ private fun syncSubjectsFromSchedule(store: LocalStore, schedule: List<Record>) 
                     titleLooksLikeCode && (sameName || sameRoom)
                 }
             }
-            val bestName = classes.firstOrNull { it.subtitle.isNotBlank() }?.subtitle?.trim().orEmpty()
-            val bestProfessor = classes.firstOrNull { it.professor.isNotBlank() }?.professor?.trim().orEmpty()
-            val bestRoom = classes.firstOrNull { it.room.isNotBlank() }?.room?.trim().orEmpty()
             val bestExtra = classes.firstOrNull { it.extra.isNotBlank() }?.extra?.trim().orEmpty()
             val bestType = classes.firstOrNull { it.classType.isNotBlank() }?.classType?.trim().orEmpty().ifBlank { "Lecture" }
 
