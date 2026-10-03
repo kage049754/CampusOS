@@ -50,10 +50,12 @@ data class StudySource(val id: String, val title: String, val subject: String, v
 data class StudyPack(val title: String, val type: String, val body: String, val createdAt: Long)
 
 private fun defaultStudyModel(provider: String) = when (provider) {
-    "Gemini" -> "gemini-2.5-flash"
-    "OpenRouter" -> "google/gemini-2.5-flash"
-    else -> "gpt-4o-mini"
+    "Gemini" -> "gemini-3.8-flash"
+    "OpenRouter" -> "openrouter/free"
+    else -> "gemini-3.8-flash"
 }
+
+private fun allowedStudyProvider(provider: String) = if (provider == "OpenRouter") "OpenRouter" else "Gemini"
 
 private class StudyAiSecureStore(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences(STUDY_AI_PREFS, Context.MODE_PRIVATE)
@@ -86,10 +88,10 @@ private class StudyAiSecureStore(context: Context) {
         }
         prefs.edit().putString("api_key", Base64.encodeToString(iv + cipher.doFinal(value.toByteArray(StandardCharsets.UTF_8)), Base64.NO_WRAP)).apply()
     }
-    fun provider() = prefs.getString("provider", "Gemini") ?: "Gemini"
-    fun setProvider(value: String) = prefs.edit().putString("provider", value).apply()
-    fun model() = prefs.getString("model", defaultStudyModel(provider())) ?: defaultStudyModel(provider())
-    fun setModel(value: String) = prefs.edit().putString("model", value).apply()
+    fun provider() = allowedStudyProvider(prefs.getString("provider", "Gemini") ?: "Gemini")
+    fun setProvider(value: String) = prefs.edit().putString("provider", allowedStudyProvider(value)).apply()
+    fun model() = defaultStudyModel(provider())
+    fun setModel(value: String) = prefs.edit().putString("model", defaultStudyModel(provider())).apply()
     fun packs(context: Context): List<StudyPack> {
         val dir = File(context.filesDir, "study_packs").apply { mkdirs() }
         return dir.listFiles()?.filter { it.extension == "json" }?.mapNotNull {
@@ -191,8 +193,17 @@ private suspend fun studyAiCall(provider: String, model: String, key: String, pr
         }
         connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
         val code = connection.responseCode
+        val resetHeader = connection.getHeaderField("X-RateLimit-Reset") ?: connection.getHeaderField("x-ratelimit-reset")
+        val remainingHeader = connection.getHeaderField("X-RateLimit-Remaining") ?: connection.getHeaderField("x-ratelimit-remaining")
         val response = (if (code in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
-        if (code !in 200..299) error("AI request failed (" + code + "): " + response.take(500))
+        if (code !in 200..299) {
+            val lower = response.lowercase(Locale.getDefault())
+            val limitMessage = if (code == 429 || lower.contains("rate limit") || lower.contains("quota")) {
+                val reset = resetHeader?.takeIf { it.isNotBlank() }?.let { " Reset: $it." }.orEmpty()
+                "Free AI limit reached for $provider.${if (remainingHeader == "0") " No requests remain." else ""}$reset Try again after the provider limit resets."
+            } else null
+            error(limitMessage ?: "AI request failed (" + code + "): " + response.take(500))
+        }
         val json = JSONObject(response)
         val text = if (provider == "Gemini") {
             val parts = json.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
@@ -409,11 +420,12 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
             "settings" -> Column(Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("BYOK: your provider key is encrypted locally with Android Keystore. CampusOS does not put it in Supabase or source code.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Provider", fontWeight = FontWeight.Bold)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("Gemini","OpenAI","OpenRouter").forEach { p ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("Gemini","OpenRouter").forEach { p ->
                     FilterChip(provider == p, { provider = p; secure.setProvider(p); model = defaultStudyModel(p); secure.setModel(model) }, label = { Text(p) })
                 }}
                 OutlinedTextField(apiKey, { apiKey = it }, Modifier.fillMaxWidth(), label = { Text("API key") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
-                OutlinedTextField(model, { model = it; secure.setModel(it) }, Modifier.fillMaxWidth(), label = { Text("Model") }, singleLine = true)
+                OutlinedTextField(model, {}, Modifier.fillMaxWidth(), label = { Text("Free model") }, singleLine = true, readOnly = true)
+                Text(if (provider == "OpenRouter") "OpenRouter automatically selects an available free model. CampusOS will not select paid models." else "Gemini uses the free-tier Gemini model configured by CampusOS. Paid model choices are not shown.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button({
                     runCatching { secure.setApiKey(apiKey.trim()); apiKey = secure.getApiKey() }
                         .onSuccess { error = "API key saved securely on this device." }
@@ -426,7 +438,7 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                 }, Modifier.fillMaxWidth(), enabled = !testingConnection && apiKey.isNotBlank()) {
                     if (testingConnection) CircularProgressIndicator(Modifier.size(18.dp)) else Text("Test Connection")
                 }
-                Text("Use a model available to your provider account. API usage is billed/limited by that provider.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("If the provider limit is reached, CampusOS will show a free-limit message instead of switching to a paid model.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (error.isNotBlank()) Text(error, color = if (error.contains("saved", true)) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
             }
         }
