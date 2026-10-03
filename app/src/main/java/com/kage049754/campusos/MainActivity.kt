@@ -378,7 +378,8 @@ class LocalStore(context: Context) {
         // while preserving the existing subjects storage key.
         val allowed = listOf("campus_ai", "subjects", "calculator", "budget")
         val saved = (prefs.getString("tool_order", "") ?: "").split(",").filter { it in allowed }
-        return (saved + allowed).distinct()
+        // Campus AI is always the first visible Tools tab so it cannot be hidden off-screen.
+        return (listOf("campus_ai") + saved + allowed).distinct()
     }
     fun setToolOrder(order: List<String>) {
         prefs.edit().putString("tool_order", order.filter { it in listOf("campus_ai","subjects","calculator","budget") }.distinct().joinToString(",")).apply()
@@ -2691,7 +2692,7 @@ fun AcademicsScreen(
         // Repair older installs as soon as Tools > Notepad is opened.
         syncSubjectsFromSchedule(store, store.get("schedule"))
     }
-    var selectedKey by rememberSaveable { mutableStateOf(store.toolOrder().firstOrNull() ?: "subjects") }
+    var selectedKey by rememberSaveable { mutableStateOf("campus_ai") }
     LaunchedEffect(requestedTool) {
         requestedTool?.takeIf { it in store.toolOrder() }?.let {
             selectedKey = it
