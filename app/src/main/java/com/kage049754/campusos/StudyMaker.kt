@@ -364,7 +364,7 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
     }) { padding ->
         when (page) {
             "home" -> LazyColumn(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer)) {
+                item { Card(campusTileModifier(Modifier.fillMaxWidth()), colors = CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer)) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Study Maker + Study AI", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Text(if (apiKey.isBlank()) "Connect your own AI provider to generate study material and chat." else provider + " connected • " + selectedIds.size + " source(s) selected", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -374,7 +374,7 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                 item { OutlinedButton({ page = "chat"; error = ""; chat = emptyList() }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Chat, null); Spacer(Modifier.width(8.dp)); Text("AI Chat — Ask Anything") } }
                 item { OutlinedButton({ page = "packs" }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Bookmark, null); Spacer(Modifier.width(8.dp)); Text("My Study Packs (" + packs.size + ")") } }
                 item { Text("Custom Study Maker", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-                item { Card(Modifier.fillMaxWidth().clickable { if (hasSources()) page = "builder" }) {
+                item { Card(campusTileModifier(Modifier.fillMaxWidth()).clickable { if (hasSources()) page = "builder" }) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text("Reviewer • Quiz • ABCD • Flashcards • More", fontWeight = FontWeight.SemiBold)
                         Text("Use multiple local notes and lecture files together.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -387,7 +387,7 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                 if (sources.isEmpty()) item { Text("No readable Notepad notes or Lecture Files found.", color = MaterialTheme.colorScheme.error) }
                 items(sources, key = { it.id }) { source ->
                     val selected = source.id in selectedIds
-                    Card(Modifier.fillMaxWidth().clickable { selectedIds = if (selected) selectedIds - source.id else selectedIds + source.id },
+                    Card(campusTileModifier(Modifier.fillMaxWidth()).clickable { selectedIds = if (selected) selectedIds - source.id else selectedIds + source.id },
                         colors = CardDefaults.cardColors(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)) {
                         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(selected, { checked -> selectedIds = if (checked) selectedIds + source.id else selectedIds - source.id })
@@ -406,7 +406,7 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                 LazyColumn(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     item { Text(selectedIds.size.toString() + " source(s) selected", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     items(actions) { item ->
-                        Card(Modifier.fillMaxWidth().clickable { action = item }, colors = CardDefaults.cardColors(if (action == item) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)) {
+                        Card(campusTileModifier(Modifier.fillMaxWidth()).clickable { action = item }, colors = CardDefaults.cardColors(if (action == item) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)) {
                             Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(when(item) {
                                     "Reviewer" -> Icons.Default.MenuBook; "Quiz","ABCD","True / False" -> Icons.Default.Quiz; "Flashcards" -> Icons.Default.Style
@@ -487,7 +487,7 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
             }
             "packs" -> LazyColumn(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (packs.isEmpty()) item { Text("No saved Study Packs yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                items(packs) { pack -> Card(Modifier.fillMaxWidth().clickable { resultTitle = pack.title; result = pack.body; page = "result" }) {
+                items(packs) { pack -> Card(campusTileModifier(Modifier.fillMaxWidth()).clickable { resultTitle = pack.title; result = pack.body; page = "result" }) {
                     Column(Modifier.padding(14.dp)) { Text(pack.title, fontWeight = FontWeight.Bold); Text(pack.type, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }}
             }
