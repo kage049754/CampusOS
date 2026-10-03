@@ -15,6 +15,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -1127,7 +1128,13 @@ fun CampusAiScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                 if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
             }
             "chat" -> Column(Modifier.fillMaxSize().padding(padding)) {
-                LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal=12.dp),verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(vertical=12.dp)){
+                val chatListState = rememberLazyListState()
+                LaunchedEffect(chat.size, busy) {
+                    if (chat.isNotEmpty()) {
+                        chatListState.animateScrollToItem(chat.size - 1)
+                    }
+                }
+                LazyColumn(state=chatListState,Modifier.weight(1f).fillMaxWidth().padding(horizontal=12.dp),verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(vertical=12.dp)){
                     if(chat.isEmpty()) item { Text("Ask anything. You can also attach a photo, screenshot, PDF, document, or text file.",color=MaterialTheme.colorScheme.onSurfaceVariant) }
                     items(chat){ message ->
                         Row(Modifier.fillMaxWidth(),horizontalArrangement=if(message.role=="user") Arrangement.End else Arrangement.Start){
