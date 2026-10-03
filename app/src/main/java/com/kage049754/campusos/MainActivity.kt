@@ -69,9 +69,6 @@ import java.util.Date
 import java.util.Locale
 import java.util.Calendar
 import kotlinx.coroutines.delay
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
 data class Record(
     val id: Long = System.currentTimeMillis(),
@@ -87,113 +84,6 @@ data class FileRecord(val name: String, val size: Long, val file: File? = null)
 
 data class SubjectNote(val id: Long, val title: String, val body: String, val updatedAt: Long, val favorite: Boolean = false, val order: Long = 0L)
 
-
-
-data class ScheduleImportItem(
-    val code: String,
-    val name: String = "",
-    val day: String = "",
-    val startTime: String = "",
-    val endTime: String = "",
-    val room: String = "",
-    val classType: String = "Lecture"
-)
-
-private val scheduleImportTimeRegex = Regex("""\b(\d{1,2}):([0-5]\d)\s*-\s*(\d{1,2}):([0-5]\d)\b""")
-private val scheduleImportCourseRegex = Regex("""\b([A-Za-z]{2,}\s*\d{2,}[A-Za-z0-9]*)\b""")
-private val scheduleImportDayRegex = Regex("""(?i)\b(?:TH|M|T|W|F|S)\b""")
-private val scheduleImportRoomRegex = Regex("""\b[A-Za-z]{2,}\s*-?\s*\d{2,}[A-Za-z0-9-]*\b""")
-
-private fun normalizeImportedCode(value: String): String =
-    value.replace(Regex("""\s+"""), " ").trim().uppercase(Locale.getDefault())
-
-private fun importedDayName(value: String): String = when (value.trim().uppercase(Locale.getDefault())) {
-    "M" -> "Monday"
-    "T" -> "Tuesday"
-    "W" -> "Wednesday"
-    "TH" -> "Thursday"
-    "F" -> "Friday"
-    "S" -> "Saturday"
-    else -> ""
-}
-
-private fun parseScheduleImportText(raw: String): List<ScheduleImportItem> {
-    val cleaned = raw
-        .replace("\u00A0", " ")
-        .replace("\r", "")
-        .lines()
-        .map { it.trim().replace(Regex("""\s{2,}"""), " ") }
-        .filter { it.isNotBlank() }
-
-    val starts = cleaned.mapIndexedNotNull { index, line ->
-        val m = Regex("""^\d{5,}\s+(?:[A-Za-z]{2,}\s*\d{2,}[A-Za-z0-9]*)\b""").find(line)
-        if (m != null) index else null
-    }
-    if (starts.isEmpty()) return parseLooseScheduleLines(cleaned.joinToString("\n"))
-
-    val result = mutableListOf<ScheduleImportItem>()
-    starts.forEachIndexed { blockIndex, start ->
-        val end = starts.getOrNull(blockIndex + 1) ?: cleaned.size
-        val block = cleaned.subList(start, end)
-        val first = block.firstOrNull().orEmpty()
-        val firstCourse = scheduleImportCourseRegex.find(first)?.groupValues?.getOrNull(1)?.let(::normalizeImportedCode).orEmpty()
-        if (firstCourse.isBlank()) return@forEachIndexed
-
-        val blockText = block.joinToString("\n")
-        val timeMatches = scheduleImportTimeRegex.findAll(blockText).toList()
-        val dayMatches = scheduleImportDayRegex.findAll(blockText).map { importedDayName(it.value) }.filter { it.isNotBlank() }.toList()
-
-        val firstTimeLine = block.indexOfFirst { scheduleImportTimeRegex.containsMatchIn(it) }
-        val beforeTimes = if (firstTimeLine > 1) block.subList(1, firstTimeLine) else emptyList()
-        val description = beforeTimes
-            .filterNot { it.matches(Regex("""(?i)^\d+(?:\.\d+)?$""")) }
-            .filterNot { scheduleImportCourseRegex.containsMatchIn(it) }
-            .joinToString(" ")
-            .replace(Regex("""\s+"""), " ")
-            .trim()
-
-        val room = block.asReversed()
-            .firstOrNull { line ->
-                val candidate = scheduleImportRoomRegex.find(line)?.value.orEmpty()
-                candidate.isNotBlank() && !scheduleImportCourseRegex.containsMatchIn(line)
-            }?.let(::normalizeImportedCode).orEmpty()
-
-        val pairs = minOf(timeMatches.size, dayMatches.size)
-        repeat(pairs) { index ->
-            val t = timeMatches[index]
-            result += ScheduleImportItem(
-                code = firstCourse,
-                name = description,
-                day = dayMatches[index],
-                startTime = "%02d:%s".format(t.groupValues[1].toInt(), t.groupValues[2]),
-                endTime = "%02d:%s".format(t.groupValues[3].toInt(), t.groupValues[4]),
-                room = room
-            )
-        }
-    }
-    return result.distinctBy { listOf(it.code, it.day, it.startTime, it.endTime, it.room, it.classType) }
-}
-
-private fun parseLooseScheduleLines(linesText: String): List<ScheduleImportItem> {
-    val lines = linesText.lines().map { it.trim() }.filter { it.isNotBlank() }
-    val out = mutableListOf<ScheduleImportItem>()
-    lines.forEachIndexed { i, line ->
-        val course = scheduleImportCourseRegex.find(line)?.groupValues?.getOrNull(1)?.let(::normalizeImportedCode) ?: return@forEachIndexed
-        val window = lines.drop(i).take(10).joinToString("\n")
-        val times = scheduleImportTimeRegex.findAll(window).toList()
-        val days = scheduleImportDayRegex.findAll(window).map { importedDayName(it.value) }.filter { it.isNotBlank() }.toList()
-        repeat(minOf(times.size, days.size)) { idx ->
-            val t = times[idx]
-            out += ScheduleImportItem(
-                code = course,
-                day = days[idx],
-                startTime = "%02d:%s".format(t.groupValues[1].toInt(), t.groupValues[2]),
-                endTime = "%02d:%s".format(t.groupValues[3].toInt(), t.groupValues[4])
-            )
-        }
-    }
-    return out.distinctBy { listOf(it.code, it.day, it.startTime, it.endTime) }
-}
 
 data class BudgetEntry(
     val id: Long = System.currentTimeMillis(),
@@ -1008,7 +898,7 @@ fun CampusOSApp(activity: Activity) {
             if (showProfile) ProfileDialog(store) { showProfile = false }
             if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
             if (showScheduleManager) ScheduleManagerDialog(store) { showScheduleManager = false }
-            settingsModule?.let { module -> ModuleSettingsDialog(store, module, { settingsModule = null; settingsParent = null; showHomeSettings = true }, { settingsParent = module; settingsModule = null; showProfile = true }, { settingsParent = module; settingsModule = null; showScheduleManager = true }, { settingsParent = module; settingsModule = null; showScheduleSettings = true }, { settingsParent = module; settingsModule = null; showHomeAdd = true }, { settingsModule = null; settingsParent = null; screenName = Screen.TASKS.name }, { settingsModule = null; settingsParent = null; screenName = Screen.ACADEMICS.name }, { settingsModule = null; settingsParent = null; showHomeSettings = false; homeEditRequest++ }) }
+            settingsModule?.let { module -> ModuleSettingsDialog(module, { settingsModule = null; settingsParent = null; showHomeSettings = true }, { settingsParent = module; settingsModule = null; showProfile = true }, { settingsParent = module; settingsModule = null; showScheduleManager = true }, { settingsParent = module; settingsModule = null; showScheduleSettings = true }, { settingsParent = module; settingsModule = null; showHomeAdd = true }, { settingsModule = null; settingsParent = null; screenName = Screen.TASKS.name }, { settingsModule = null; settingsParent = null; screenName = Screen.ACADEMICS.name }, { settingsModule = null; settingsParent = null; showHomeSettings = false; homeEditRequest++ }) }
             if (showScheduleDetails) SubjectDetailsDialog(store.get("schedule"), { showScheduleDetails = false })
             if (showAppLock) AppLockSettingsDialog(store, { showAppLock = false }, { locked = true })
             if (showBackupRecovery) BackupRecoverySettingsDialog(store, { showBackupRecovery = false })
@@ -1179,9 +1069,7 @@ fun BackupRecoverySettingsDialog(store:LocalStore,done:()->Unit){
     if(showRecover)ModuleBackupDialog("Choose modules to recover",selectedModules,{selectedModules=it}){showRecover=false;if(selectedModules.isNotEmpty())restore.launch(arrayOf("application/json","text/plain"))}
 }
 @Composable
-fun ModuleSettingsDialog(store:LocalStore,module:String,close:()->Unit,profile:()->Unit,scheduleManager:()->Unit,scheduleSettings:()->Unit,addClass:()->Unit,openTasks:()->Unit,openAcademics:()->Unit,editHome:()->Unit) {
-    var showScheduleImport by remember { mutableStateOf(false) }
-
+fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleManager:()->Unit,scheduleSettings:()->Unit,addClass:()->Unit,openTasks:()->Unit,openAcademics:()->Unit,editHome:()->Unit) {
     var showTaskSettings by remember { mutableStateOf(false) }
     var showHomeTiles by remember { mutableStateOf(false) }
     val homeContext = androidx.compose.ui.platform.LocalContext.current
@@ -1196,13 +1084,12 @@ fun ModuleSettingsDialog(store:LocalStore,module:String,close:()->Unit,profile:(
                 OutlinedButton({ showHomeTiles = true },Modifier.fillMaxWidth()){Icon(Icons.Default.ViewModule,null);Spacer(Modifier.width(8.dp));Text("Home Tiles")}
                 OutlinedButton(profile,Modifier.fillMaxWidth()){Icon(Icons.Default.Person,null);Spacer(Modifier.width(8.dp));Text("Profile & homepage information")}
             }
-            "Class Schedule"->{Text("Class Schedule controls",fontWeight=FontWeight.Bold);OutlinedButton(addClass,Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Spacer(Modifier.width(8.dp));Text("Add Class")};OutlinedButton(scheduleManager,Modifier.fillMaxWidth()){Icon(Icons.Default.EditCalendar,null);Spacer(Modifier.width(8.dp));Text("Edit / Delete Classes")};OutlinedButton(scheduleSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.CalendarMonth,null);Spacer(Modifier.width(8.dp));Text("Schedule Settings")};OutlinedButton({ showScheduleImport = true },Modifier.fillMaxWidth()){Icon(Icons.Default.FileUpload,null);Spacer(Modifier.width(8.dp));Text("Import Schedule")};}
+            "Class Schedule"->{Text("Class Schedule controls",fontWeight=FontWeight.Bold);OutlinedButton(addClass,Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Spacer(Modifier.width(8.dp));Text("Add Class")};OutlinedButton(scheduleManager,Modifier.fillMaxWidth()){Icon(Icons.Default.EditCalendar,null);Spacer(Modifier.width(8.dp));Text("Edit / Delete Classes")};OutlinedButton(scheduleSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.CalendarMonth,null);Spacer(Modifier.width(8.dp));Text("Schedule Settings")};}
             "Notes"->{Text("Notes controls",fontWeight=FontWeight.Bold);Text("Calendar, notes, reminders and deadlines are stored locally.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openTasks,Modifier.fillMaxWidth()){Icon(Icons.Default.EventNote,null);Spacer(Modifier.width(8.dp));Text("Open Notes")};OutlinedButton({ showTaskSettings = true },Modifier.fillMaxWidth()){Icon(Icons.Default.Settings,null);Spacer(Modifier.width(8.dp));Text("Notes Settings")}}
             "Tools"->{Text("Tools controls",fontWeight=FontWeight.Bold);Text("Subjects, Calculator, Budget, Notepad and Lecture Files are available from Tools.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openAcademics,Modifier.fillMaxWidth()){Icon(Icons.Default.Build,null);Spacer(Modifier.width(8.dp));Text("Open Tools")};OutlinedButton({ showTaskSettings = true },Modifier.fillMaxWidth()){Icon(Icons.Default.SwapVert,null);Spacer(Modifier.width(8.dp));Text("Tool Order")}}
         }
     }},confirmButton={TextButton(close){Text("Close")}})
     if (showTaskSettings) { if (module == "Tools") ToolOrderDialog(homeStore) { showTaskSettings = false } else TaskSettingsDialog(LocalStore(androidx.compose.ui.platform.LocalContext.current)) { showTaskSettings = false } }
-    if (showScheduleImport) ScheduleImportDialog(store) { showScheduleImport = false }
     if (showHomeTiles) HomeTileSettingsDialog(
         defaultOrder = listOf("profile", "stats", "classes", "pinned", "tasks"),
         hiddenTiles = homeHiddenTiles,
@@ -1211,78 +1098,6 @@ fun ModuleSettingsDialog(store:LocalStore,module:String,close:()->Unit,profile:(
         done = { showHomeTiles = false }
     )
 }
-
-@Composable
-fun ScheduleImportDialog(store: LocalStore, done: () -> Unit) {
-    var text by remember { mutableStateOf("") }
-    var detected by remember { mutableStateOf<List<ScheduleImportItem>>(emptyList()) }
-    var message by remember { mutableStateOf("") }
-    val context = androidx.compose.ui.platform.LocalContext.current
-
-    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri ?: return@rememberLauncherForActivityResult
-        message = "Reading screenshot…"
-        runCatching {
-            val image = InputImage.fromFilePath(context, uri)
-            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-                .process(image)
-                .addOnSuccessListener { result ->
-                    text = result.text
-                    detected = parseScheduleImportText(result.text)
-                    message = if (detected.isEmpty()) "No complete day/time entries were detected yet. You can paste or edit the text below." else "\${detected.size} class slot(s) detected."
-                }
-                .addOnFailureListener { message = "Could not read the screenshot. You can paste the copied text instead." }
-        }.onFailure { message = "Could not open that image. You can paste the copied text instead." }
-    }
-
-    AlertDialog(
-        onDismissRequest = done,
-        title = { Text("Import Schedule") },
-        text = {
-            Column(Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Paste almost any schedule text, even when columns are broken or some details are missing. Units and Sched Code are ignored. You can also choose a screenshot.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                OutlinedButton(onClick = { imagePicker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Image, null); Spacer(Modifier.width(8.dp)); Text("Read Schedule Screenshot")
-                }
-                OutlinedTextField(value = text, onValueChange = { text = it; detected = parseScheduleImportText(it); message = "" }, modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp), label = { Text("Paste schedule text") }, placeholder = { Text("Course Code / Description / Time / Day / Room") })
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (detected.isEmpty()) "No detected class slots" else "\${detected.size} detected class slots", fontWeight = FontWeight.SemiBold)
-                    TextButton(onClick = { detected = parseScheduleImportText(text) }) { Text("Detect") }
-                }
-                if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
-                detected.take(12).forEach { item ->
-                    Card(colors = campusTileColors()) {
-                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(item.code, fontWeight = FontWeight.Bold)
-                            Text(listOf(item.day, "\${item.startTime}–\${item.endTime}", item.room).filter { it.isNotBlank() }.joinToString(" • "))
-                            if (item.name.isNotBlank()) Text(item.name, style = MaterialTheme.typography.bodySmall, maxLines = 2)
-                        }
-                    }
-                }
-                if (detected.size > 12) Text("Showing the first 12 detected slots.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        },
-        confirmButton = {
-            Button(onClick = {
-                val items = parseScheduleImportText(text)
-                if (items.isNotEmpty()) {
-                    val existing = store.get("schedule")
-                    var nextId = maxOf(System.currentTimeMillis(), (existing.maxOfOrNull { it.id } ?: 0L) + 1L)
-                    val additions = items.map { item ->
-                        Record(id = nextId++, title = item.code, subtitle = item.name, day = item.day, startTime = item.startTime, endTime = item.endTime, room = item.room, classType = item.classType)
-                    }
-                    val deduped = (existing + additions).distinctBy {
-                        listOf(it.title.trim().uppercase(Locale.getDefault()), it.day.trim().uppercase(Locale.getDefault()), it.startTime, it.endTime, it.classType.lowercase(Locale.getDefault()))
-                    }
-                    store.put("schedule", deduped)
-                }
-                done()
-            }, enabled = detected.isNotEmpty()) { Text("Import") }
-        },
-        dismissButton = { TextButton(onClick = done) { Text("Cancel") } }
-    )
-}
-
 @Composable
 fun ScheduleTableSettingsDialog(store: LocalStore, done: () -> Unit) {
     var horizontal by remember { mutableStateOf(store.scheduleTableHorizontalScroll()) }
@@ -1408,7 +1223,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit, editRequest: Int = 0) {
             Spacer(Modifier.height(6.dp))
             if (pendingTasks.isEmpty()) EmptyCard("No pending tasks. You're all caught up.")
             else pendingTasks.forEach { task ->
-                Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium, colors = campusTileColors()) {
+                Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.EventNote, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(10.dp))
@@ -2964,7 +2779,7 @@ fun BudgetScreen(store: LocalStore) {
             }
         }
         item {
-            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium, colors = campusTileColors()) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Quick insight", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
@@ -2980,7 +2795,7 @@ fun BudgetScreen(store: LocalStore) {
             }
         }
         item {
-            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium, colors = campusTileColors()) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -2997,7 +2812,7 @@ fun BudgetScreen(store: LocalStore) {
             }
         }
         if (entries.isNotEmpty()) item {
-            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium, colors = campusTileColors()) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Recent", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     entries.take(5).forEach { entry ->
