@@ -13,7 +13,6 @@
         android:supportsRtl="true">
         <activity
             android:name=".MainActivity"
-            android:enabled="false"
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
             <intent-filter>
@@ -21,40 +20,10 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <activity-alias android:name=".ForestLauncher" android:enabled="true" android:exported="true" android:icon="@drawable/ic_launcher_forest" android:roundIcon="@drawable/ic_launcher_forest" android:targetActivity=".MainActivity">
+        <activity-alias android:name=".ForestLauncher" android:enabled="false" android:exported="true" android:icon="@mipmap/ic_launcher_forest" android:roundIcon="@mipmap/ic_launcher_forest" android:targetActivity=".MainActivity">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
         </activity-alias>
-        <activity-alias android:name=".OceanLauncher" android:enabled="false" android:exported="true" android:icon="@drawable/ic_launcher_ocean" android:roundIcon="@drawable/ic_launcher_ocean" android:targetActivity=".MainActivity">
-            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
-        </activity-alias>
-        <activity-alias android:name=".MintLauncher" android:enabled="false" android:exported="true" android:icon="@drawable/ic_launcher_mint" android:roundIcon="@drawable/ic_launcher_mint" android:targetActivity=".MainActivity">
-            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
-        </activity-alias>
-        <activity-alias android:name=".SkyLauncher" android:enabled="false" android:exported="true" android:icon="@drawable/ic_launcher_sky" android:roundIcon="@drawable/ic_launcher_sky" android:targetActivity=".MainActivity">
-            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
-        </activity-alias>
-        <activity-alias android:name=".LavenderLauncher" android:enabled="false" android:exported="true" android:icon="@drawable/ic_launcher_lavender" android:roundIcon="@drawable/ic_launcher_lavender" android:targetActivity=".MainActivity">
-            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
-        </activity-alias>
-        <activity-alias android:name=".PlumLauncher" android:enabled="false" android:exported="true" android:icon="@drawable/ic_launcher_plum" android:roundIcon="@drawable/ic_launcher_plum" android:targetActivity=".MainActivity">
-            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
-        </activity-alias>
-        <activity-alias android:name=".RoseLauncher" android:enabled="false" android:exported="true" android:icon="@drawable/ic_launcher_rose" android:roundIcon="@drawable/ic_launcher_rose" android:targetActivity=".MainActivity">
-            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
-        </activity-alias>
-        <activity-alias android:name=".CoralLauncher" android:enabled="false" android:exported="true" android:icon="@drawable/ic_launcher_coral" android:roundIcon="@drawable/ic_launcher_coral" android:targetActivity=".MainActivity">
-            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
-        </activity-alias>
-        <activity-alias android:name=".SunsetLauncher" android:enabled="false" android:exported="true" android:icon="@drawable/ic_launcher_sunset" android:roundIcon="@drawable/ic_launcher_sunset" android:targetActivity=".MainActivity">
-            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
-        </activity-alias>
-        <activity-alias android:name=".AmberLauncher" android:enabled="false" android:exported="true" android:icon="@drawable/ic_launcher_amber" android:roundIcon="@drawable/ic_launcher_amber" android:targetActivity=".MainActivity">
-            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
-        </activity-alias>
-        <activity-alias android:name=".TealLauncher" android:enabled="false" android:exported="true" android:icon="@drawable/ic_launcher_teal" android:roundIcon="@drawable/ic_launcher_teal" android:targetActivity=".MainActivity">
-            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
-        </activity-alias>
-        <activity-alias android:name=".MonoLauncher" android:enabled="false" android:exported="true" android:icon="@drawable/ic_launcher_mono" android:roundIcon="@drawable/ic_launcher_mono" android:targetActivity=".MainActivity">
+        <activity-alias android:name=".SunsetLauncher" android:enabled="false" android:exported="true" android:icon="@mipmap/ic_launcher_sunset" android:roundIcon="@mipmap/ic_launcher_sunset" android:targetActivity=".MainActivity">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
         </activity-alias>
         <receiver android:name=".CampusReminderReceiver" android:exported="false"/>
