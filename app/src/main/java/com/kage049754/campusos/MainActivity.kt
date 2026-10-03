@@ -385,6 +385,13 @@ class LocalStore(context: Context) {
     fun aiFloatingY() = prefs.getFloat("ai_floating_y", -1f)
     fun setAiFloatingPosition(x: Float, y: Float) { prefs.edit().putFloat("ai_floating_x", x).putFloat("ai_floating_y", y).apply() }
     fun resetAiFloatingPosition() { prefs.edit().remove("ai_floating_x").remove("ai_floating_y").apply(); revision++ }
+    fun aiActionPermission() = prefs.getString("ai_action_permission", "ask") ?: "ask"
+    fun setAiActionPermission(value: String) { prefs.edit().putString("ai_action_permission", value).apply(); revision++ }
+    fun aiActionNeedsApproval(toolName: String): Boolean = when (aiActionPermission()) {
+        "all" -> false
+        "read" -> toolName !in setOf("get_schedule", "get_tasks")
+        else -> true
+    }
 
     fun budgetPeriod() = prefs.getString("budget_period", "Weekly") ?: "Weekly"
     fun budgetAllowance() = prefs.getFloat("budget_allowance", 0f).toDouble()
@@ -3750,6 +3757,45 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
             }
         }
         item { Text("CampusOS AI", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+
+        item {
+            var aiPermission by remember { mutableStateOf(store.aiActionPermission()) }
+            Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("CampusOS AI permissions", fontWeight = FontWeight.Bold)
+                    Text(
+                        "Control when CampusOS AI must ask before reading or changing your CampusOS data.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(
+                            "ask" to "Always ask",
+                            "read" to "Allow read actions",
+                            "all" to "Allow all actions"
+                        ).forEach { (value, label) ->
+                            FilterChip(
+                                selected = aiPermission == value,
+                                onClick = {
+                                    aiPermission = value
+                                    store.setAiActionPermission(value)
+                                },
+                                label = { Text(label) },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                    Text(
+                        when (aiPermission) {
+                            "all" -> "AI can read and change schedule, tasks, and subjects without asking."
+                            "read" -> "AI can read schedule and tasks. Changes still require your approval."
+                            else -> "AI asks before every CampusOS data action, including reads."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
         item {
             var aiEnabled by remember { mutableStateOf(store.aiFloatingEnabled()) }
             var aiOpacity by remember { mutableFloatStateOf(store.aiFloatingOpacity()) }
