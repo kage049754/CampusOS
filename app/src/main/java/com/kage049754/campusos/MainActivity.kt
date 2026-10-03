@@ -1999,8 +1999,24 @@ private fun syncSubjectsFromSchedule(store: LocalStore, schedule: List<Record>) 
         .forEach { entries ->
             val classes = entries.map { it.first }
             val code = entries.first().second
-            val existingIndex = existingSubjects.indexOfFirst {
+            var existingIndex = existingSubjects.indexOfFirst {
                 normalizeScheduleSubjectCode(it.title).equals(code, true)
+            }
+
+            // If the code was edited in Schedule, reuse the old auto-synced subject
+            // when its subject name/room still identifies the same class. This keeps
+            // Tools > Subjects synchronized instead of leaving the old code behind.
+            if (existingIndex < 0) {
+                val nameKey = bestName
+                val roomKey = bestRoom
+                existingIndex = existingSubjects.indexOfFirst { existing ->
+                    val titleLooksLikeCode = normalizeScheduleSubjectCode(existing.title).isNotBlank()
+                    val sameName = nameKey.isNotBlank() &&
+                        existing.subtitle.trim().equals(nameKey, true)
+                    val sameRoom = roomKey.isNotBlank() &&
+                        existing.room.trim().equals(roomKey, true)
+                    titleLooksLikeCode && (sameName || sameRoom)
+                }
             }
             val bestName = classes.firstOrNull { it.subtitle.isNotBlank() }?.subtitle?.trim().orEmpty()
             val bestProfessor = classes.firstOrNull { it.professor.isNotBlank() }?.professor?.trim().orEmpty()
