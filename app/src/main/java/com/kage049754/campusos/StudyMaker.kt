@@ -449,6 +449,7 @@ private fun studyPrompt(action: String, context: String): String {
 private data class CampusAiConfirmState(val toolName: String, val decision: CompletableDeferred<Boolean>)
 
 private fun campusAiActionDescription(toolName: String): String = when (toolName) {
+    "get_dashboard" -> "read your CampusOS overview"
     "get_schedule" -> "read your class schedule"
     "get_tasks" -> "read your tasks"
     "add_schedule" -> "add a class to your schedule"
@@ -460,6 +461,21 @@ private fun campusAiActionDescription(toolName: String): String = when (toolName
     "add_subject" -> "add a subject"
     "edit_subject" -> "change a subject"
     "delete_subject" -> "delete a subject"
+    "get_notes" -> "read a subject's Notepad"
+    "add_note" -> "create a subject note"
+    "edit_note" -> "change a subject note"
+    "delete_note" -> "delete a subject note"
+    "get_lecture_files" -> "read a subject's Lecture Files"
+    "add_lecture_file" -> "create a Lecture File"
+    "rename_lecture_file" -> "rename a Lecture File"
+    "delete_lecture_file" -> "delete a Lecture File"
+    "get_budget" -> "read your Budget and Saving Goal"
+    "add_budget" -> "add a Budget entry"
+    "delete_budget" -> "delete a Budget entry"
+    "set_budget_plan" -> "change your Budget plan"
+    "set_saving_goal" -> "change your Saving Goal"
+    "add_saving" -> "add money to your Saving Goal"
+    "calculate" -> "use the CampusOS Calculator"
     else -> "perform a CampusOS data action"
 }
 
