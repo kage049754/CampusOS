@@ -88,11 +88,19 @@ private class AiChatStore(private val context: Context) {
     fun relevant(query: String, excludeId: String = ""): String {
         val tokens = query.lowercase(Locale.getDefault()).split(Regex("[^a-z0-9]+")).filter { it.length >= 3 }.distinct()
         if (tokens.isEmpty()) return ""
-        val ranked = list().asSequence().filter { chat -> chat.id != excludeId }.map { chat ->
-            val score = tokens.sumOf { token -> chat.messages.sumOf { msg -> if (msg.text.lowercase(Locale.getDefault()).contains(token)) 1 else 0 } }
-            Pair(chat, score)
-        }.filter { pair -> pair.second > 0 }.sortedByDescending { pair -> pair.second }.take(3).toList()
-        return ranked.joinToString("\n\n") { pair ->
+        val ranked = mutableListOf<Pair<AiChatConversation, Int>>()
+        for (chat in list()) {
+            if (chat.id == excludeId) continue
+            var score = 0
+            for (token in tokens) {
+                for (msg in chat.messages) {
+                    if (msg.text.lowercase(Locale.getDefault()).contains(token)) score++
+                }
+            }
+            if (score > 0) ranked.add(Pair(chat, score))
+        }
+        ranked.sortByDescending { pair -> pair.second }
+        return ranked.take(3).joinToString("\n\n") { pair ->
             val chat = pair.first
             "CHAT: " + chat.title + "\n" + chat.messages.takeLast(6).joinToString("\n") { msg ->
                 (if (msg.role == "user") "STUDENT" else "ASSISTANT") + ": " + msg.text.take(1200)
