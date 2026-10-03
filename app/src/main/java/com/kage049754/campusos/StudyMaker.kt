@@ -638,7 +638,7 @@ private suspend fun studyAiCall(provider: String, model: String, key: String, pr
                     attachments.filter{it.base64.isNotBlank()}.forEach{a->parts.put(JSONObject().put("inline_data",JSONObject().put("mime_type",a.mimeType).put("data",a.base64)))}
                     put("contents",JSONArray().put(JSONObject().apply{put("parts",parts)}))
                     if(tools.length()>0) { val declarations=JSONArray(); for(i in 0 until tools.length()) declarations.put(tools.optJSONObject(i)?.optJSONObject("function")); put("tools",JSONArray().put(JSONObject().put("functionDeclarations",declarations))) }
-                    put("generationConfig",JSONObject().put("temperature",0.35).put("maxOutputTokens",6000))
+                    put("generationConfig",JSONObject().put("temperature",0.0).put("maxOutputTokens",6000))
                 }.toString()
                 headers["x-goog-api-key"]=key
             } else {
@@ -646,7 +646,7 @@ private suspend fun studyAiCall(provider: String, model: String, key: String, pr
                 body=JSONObject().apply{
                     put("model",safeModel); val content=JSONArray().put(JSONObject().put("type","text").put("text",currentPrompt))
                     attachments.filter{it.base64.isNotBlank()}.forEach{a->content.put(JSONObject().put("type","image_url").put("image_url",JSONObject().put("url","data:"+a.mimeType+";base64,"+a.base64)))}
-                    put("messages",JSONArray().put(JSONObject().put("role","user").put("content",content))); if(tools.length()>0) put("tools",tools); put("temperature",0.35)
+                    put("messages",JSONArray().put(JSONObject().put("role","user").put("content",content))); if(tools.length()>0) put("tools",tools); put("temperature",0.0)
                 }.toString()
                 headers["Authorization"]="Bearer "+key
             }
