@@ -1599,8 +1599,6 @@ fun HomeAppearanceDialog(store: LocalStore, theme: String, setTheme: (String) ->
         title={Text("Appearance")},
         text={
             Column(Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(14.dp)){
-                Text("Light mode",fontWeight=FontWeight.SemiBold)
-                Text("CampusOS always stays in light mode. Choose a color combination below.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Color appearance",fontWeight=FontWeight.SemiBold)
                 Text("Choose a ready-made combination. It changes the whole CampusOS UI: background, surfaces, text, buttons, tiles, cards and schedule accents.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 presets.forEach{(id,label)->
