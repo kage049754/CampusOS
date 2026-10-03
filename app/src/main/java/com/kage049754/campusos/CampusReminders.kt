@@ -189,6 +189,7 @@ object CampusWidgets {
         updateProvider(app, manager, CampusNextClassWidgetProvider::class.java)
         updateProvider(app, manager, CampusTaskWidgetProvider::class.java)
         updateProvider(app, manager, CampusScheduleWidgetProvider::class.java)
+        updateProvider(app, manager, CampusOverviewWidgetProvider::class.java)
         ensureLiveUpdates(app, manager)
     }
 
@@ -207,7 +208,8 @@ object CampusWidgets {
             CampusTodayWidgetProvider::class.java,
             CampusNextClassWidgetProvider::class.java,
             CampusTaskWidgetProvider::class.java,
-            CampusScheduleWidgetProvider::class.java
+            CampusScheduleWidgetProvider::class.java,
+            CampusOverviewWidgetProvider::class.java
         ).any { manager.getAppWidgetIds(ComponentName(context, it)).isNotEmpty() }
 
         val alarmManager = context.getSystemService(AlarmManager::class.java)
@@ -353,6 +355,59 @@ class CampusTaskWidgetProvider : android.appwidget.AppWidgetProvider() {
             v.setTextViewText(R.id.widget_main, text)
             v.setTextViewText(R.id.widget_secondary, "Tap to open Tasks")
             v.setOnClickPendingIntent(R.id.widget_root, appOpenPendingIntent(context)); manager.updateAppWidget(id, v)
+        }
+    }
+}
+
+class CampusOverviewWidgetProvider : android.appwidget.AppWidgetProvider() {
+    override fun onUpdate(context: Context, manager: android.appwidget.AppWidgetManager, ids: IntArray) {
+        ids.forEach { update(context, manager, it) }
+    }
+    companion object {
+        fun update(context: Context, manager: android.appwidget.AppWidgetManager, id: Int) {
+            val v = android.widget.RemoteViews(context.packageName, R.layout.widget_overview)
+            val store = LocalStore(context)
+            val day = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date())
+            val nowMinutes = Calendar.getInstance().let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) }
+            val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            val classes = mergeAdjacentWidgetClasses(store.get("schedule").filter { it.day.equals(day, true) })
+                .sortedBy { widgetMinutes(it.startTime) ?: Int.MAX_VALUE }
+            val current = classes.firstOrNull {
+                val s = widgetMinutes(it.startTime); val e = widgetMinutes(it.endTime)
+                s != null && e != null && nowMinutes in s until e
+            }
+            val upcoming = classes.firstOrNull { (widgetMinutes(it.startTime) ?: -1) > nowMinutes }
+            v.setTextViewText(R.id.widget_title, "CampusOS • " + day)
+            val focusLine = when {
+                current != null -> "▶ " + current.title + " • " + current.startTime + "–" + current.endTime + if (current.room.isBlank()) "" else " • " + current.room
+                upcoming != null -> "→ " + upcoming.title + " • " + upcoming.startTime + "–" + upcoming.endTime + if (upcoming.room.isBlank()) "" else " • " + upcoming.room
+                else -> "No more classes today"
+            }
+            v.setTextViewText(R.id.widget_next, focusLine)
+            v.setTextViewText(R.id.widget_next_status, when {
+                current != null -> ((widgetMinutes(current.endTime) ?: nowMinutes) - nowMinutes).coerceAtLeast(0).toString() + " min remaining"
+                upcoming != null -> "Starts in " + widgetCountdownMinutes((widgetMinutes(upcoming.startTime) ?: nowMinutes) - nowMinutes)
+                else -> ""
+            })
+            val scheduleText = classes.take(3).joinToString("\n") { r ->
+                val s = widgetMinutes(r.startTime); val e = widgetMinutes(r.endTime)
+                when {
+                    s != null && e != null && nowMinutes >= e -> "✓ " + r.startTime + "–" + r.endTime + "  " + r.title
+                    s != null && e != null && nowMinutes in s until e -> "▶ " + r.startTime + "–" + r.endTime + "  " + r.title
+                    else -> r.startTime + "–" + r.endTime + "  " + r.title
+                }
+            }
+            v.setTextViewText(R.id.widget_schedule, if (scheduleText.isBlank()) "No classes scheduled today" else scheduleText)
+            val tasks = store.get("tasks").filter { !it.done }
+                .sortedWith(compareBy<Record>({ it.dueDate.ifBlank { "9999-99-99" } }, { it.dueTime.ifBlank { "99:99" } }))
+            val dueToday = tasks.count { it.dueDate == today }
+            val taskText = tasks.take(2).joinToString("\n") { t ->
+                "• " + t.title + if (t.dueDate.isBlank()) "" else " • " + t.dueDate
+            }
+            val dueLabel = dueToday.toString() + " task" + if (dueToday == 1) "" else "s" + " due today"
+            v.setTextViewText(R.id.widget_tasks, if (taskText.isBlank()) "No upcoming tasks" else dueLabel + "\n" + taskText)
+            v.setOnClickPendingIntent(R.id.widget_root, appOpenPendingIntent(context))
+            manager.updateAppWidget(id, v)
         }
     }
 }
