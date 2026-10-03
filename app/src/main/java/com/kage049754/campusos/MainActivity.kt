@@ -22,8 +22,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
@@ -671,7 +669,6 @@ fun CampusOSApp(activity: Activity) {
     var theme by remember { mutableStateOf(store.theme()) }
     var appearancePreset by remember { mutableStateOf(store.appearancePreset()) }
     var locked by remember { mutableStateOf(store.lockEnabled() && store.authMethod() != "none") }
-    var openingAnimation by remember { mutableStateOf(true) }
     var screenName by rememberSaveable {
         mutableStateOf(activity.intent.getStringExtra("widget_open_screen")?.let { runCatching { Screen.valueOf(it) }.getOrNull()?.name } ?: Screen.HOME.name)
     }
@@ -754,13 +751,6 @@ fun CampusOSApp(activity: Activity) {
 
     // Light mode is the only supported app theme now.
     val dark = false
-
-    // Keep startup motion short and subtle: the app is usable almost immediately,
-    // while the first frame gets a small fade/scale transition instead of appearing abruptly.
-    LaunchedEffect(Unit) {
-        delay(360)
-        openingAnimation = false
-    }
 
     var subjectPageVisible by remember(subjectPageId, subjectPageMode, subjectOpenedFile) { mutableStateOf(false) }
     LaunchedEffect(subjectPageId, subjectPageMode, subjectOpenedFile) {
@@ -973,54 +963,7 @@ fun CampusOSApp(activity: Activity) {
                     }
                     CampusAiFloatingButton(store) { aiBubbleOpen = !aiBubbleOpen }
                 }
-                if (openingAnimation) {
-                    Box(
-                        Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Surface(
-                            Modifier.fillMaxSize(),
-                            color = MaterialTheme.colorScheme.background
-                        ) {
-                            Column(
-                                Modifier.fillMaxSize(),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                AnimatedVisibility(
-                                    visible = openingAnimation,
-                                    enter = fadeIn(tween(160)) + scaleIn(initialScale = 0.94f, animationSpec = tween(220)),
-                                    exit = fadeOut(tween(180)) + scaleOut(targetScale = 1.02f, animationSpec = tween(180))
-                                ) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(20.dp),
-                                            color = MaterialTheme.colorScheme.primaryContainer,
-                                            tonalElevation = 3.dp
-                                        ) {
-                                            Icon(
-                                                Icons.Default.School,
-                                                contentDescription = null,
-                                                modifier = Modifier.padding(14.dp).size(42.dp),
-                                                tint = MaterialTheme.colorScheme.primary
-                                            )
-                                        }
-                                        Text(
-                                            "CampusOS",
-                                            style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-                        if (showHomeSettings) {
+                if (showHomeSettings) {
                 HomeSettingsDialog(store, campusSession?.role ?: "student", onManagement = { screenName = Screen.ADMIN.name; showHomeSettings = false }, onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, onAiSettings = { showAiSettings = true; showHomeSettings = false }, onLockNow = { locked = true }, done = { showHomeSettings = false }, openAppLock = { showHomeSettings = false; showAppLock = true }, openBackupRecovery = { showHomeSettings = false; showBackupRecovery = true }, openAbout = { showHomeSettings = false; showAbout = true })
             }
             if (showAiSettings) CampusAiSettingsDialog(store, { showAiSettings = false }, { showAiSettings = false; screenName = Screen.CAMPUS_AI.name })
