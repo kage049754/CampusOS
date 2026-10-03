@@ -63,6 +63,10 @@ data class AiChatMessage(val role: String, val text: String, val attachmentName:
 data class AiChatConversation(val id: String, val title: String, val createdAt: Long, val updatedAt: Long, val messages: List<AiChatMessage>)
 
 private class AiChatStore(private val context: Context) {
+    fun historyEnabled(): Boolean = prefs.getBoolean("chat_history_enabled", true)
+    fun setHistoryEnabled(value: Boolean) { prefs.edit().putBoolean("chat_history_enabled", value).apply(); if (!value) deleteAll() }
+    fun recallEnabled(): Boolean = prefs.getBoolean("chat_recall_enabled", true)
+    fun setRecallEnabled(value: Boolean) { prefs.edit().putBoolean("chat_recall_enabled", value).apply() }
     private val dir get() = File(context.filesDir, "ai_chats").apply { mkdirs() }
     private val prefs get() = context.getSharedPreferences(STUDY_AI_PREFS, Context.MODE_PRIVATE)
 
@@ -109,6 +113,7 @@ private class AiChatStore(private val context: Context) {
     }
 
     fun list(): List<AiChatConversation> {
+        if (!historyEnabled()) return emptyList()
         cleanup()
         return dir.listFiles()?.filter { it.extension == "json" }
             ?.mapNotNull { runCatching { fromJson(JSONObject(it.readText())) }.getOrNull() }
@@ -118,6 +123,7 @@ private class AiChatStore(private val context: Context) {
     }
 
     fun save(chat: AiChatConversation) {
+        if (!historyEnabled()) { delete(chat.id); return }
         File(dir, chat.id + ".json").writeText(toJson(chat).toString())
         cleanup()
     }
@@ -782,7 +788,7 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (Stri
                         messages = previous + AiChatMessage("user", q, attachment?.name.orEmpty(), attachment?.mimeType.orEmpty(), attachment?.localPath.orEmpty())
                         saveMessages(messages); busy = true; error = ""
                         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
-                            val recall = chatStore.relevant(q, chatId)
+                            val recall = if (chatStore.recallEnabled()) chatStore.relevant(q, chatId) else ""
                             val prompt = aiChatPrompt(previous, q.ifBlank { "Please analyze the attached file." }) +
                                 (if (attachment != null) "\n\n" + chatAttachmentPrompt(listOf(attachment)) else "") +
                                 (if (recall.isNotBlank()) "\n\nRELEVANT PAST CHAT RECALL:\n" + recall else "")
