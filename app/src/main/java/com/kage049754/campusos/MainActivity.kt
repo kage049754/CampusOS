@@ -390,6 +390,8 @@ class LocalStore(context: Context) {
     fun resetAiFloatingPosition() { prefs.edit().remove("ai_floating_x").remove("ai_floating_y").apply(); revision++ }
     fun aiActionPermission() = prefs.getString("ai_action_permission", "ask") ?: "ask"
     fun setAiActionPermission(value: String) { prefs.edit().putString("ai_action_permission", value).apply(); revision++ }
+    fun aiOpenChangedModule() = prefs.getBoolean("ai_open_changed_module", false)
+    fun setAiOpenChangedModule(value: Boolean) { prefs.edit().putBoolean("ai_open_changed_module", value).apply(); revision++ }
     fun aiActionNeedsApproval(toolName: String): Boolean = when (aiActionPermission()) {
         "all" -> false
         "read" -> !(toolName.startsWith("get_") || toolName == "calculate")
@@ -920,7 +922,17 @@ fun CampusOSApp(activity: Activity) {
                 if (store.aiFloatingEnabled() && !scheduleFullscreen && screen != Screen.STUDY_MAKER) {
                     if (aiBubbleOpen) {
                         Box(Modifier.fillMaxSize().padding(bottom = 8.dp, end = 8.dp), contentAlignment = Alignment.BottomEnd) {
-                            CampusAiBubble(activity, store) { aiBubbleOpen = false }
+                            CampusAiBubble(activity, store, onModuleChanged = { toolName ->
+                                if (store.aiOpenChangedModule()) {
+                                    when {
+                                        toolName.contains("schedule") -> screenName = Screen.SCHEDULE.name
+                                        toolName.contains("task") -> screenName = Screen.TASKS.name
+                                        toolName.contains("subject") || toolName.contains("note") || toolName.contains("lecture_file") -> screenName = Screen.ACADEMICS.name
+                                        toolName.contains("budget") || toolName.contains("saving") -> screenName = Screen.TOOLS.name
+                                    }
+                                    aiBubbleOpen = false
+                                }
+                            }) { aiBubbleOpen = false }
                         }
                     }
                     CampusAiFloatingButton(store) { aiBubbleOpen = !aiBubbleOpen }
