@@ -63,14 +63,85 @@ data class AiChatConversation(val id: String, val title: String, val createdAt: 
 
 private class AiChatStore(private val context: Context) {
     private val dir get() = File(context.filesDir, "ai_chats").apply { mkdirs() }
-    fun list(): List<AiChatConversation> = dir.listFiles()?.filter { it.extension == "json" }?.mapNotNull { runCatching { fromJson(JSONObject(it.readText())) }.getOrNull() }?.sortedByDescending { it.updatedAt }.orEmpty()
-    fun save(chat: AiChatConversation) { File(dir, chat.id + ".json").writeText(toJson(chat).toString()) }
-    fun delete(id: String) { File(dir, id + ".json").delete(); File(context.filesDir, "ai_chat_attachments").listFiles()?.filter { it.name.startsWith(id + "_") }?.forEach { it.delete() } }
-    private fun toJson(c: AiChatConversation) = JSONObject().apply { put("id", c.id); put("title", c.title); put("createdAt", c.createdAt); put("updatedAt", c.updatedAt); put("messages", JSONArray().apply { c.messages.forEach { m -> put(JSONObject().apply { put("role", m.role); put("text", m.text); put("attachmentName", m.attachmentName); put("attachmentMime", m.attachmentMime); put("attachmentPath", m.attachmentPath); put("createdAt", m.createdAt) }) } }) }
+    private val prefs get() = context.getSharedPreferences(STUDY_AI_PREFS, Context.MODE_PRIVATE)
+
+    // 0 means unlimited. Retention is local to this device and applies to saved conversations.
+    fun historyLimit(): Int = prefs.getInt("chat_history_limit", 30).coerceIn(0, 200)
+    fun historyDays(): Int = prefs.getInt("chat_history_days", 0).coerceIn(0, 3650)
+    fun setHistoryLimit(value: Int) { prefs.edit().putInt("chat_history_limit", value.coerceIn(0, 200)).apply(); cleanup() }
+    fun setHistoryDays(value: Int) { prefs.edit().putInt("chat_history_days", value.coerceIn(0, 3650)).apply(); cleanup() }
+
+    fun list(): List<AiChatConversation> {
+        cleanup()
+        return dir.listFiles()?.filter { it.extension == "json" }
+            ?.mapNotNull { runCatching { fromJson(JSONObject(it.readText())) }.getOrNull() }
+            ?.sortedByDescending { it.updatedAt }
+            ?.let { chats -> if (historyLimit() == 0) chats else chats.take(historyLimit()) }
+            .orEmpty()
+    }
+
+    fun save(chat: AiChatConversation) {
+        File(dir, chat.id + ".json").writeText(toJson(chat).toString())
+        cleanup()
+    }
+
+    fun delete(id: String) {
+        File(dir, id + ".json").delete()
+        File(context.filesDir, "ai_chat_attachments").listFiles()
+            ?.filter { it.name.startsWith(id + "_") }?.forEach { it.delete() }
+    }
+
+    fun deleteAll() {
+        dir.listFiles()?.filter { it.extension == "json" }?.forEach { it.delete() }
+        File(context.filesDir, "ai_chat_attachments").listFiles()?.forEach { it.delete() }
+    }
+
+    private fun cleanup() {
+        val now = System.currentTimeMillis()
+        val days = historyDays()
+        val files = dir.listFiles()?.filter { it.extension == "json" }.orEmpty()
+        val chats = files.mapNotNull { file ->
+            runCatching { file to fromJson(JSONObject(file.readText())) }.getOrNull()
+        }.sortedByDescending { it.second.updatedAt }
+
+        if (days > 0) {
+            val cutoff = now - days * 24L * 60L * 60L * 1000L
+            chats.filter { it.second.updatedAt < cutoff }.forEach { (file, chat) ->
+                file.delete()
+                File(context.filesDir, "ai_chat_attachments").listFiles()
+                    ?.filter { it.name.startsWith(chat.id + "_") }?.forEach { it.delete() }
+            }
+        }
+
+        val remaining = dir.listFiles()?.filter { it.extension == "json" }
+            ?.mapNotNull { file -> runCatching { file to fromJson(JSONObject(file.readText())) }.getOrNull() }
+            ?.sortedByDescending { it.second.updatedAt }.orEmpty()
+        if (historyLimit() > 0 && remaining.size > historyLimit()) {
+            remaining.drop(historyLimit()).forEach { (file, chat) ->
+                file.delete()
+                File(context.filesDir, "ai_chat_attachments").listFiles()
+                    ?.filter { it.name.startsWith(chat.id + "_") }?.forEach { it.delete() }
+            }
+        }
+    }
+
+    private fun toJson(c: AiChatConversation) = JSONObject().apply {
+        put("id", c.id); put("title", c.title); put("createdAt", c.createdAt); put("updatedAt", c.updatedAt)
+        put("messages", JSONArray().apply { c.messages.forEach { m -> put(JSONObject().apply {
+            put("role", m.role); put("text", m.text); put("attachmentName", m.attachmentName)
+            put("attachmentMime", m.attachmentMime); put("attachmentPath", m.attachmentPath); put("createdAt", m.createdAt)
+        }) } })
+    }
+
     private fun fromJson(o: JSONObject): AiChatConversation {
         val messages = mutableListOf<AiChatMessage>(); val a = o.optJSONArray("messages")
-        if (a != null) for (i in 0 until a.length()) { val m=a.optJSONObject(i) ?: continue; messages += AiChatMessage(m.optString("role"),m.optString("text"),m.optString("attachmentName"),m.optString("attachmentMime"),m.optString("attachmentPath"),m.optLong("createdAt")) }
-        return AiChatConversation(o.optString("id"), o.optString("title").ifBlank { "New chat" }, o.optLong("createdAt"), o.optLong("updatedAt"), messages)
+        if (a != null) for (i in 0 until a.length()) {
+            val m=a.optJSONObject(i) ?: continue
+            messages += AiChatMessage(m.optString("role"),m.optString("text"),m.optString("attachmentName"),
+                m.optString("attachmentMime"),m.optString("attachmentPath"),m.optLong("createdAt"))
+        }
+        return AiChatConversation(o.optString("id"), o.optString("title").ifBlank { "New chat" },
+            o.optLong("createdAt"), o.optLong("updatedAt"), messages)
     }
 }
 
@@ -925,6 +996,48 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                 OutlinedTextField(apiKey, { apiKey = it }, Modifier.fillMaxWidth(), label = { Text(if (provider == "Gemini") "Gemini API key" else "OpenRouter API key") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
                 OutlinedTextField(model, {}, Modifier.fillMaxWidth(), label = { Text("Free model") }, singleLine = true, readOnly = true)
                 Text(if (provider == "OpenRouter") "OpenRouter automatically selects an available free model. CampusOS only sends requests to the free router and will never select or fall back to a paid model." else "Gemini uses the fixed free-tier model configured by CampusOS. Paid model choices and fallback models are not used.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                var historyLimit by remember { mutableIntStateOf(chatStore.historyLimit()) }
+                var historyDays by remember { mutableIntStateOf(chatStore.historyDays()) }
+                Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Chat memory & history", fontWeight = FontWeight.Bold)
+                        Text(
+                            "Choose how many conversations CampusOS keeps and how long they stay. The first limit reached removes the oldest saved chats. This history is stored locally on this device.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text("Maximum saved conversations: " + if (historyLimit == 0) "Unlimited" else historyLimit.toString(),
+                            style = MaterialTheme.typography.labelLarge)
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(10, 30, 50, 100, 0).forEach { value ->
+                                FilterChip(
+                                    selected = historyLimit == value,
+                                    onClick = { historyLimit = value; chatStore.setHistoryLimit(value); chatHistory = chatStore.list() },
+                                    label = { Text(if (value == 0) "Unlimited" else value.toString()) }
+                                )
+                            }
+                        }
+                        Text("Keep conversations for: " + if (historyDays == 0) "Forever" else "$historyDays day" + if (historyDays == 1) "" else "s",
+                            style = MaterialTheme.typography.labelLarge)
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(1, 7, 30, 90, 365, 0).forEach { value ->
+                                FilterChip(
+                                    selected = historyDays == value,
+                                    onClick = { historyDays = value; chatStore.setHistoryDays(value); chatHistory = chatStore.list() },
+                                    label = { Text(if (value == 0) "Forever" else if (value == 1) "1 day" else "$value days") }
+                                )
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = { chatStore.deleteAll(); chatHistory = emptyList(); chat = emptyList(); chatId = System.currentTimeMillis().toString() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.DeleteSweep, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Clear All Chat History")
+                        }
+                    }
+                }
                 Button({
                     runCatching { secure.setApiKey(provider, apiKey.trim()); apiKey = secure.getApiKey(provider) }
                         .onSuccess { error = "API key saved securely on this device." }
