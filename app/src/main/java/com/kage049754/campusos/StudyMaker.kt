@@ -62,7 +62,7 @@ data class AiChatAttachment(val name: String, val mimeType: String, val localPat
 data class AiChatMessage(val role: String, val text: String, val attachmentName: String = "", val attachmentMime: String = "", val attachmentPath: String = "", val createdAt: Long = System.currentTimeMillis())
 data class AiChatConversation(val id: String, val title: String, val createdAt: Long, val updatedAt: Long, val messages: List<AiChatMessage>)
 
-private class AiChatStore(private val context: Context) {
+class AiChatStore(private val context: Context) {
     fun historyEnabled(): Boolean = prefs.getBoolean("chat_history_enabled", true)
     fun setHistoryEnabled(value: Boolean) { prefs.edit().putBoolean("chat_history_enabled", value).apply(); if (!value) deleteAll() }
     fun recallEnabled(): Boolean = prefs.getBoolean("chat_recall_enabled", true)
