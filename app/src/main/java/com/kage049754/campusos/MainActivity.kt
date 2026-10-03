@@ -1318,7 +1318,7 @@ private fun formatClassCountdown(totalMinutes: Int): String {
 @Composable
 fun HomeTodayClassCard(r: Record,status:String?=null){
     val completed=status=="✓ Completed"
-    Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(16.dp),colors=CardDefaults.cardColors(containerColor=if(completed)MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)){
+    Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(16.dp),colors=CardDefaults.cardColors(containerColor=if(completed)MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surface)){
         Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){
             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
                 Text(r.title,Modifier.weight(1f),fontWeight=FontWeight.Bold)
@@ -1391,7 +1391,7 @@ fun HomeAppearanceDialog(store: LocalStore, theme: String, setTheme: (String) ->
                 Text("Choose a ready-made combination. It changes the whole CampusOS UI: background, surfaces, text, buttons, tiles, cards and schedule accents.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 presets.forEach{(id,label)->
                     val selected=appearancePreset==id
-                    Card(Modifier.fillMaxWidth().clickable{setAppearancePreset(id)},colors=CardDefaults.cardColors(containerColor=if(selected)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)){
+                    Card(Modifier.fillMaxWidth().clickable{setAppearancePreset(id)},colors=CardDefaults.cardColors(containerColor=if(selected)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)){
                         Row(Modifier.fillMaxWidth().padding(14.dp),verticalAlignment=Alignment.CenterVertically){
                             Box(Modifier.size(42.dp).background(when(id){"forest"->Color(0xFF176B3A);"sunset"->Color(0xFFB3261E);"ocean"->Color(0xFF006A6A);"mint"->Color(0xFF2E7D5B);"lavender"->Color(0xFF6750A4);"rose"->Color(0xFF9C4168);"mono"->Color(0xFF3F4650);else->Color(0xFF176B3A)},RoundedCornerShape(12.dp)))
                             Spacer(Modifier.width(12.dp))
@@ -1494,7 +1494,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                     val rowHeight = baseRowHeight * zoom
                     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                         Row(Modifier.height(headerHeight)) {
-                            Box(Modifier.width(56.dp).fillMaxHeight().background(Color.Transparent), contentAlignment = Alignment.Center) { Text("Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp)) }
+                            Box(Modifier.width(56.dp).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) { Text("Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall.copy(fontSize = tableFontSize.sp)) }
                             visibleDays.forEach { day ->
                                 val isToday = day.equals(today, true)
                                 Box(
@@ -1521,7 +1521,7 @@ fun ScheduleScreen(store: LocalStore, query: String, fullscreen: Boolean, setFul
                                     val groups = cell.groupBy { it.title.trim().uppercase(Locale.getDefault()) }.values.take(2)
                                     val isCurrent = day.equals(today, true) && groups.any { g -> val r = g.first(); val st = r.startTime.toMinutesOrNull() ?: -1; val en = r.endTime.toMinutesOrNull() ?: -1; currentMinutes in st until en }
                                     val isPassed = day.equals(today, true) && groups.isNotEmpty() && groups.all { g -> (g.maxOfOrNull { it.endTime.toMinutesOrNull() ?: -1 } ?: -1) <= currentMinutes }
-                                    Box(Modifier.width(dayWidth).fillMaxHeight().background(Color.Transparent).padding(2.dp)) {
+                                    Box(Modifier.width(dayWidth).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.18f)).padding(2.dp)) {
                                         if (groups.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("—", color = MaterialTheme.colorScheme.outlineVariant, style = MaterialTheme.typography.labelSmall) }
                                         else Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                             groups.forEach { group ->
@@ -1588,11 +1588,11 @@ fun SubjectDetailsDialog(all: List<Record>, done: () -> Unit) {
                         if(r.professor.isNotBlank()) Text("Professor • "+r.professor,fontWeight=FontWeight.SemiBold)
                         if(lecture.isNotEmpty()) {
                             Row(verticalAlignment=Alignment.CenterVertically) { Icon(Icons.Default.MenuBook,null,Modifier.size(18.dp)); Spacer(Modifier.width(7.dp)); Text("Lecture",fontWeight=FontWeight.Bold) }
-                            lecture.forEach { c -> Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceVariant)) { Column(Modifier.padding(9.dp),verticalArrangement=Arrangement.spacedBy(2.dp)) { Text(c.day.take(3)+" • "+c.startTime+"–"+c.endTime,fontWeight=FontWeight.SemiBold); if(c.room.isNotBlank()) Text("Room "+c.room,style=MaterialTheme.typography.bodySmall) } } }
+                            lecture.forEach { c -> Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerLow)) { Column(Modifier.padding(9.dp),verticalArrangement=Arrangement.spacedBy(2.dp)) { Text(c.day.take(3)+" • "+c.startTime+"–"+c.endTime,fontWeight=FontWeight.SemiBold); if(c.room.isNotBlank()) Text("Room "+c.room,style=MaterialTheme.typography.bodySmall) } } }
                         }
                         if(lab.isNotEmpty()) {
                             Row(verticalAlignment=Alignment.CenterVertically) { Icon(Icons.Default.Science,null,Modifier.size(18.dp)); Spacer(Modifier.width(7.dp)); Text("Lab",fontWeight=FontWeight.Bold) }
-                            lab.forEach { c -> Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceVariant)) { Column(Modifier.padding(9.dp),verticalArrangement=Arrangement.spacedBy(2.dp)) { Text(c.day.take(3)+" • "+c.startTime+"–"+c.endTime,fontWeight=FontWeight.SemiBold); if(c.room.isNotBlank()) Text("Room "+c.room,style=MaterialTheme.typography.bodySmall) } } }
+                            lab.forEach { c -> Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerLow)) { Column(Modifier.padding(9.dp),verticalArrangement=Arrangement.spacedBy(2.dp)) { Text(c.day.take(3)+" • "+c.startTime+"–"+c.endTime,fontWeight=FontWeight.SemiBold); if(c.room.isNotBlank()) Text("Room "+c.room,style=MaterialTheme.typography.bodySmall) } } }
                         }
                         if(r.extra.isNotBlank()) Text("Notes • "+r.extra,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -1694,7 +1694,7 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
                                     Box(
                                         Modifier.width(86.dp).height(52.dp)
                                             .border(2.dp, if (selectedType != null) MaterialTheme.colorScheme.primary else if (sameSubject != null) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outlineVariant)
-                                            .background(if (selectedType != null) MaterialTheme.colorScheme.primaryContainer else if (sameSubject != null) MaterialTheme.colorScheme.secondaryContainer else if (otherSubject != null) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)
+                                            .background(if (selectedType != null) MaterialTheme.colorScheme.primaryContainer else if (sameSubject != null) MaterialTheme.colorScheme.secondaryContainer else if (otherSubject != null) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surface)
                                             .clickable {
                                                 when {
                                                     otherSubject != null && cellRecords.isNotEmpty() -> Unit
@@ -1815,7 +1815,7 @@ fun EditScheduleRecordDialog(record: Record, store: LocalStore, done: () -> Unit
                                             it.startTime.toMinutesOrNull() == h * 60 &&
                                             it.title.trim().equals(subject.trim(), true)
                                     }
-                                    Box(Modifier.width(86.dp).height(52.dp).border(2.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant).background(if (selected) MaterialTheme.colorScheme.primaryContainer else if (occupied) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface).clickable { selectedSlot = key }, contentAlignment = Alignment.Center) {
+                                    Box(Modifier.width(86.dp).height(52.dp).border(2.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant).background(if (selected) MaterialTheme.colorScheme.primaryContainer else if (occupied) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surface).clickable { selectedSlot = key }, contentAlignment = Alignment.Center) {
                                         Text(if (selected) "Selected" else if (occupied) "Occupied" else "Empty", style = MaterialTheme.typography.labelSmall, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
                                     }
                                 }
@@ -2122,7 +2122,7 @@ fun ScheduleDialog(store: LocalStore, done: () -> Unit) {
                         }
                         Box(Modifier.width(86.dp).height(52.dp)
                             .border(2.dp,if(selectedType!=null)MaterialTheme.colorScheme.primary else if(cellRecords.isNotEmpty())MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.outlineVariant)
-                            .background(if(selectedType!=null)MaterialTheme.colorScheme.primaryContainer else if(cellRecords.isNotEmpty())MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)
+                            .background(if(selectedType!=null)MaterialTheme.colorScheme.primaryContainer else if(cellRecords.isNotEmpty())MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surface)
                             .clickable{if(cellRecords.isEmpty()){selectedSlots=if(selectedType==null)selectedSlots+(currentKey to classType) else if(selectedType.equals(classType,true))selectedSlots-currentKey else selectedSlots+(currentKey to classType)}},
                             contentAlignment=Alignment.Center){
                             Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
@@ -3284,7 +3284,7 @@ fun InAppFileViewerPage(file: File, done: () -> Unit) {
                     readOfficeText(file) ?: "No readable text was found in this Word document."
                 }
                 LazyColumn(
-                    Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 12.dp),
+                    Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerLow).padding(horizontal = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     contentPadding = PaddingValues(vertical = 16.dp)
                 ) {
@@ -3420,7 +3420,7 @@ fun AddRecordDialog(
                     Surface(
                         modifier=Modifier.fillMaxWidth(),
                         shape=RoundedCornerShape(12.dp),
-                        color=MaterialTheme.colorScheme.surfaceVariant
+                        color=MaterialTheme.colorScheme.surfaceContainerLow
                     ){
                         Row(
                             Modifier.fillMaxWidth().padding(horizontal=14.dp,vertical=12.dp),
