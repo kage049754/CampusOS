@@ -480,14 +480,19 @@ private fun CampusAiConfirmDialog(request: CampusAiConfirmState?, onDecision: (B
 fun CampusAiBubble(activity: Activity, store: LocalStore, onClose: () -> Unit) {
     val context = LocalContext.current
     val secure = remember { StudyAiSecureStore(context) }
+    val chatStore = remember { AiChatStore(context) }
     val provider = secure.provider()
     val model = secure.model()
     val key = secure.getApiKey(provider)
+    val bubbleFraction = store.aiBubbleSize() / 100f
+    val initialChat = remember { chatStore.list().firstOrNull() }
+    var chatId by rememberSaveable { mutableStateOf(initialChat?.id ?: "") }
+    var messages by remember { mutableStateOf(initialChat?.messages?.map { it.role to it.text }.orEmpty()) }
     var input by rememberSaveable { mutableStateOf("") }
-    var messages by remember { mutableStateOf(listOf<Pair<String,String>>()) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var actionGate by remember { mutableStateOf<CampusAiConfirmState?>(null) }
+    var showHistory by remember { mutableStateOf(false) }
 
     suspend fun gateTool(name: String): Boolean {
         if (!store.aiActionNeedsApproval(name)) return true
@@ -498,19 +503,40 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onClose: () -> Unit) {
         return allowed
     }
 
+    fun saveBubbleMessages(next: List<Pair<String,String>>) {
+        val id = chatId.ifBlank { "chat_" + System.currentTimeMillis().toString() }.also { chatId = it }
+        val now = System.currentTimeMillis()
+        val title = next.firstOrNull { it.first == "user" }?.second?.let(::safeChatTitle) ?: "New chat"
+        chatStore.save(
+            AiChatConversation(
+                id = id,
+                title = title,
+                createdAt = chatStore.list().firstOrNull { it.id == id }?.createdAt ?: now,
+                updatedAt = now,
+                messages = next.map { (role, text) -> AiChatMessage(role, text) }
+            )
+        )
+    }
+
     LaunchedEffect(Unit) {
         activity.window.decorView.systemUiVisibility = 0
+        if (chatId.isNotBlank() && messages.isEmpty()) {
+            chatStore.list().firstOrNull { it.id == chatId }?.let { saved ->
+                messages = saved.messages.map { it.role to it.text }
+            }
+        }
     }
 
     Surface(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp),
+            .fillMaxWidth(bubbleFraction.coerceIn(0.70f, 0.96f))
+            .fillMaxHeight(bubbleFraction.coerceIn(0.70f, 0.96f))
+            .padding(8.dp),
         shape = RoundedCornerShape(28.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shadowElevation = 14.dp
+        shadowElevation = 18.dp
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
                     Icon(Icons.Default.SmartToy, null, Modifier.padding(9.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
@@ -518,19 +544,48 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onClose: () -> Unit) {
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text("CampusOS AI", fontWeight = FontWeight.Bold)
-                    Text("Ask or manage your CampusOS", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Your CampusOS assistant", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                IconButton(onClick = { showHistory = !showHistory }) { Icon(Icons.Default.History, "Chat history") }
                 IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close") }
             }
-            if (messages.isEmpty()) {
+
+            if (showHistory) {
+                Card(colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerHighest)) {
+                    Column(Modifier.fillMaxWidth().heightIn(max = 260.dp).verticalScroll(rememberScrollState()).padding(8.dp)) {
+                        Text("Recent conversations", fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp))
+                        val recent = chatStore.list().take(30)
+                        if (recent.isEmpty()) {
+                            Text("No saved conversations yet.", modifier = Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            recent.forEach { chat ->
+                                ListItem(
+                                    headlineContent = { Text(chat.title, maxLines = 1) },
+                                    supportingContent = { Text(chat.messages.size.toString() + " messages", maxLines = 1) },
+                                    leadingContent = { Icon(Icons.Default.ChatBubbleOutline, null) },
+                                    modifier = Modifier.clickable {
+                                        chatId = chat.id
+                                        messages = chat.messages.map { it.role to it.text }
+                                        showHistory = false
+                                        error = ""
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (messages.isEmpty() && !showHistory) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("What's my next class?","Show my tasks","Add a task").forEach { suggestion ->
+                    listOf("What's my next class?","Show my tasks","Add a task","Check my budget").forEach { suggestion ->
                         AssistChip(onClick={input=suggestion},label={Text(suggestion)})
                     }
                 }
             }
+
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().heightIn(min=60.dp,max=280.dp),
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 verticalArrangement = Arrangement.spacedBy(7.dp)
             ) {
                 items(messages) { (role,text) ->
@@ -539,7 +594,7 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onClose: () -> Unit) {
                             shape = RoundedCornerShape(18.dp),
                             color = if(role=="user") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest
                         ) {
-                            Text(text, Modifier.padding(horizontal=12.dp,vertical=9.dp))
+                            if (role == "assistant") AiRichMessage(text) else Text(text, Modifier.padding(horizontal=12.dp,vertical=9.dp))
                         }
                     }
                 }
@@ -549,26 +604,37 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onClose: () -> Unit) {
                     }
                 }
             }
+
             Row(verticalAlignment=Alignment.Bottom) {
                 OutlinedTextField(
                     value=input,onValueChange={input=it},modifier=Modifier.weight(1f),
                     placeholder={Text("Ask CampusOS AI…")},maxLines=3,shape=RoundedCornerShape(22.dp)
                 )
                 IconButton(enabled=input.isNotBlank()&&!busy,onClick={
-                    val q=input.trim(); input=""; messages=messages+("user" to q); busy=true; error=""
+                    val q=input.trim()
+                    input=""
+                    val userMessages=messages+("user" to q)
+                    messages=userMessages
+                    saveBubbleMessages(userMessages)
+                    busy=true
+                    error=""
                     kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
                         studyAiCall(
                             provider,model,key,
-                            "You are the CampusOS AI assistant. You can read and modify the student's CampusOS schedule, tasks, and subjects using the provided tools. Use tools when the student asks to add, edit, delete, or check CampusOS data. Be concise. If a requested change is ambiguous, ask a question instead of guessing. Student request: " + q,
+                            "You are CampusOS AI, the student's assistant inside CampusOS. You can read and, when permitted, modify the student's schedule, tasks, subjects, subject Notepad notes, subject Lecture Files, student Budget/Saving Goal, and use the Calculator. Use the appropriate CampusOS tools instead of only explaining how to do the action. Be concise. If a requested change is ambiguous, ask a question instead of guessing. Student request: " + q,
                             store=store,
                             toolApproval = { name, _ -> gateTool(name) }
-                        ).onSuccess { messages=messages+("assistant" to it) }
-                         .onFailure { error=it.message ?: "AI request failed." }
+                        ).onSuccess {
+                            val next=userMessages+("assistant" to it)
+                            messages=next
+                            saveBubbleMessages(next)
+                        }.onFailure { error=it.message ?: "AI request failed." }
                         busy=false
                     }
                 }) { Icon(Icons.Default.Send,"Send") }
             }
             if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.labelSmall)
+            Text("Up to 30 recent conversations are available here.", style=MaterialTheme.typography.labelSmall, color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
     CampusAiConfirmDialog(actionGate) { allowed -> actionGate?.decision?.complete(allowed) }
