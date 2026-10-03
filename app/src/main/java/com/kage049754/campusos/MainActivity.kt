@@ -2379,6 +2379,10 @@ fun AcademicsScreen(
     openLectureFiles: (Record) -> Unit,
     openStudyMaker: () -> Unit
 ) {
+    // Always repair schedule → Subjects when Academics opens/recomposes.
+    // This also catches schedules imported by older builds or restored without
+    // the academics module selected.
+    syncSubjectsFromSchedule(store, store.get("schedule"))
     val revision = store.revision
     var selectedKey by rememberSaveable { mutableStateOf(store.toolOrder().firstOrNull() ?: "subjects") }
     var refresh by remember { mutableIntStateOf(0) }
