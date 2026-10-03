@@ -1191,7 +1191,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit, editRequest: Int = 0) {
 
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(top = 10.dp, bottom = 18.dp)) {
         item {
-            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                 Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (photo != null) Image(photo.asImageBitmap(), "Profile photo", Modifier.size(62.dp), contentScale = ContentScale.Crop)
                     else Box(Modifier.size(62.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50)), contentAlignment = Alignment.Center) {
