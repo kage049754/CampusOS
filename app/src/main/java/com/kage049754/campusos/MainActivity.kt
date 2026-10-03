@@ -883,7 +883,7 @@ fun CampusOSApp(activity: Activity) {
             }
             if (showAbout) AboutDialog { showAbout = false }
             if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
-            if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }, appearancePreset, { appearancePreset = it; store.setAppearancePreset(it); applyLauncherIcon(activity, it) }) { showHomeColors = false }
+            if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }, appearancePreset, { appearancePreset = it; store.setAppearancePreset(it) }) { showHomeColors = false }
             if (showProfile) ProfileDialog(store) { showProfile = false }
             if (showScheduleSettings) ScheduleSettingsDialog(store) { showScheduleSettings = false }
             if (showScheduleManager) ScheduleManagerDialog(store) { showScheduleManager = false }
