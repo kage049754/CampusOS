@@ -192,6 +192,7 @@ class AiChatStore(private val context: Context) {
     }
 }
 
+@Composable
 private fun aiChatBackgroundColor(background: String): androidx.compose.ui.graphics.Color = when (background) {
     "primary" -> MaterialTheme.colorScheme.primaryContainer
     "secondary" -> MaterialTheme.colorScheme.secondaryContainer
