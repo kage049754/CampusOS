@@ -1,8 +1,8 @@
 <resources>
     <string name="app_name">CampusOS</string>
     <string name="widget_description_suggestions">Personalized study suggestions from your classes and tasks.</string>
-    <string name="widget_description_next_class">Shows your current or next class and remaining time.</string>
-    <string name="widget_description_tasks">Shows your upcoming and due-today tasks.</string>
-    <string name="widget_description_schedule">Shows today's class schedule.</string>
-    <string name="widget_description_overview">Quick overview of your classes and tasks for today.</string>
+    <string name="widget_description_next_class">Shows the current or next class and remaining time.</string>
+    <string name="widget_description_tasks">Shows upcoming and due today tasks.</string>
+    <string name="widget_description_schedule">Shows the class schedule for today.</string>
+    <string name="widget_description_overview">Quick overview of classes and tasks for today.</string>
 </resources>
