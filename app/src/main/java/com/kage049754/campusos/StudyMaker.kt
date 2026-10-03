@@ -728,7 +728,8 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (Stri
                             "You are CampusOS AI, the student's assistant inside CampusOS. You can read and, when permitted, modify the student's schedule, tasks, subjects, subject Notepad notes, subject Lecture Files, student Budget/Saving Goal, and use the Calculator. Use the appropriate CampusOS tools instead of only explaining how to do the action. Be concise. If a requested change is ambiguous, ask a question instead of guessing. Student request: " + q,
                             store=store,
                             toolApproval = { name, _ ->
-                                val allowed = gateTool(name)\n                                if (allowed && !name.startsWith("get_") && name != "calculate") lastChangedTool = name
+                                val allowed = gateTool(name)
+                                if (allowed && !name.startsWith("get_") && name != "calculate") lastChangedTool = name
                                 allowed\n                            }
                         ).onSuccess {
                             val next=userMessages+("assistant" to it)
