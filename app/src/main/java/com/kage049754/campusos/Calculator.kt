@@ -57,7 +57,7 @@ private fun basicCalc(s: String): String = runCatching {
 }
 
 @Composable private fun CalcResult(lines: List<String>) {
-    Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer)) {
+    Card(campusTileModifier(Modifier.fillMaxWidth()),colors=CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer)) {
         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
             lines.forEach { Text(it,color=MaterialTheme.colorScheme.onPrimaryContainer,fontWeight=FontWeight.SemiBold) }
         }
