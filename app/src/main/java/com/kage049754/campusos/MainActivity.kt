@@ -677,6 +677,7 @@ fun CampusOSApp(activity: Activity) {
     var subjectPageMode by rememberSaveable { mutableIntStateOf(0) }
     var subjectOpenedFile by rememberSaveable { mutableStateOf("") }
     var aiBubbleOpen by rememberSaveable { mutableStateOf(false) }
+    var academicsToolRequest by remember { mutableStateOf<String?>(null) }
 
     BackHandler {
         when {
@@ -905,7 +906,7 @@ fun CampusOSApp(activity: Activity) {
                         }
                         Screen.SCHEDULE -> ScheduleScreen(store, search, scheduleFullscreen, { scheduleFullscreen = it }, { showScheduleDetails = true }) { search = "" }
                         Screen.TASKS -> TasksScreen(store, search, { search = "" }, { id -> subjectPageId = id; subjectPageMode = 0 })
-                        Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 }, { screenName = Screen.STUDY_MAKER.name })
+                        Screen.ACADEMICS -> AcademicsScreen(store, search, { search = "" }, { subjectPageId = it.id; subjectPageMode = 0 }, { subjectPageId = it.id; subjectPageMode = 1 }, { screenName = Screen.STUDY_MAKER.name }, academicsToolRequest, { academicsToolRequest = null })
                         Screen.FILES -> FilesScreen()
                         Screen.SETTINGS -> SettingsScreen(
                             store, theme,
@@ -938,8 +939,8 @@ fun CampusOSApp(activity: Activity) {
                                     when {
                                         toolName.contains("schedule") -> screenName = Screen.SCHEDULE.name
                                         toolName.contains("task") -> screenName = Screen.TASKS.name
-                                        toolName.contains("subject") || toolName.contains("note") || toolName.contains("lecture_file") -> screenName = Screen.ACADEMICS.name
-                                        toolName.contains("budget") || toolName.contains("saving") -> screenName = Screen.ACADEMICS.name
+                                        toolName.contains("subject") || toolName.contains("note") || toolName.contains("lecture_file") -> { screenName = Screen.ACADEMICS.name; academicsToolRequest = "subjects" }
+                                        toolName.contains("budget") || toolName.contains("saving") -> { screenName = Screen.ACADEMICS.name; academicsToolRequest = "budget" }
                                     }
                                     aiBubbleOpen = false
                                 }
@@ -2659,7 +2660,9 @@ fun AcademicsScreen(
     clear: () -> Unit,
     openNotepad: (Record) -> Unit,
     openLectureFiles: (Record) -> Unit,
-    openStudyMaker: () -> Unit
+    openStudyMaker: () -> Unit,
+    requestedTool: String? = null,
+    onToolRequestConsumed: () -> Unit = {}
 ) {
     // Repair schedule → Subjects outside composition. This catches classes added
     // by Schedule, imported/restored schedules, and schedules created by older builds.
@@ -2668,6 +2671,12 @@ fun AcademicsScreen(
         syncSubjectsFromSchedule(store, store.get("schedule"))
     }
     var selectedKey by rememberSaveable { mutableStateOf(store.toolOrder().firstOrNull() ?: "subjects") }
+    LaunchedEffect(requestedTool) {
+        requestedTool?.takeIf { it in store.toolOrder() }?.let {
+            selectedKey = it
+            onToolRequestConsumed()
+        }
+    }
     var refresh by remember { mutableIntStateOf(0) }
     var showAddSubject by remember { mutableStateOf(false) }
     val keys = remember(store.revision, refresh) { store.toolOrder() }
