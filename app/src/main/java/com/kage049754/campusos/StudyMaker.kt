@@ -78,22 +78,26 @@ private class AiChatStore(private val context: Context) {
         if (q.isBlank()) return all
         return all.filter { chat ->
             chat.title.lowercase(Locale.getDefault()).contains(q) ||
-                chat.messages.any { it.text.lowercase(Locale.getDefault()).contains(q) || it.attachmentName.lowercase(Locale.getDefault()).contains(q) }
+                chat.messages.any { msg ->
+                    msg.text.lowercase(Locale.getDefault()).contains(q) ||
+                        msg.attachmentName.lowercase(Locale.getDefault()).contains(q)
+                }
         }
     }
 
     fun relevant(query: String, excludeId: String = ""): String {
         val tokens = query.lowercase(Locale.getDefault()).split(Regex("[^a-z0-9]+")).filter { it.length >= 3 }.distinct()
         if (tokens.isEmpty()) return ""
-        return list().asSequence()
-            .filter { it.id != excludeId }
-            .map { chat -> chat to tokens.sumOf { token -> chat.messages.sumOf { m -> if (m.text.lowercase(Locale.getDefault()).contains(token)) 1 else 0 } } }
-            .filter { it.second > 0 }
-            .sortedByDescending { it.second }
-            .take(3)
-            .joinToString("\n\n") { (chat, _) ->
-                "CHAT: " + chat.title + "\n" + chat.messages.takeLast(6).joinToString("\n") { (if (it.role == "user") "STUDENT" else "ASSISTANT") + ": " + it.text.take(1200) }
+        val ranked = list().asSequence().filter { chat -> chat.id != excludeId }.map { chat ->
+            val score = tokens.sumOf { token -> chat.messages.sumOf { msg -> if (msg.text.lowercase(Locale.getDefault()).contains(token)) 1 else 0 } }
+            Pair(chat, score)
+        }.filter { pair -> pair.second > 0 }.sortedByDescending { pair -> pair.second }.take(3).toList()
+        return ranked.joinToString("\n\n") { pair ->
+            val chat = pair.first
+            "CHAT: " + chat.title + "\n" + chat.messages.takeLast(6).joinToString("\n") { msg ->
+                (if (msg.role == "user") "STUDENT" else "ASSISTANT") + ": " + msg.text.take(1200)
             }
+        }
     }
 
     fun list(): List<AiChatConversation> {
@@ -189,7 +193,7 @@ private fun chatAttachmentPrompt(attachments: List<AiChatAttachment>): String = 
 @Composable private fun AiRichMessage(text: String) {
     val clipboard=LocalContext.current.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
     val fence="`"+"`"+"`"; val regex=Regex("(?s)"+fence+"([\\w+-]*)\\n?(.*?)"+fence); val matches=regex.findAll(text).toList()
-    if(matches.isEmpty()){ SelectionContainer { Text(text,style=MaterialTheme.typography.bodyLarge) }; return }
+    if(matches.isEmpty()){ Text(text,style=MaterialTheme.typography.bodyLarge); return }
     var cursor=0
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
         matches.forEach { match ->
@@ -600,7 +604,12 @@ private fun CampusAiConfirmDialog(request: CampusAiConfirmState?, onDecision: (B
         title = { Text("CampusOS AI wants to act") },
         text = { Text("Allow CampusOS AI to " + campusAiActionDescription(request.toolName) + "? You can change this in Settings.") },
         confirmButton = { Button(onClick = { onDecision(true) }) { Text("Allow") } },
-        dismissButton = { TextButton(onClick = { onDecision(false) }) { Text("Defun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (String) -> Unit = {}, onClose: () -> Unit) {
+        dismissButton = { TextButton(onClick = { onDecision(false) }) { Text("Deny") } }
+    )
+}
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (String) -> Unit = {}, onClose: () -> Unit) {
     val context = LocalContext.current
     val secure = remember { StudyAiSecureStore(context) }
     val chatStore = remember { AiChatStore(context) }
@@ -619,7 +628,6 @@ private fun CampusAiConfirmDialog(request: CampusAiConfirmState?, onDecision: (B
     var showHistory by remember { mutableStateOf(false) }
     var historyQuery by rememberSaveable { mutableStateOf("") }
     var attachmentMenu by remember { mutableStateOf(false) }
-    var showCopyMenu by remember { mutableStateOf(false) }
 
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) pendingAttachment = attachmentForFile(context, chatId.ifBlank { "new" }, uri, true)
@@ -638,39 +646,27 @@ private fun CampusAiConfirmDialog(request: CampusAiConfirmState?, onDecision: (B
     }
 
     fun saveMessages(next: List<AiChatMessage>) {
-        val id = chatId.ifBlank { "chat_" + System.currentTimeMillis().toString() }.also { chatId = it }
+        val id = chatId.ifBlank { "chat_" + System.currentTimeMillis() }.also { chatId = it }
         val now = System.currentTimeMillis()
-        val title = next.firstOrNull { it.role == "user" }?.text?.let(::safeChatTitle)
-            ?.ifBlank { next.firstOrNull { it.attachmentName.isNotBlank() }?.attachmentName ?: "New chat" }
-            ?: "New chat"
         val existing = chatStore.list().firstOrNull { it.id == id }
+        val title = next.firstOrNull { it.role == "user" }?.text?.let(::safeChatTitle)
+            ?.ifBlank { next.firstOrNull { it.attachmentName.isNotBlank() }?.attachmentName ?: "New chat" } ?: "New chat"
         chatStore.save(AiChatConversation(id, title, existing?.createdAt ?: now, now, next))
     }
 
     fun copyChat() {
-        val text = messages.joinToString("\n\n") { m ->
-            (if (m.role == "user") "You" else "CampusOS AI") + ": " +
-                m.text + if (m.attachmentName.isNotBlank()) "\n[Attachment: " + m.attachmentName + "]" else ""
+        val text = messages.joinToString("\n\n") { message ->
+            (if (message.role == "user") "You" else "CampusOS AI") + ": " + message.text +
+                if (message.attachmentName.isNotBlank()) "\n[Attachment: " + message.attachmentName + "]" else ""
         }
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         clipboard.setPrimaryClip(android.content.ClipData.newPlainText("CampusOS AI chat", text))
     }
 
-    LaunchedEffect(Unit) {
-        activity.window.decorView.systemUiVisibility = 0
-        if (chatId.isNotBlank() && messages.isEmpty()) {
-            chatStore.list().firstOrNull { it.id == chatId }?.let { messages = it.messages }
-        }
-    }
-
     Surface(
-        modifier = Modifier
-            .fillMaxWidth(bubbleFraction.coerceIn(0.70f, 0.96f))
-            .fillMaxHeight(bubbleFraction.coerceIn(0.70f, 0.96f))
-            .padding(8.dp),
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shadowElevation = 18.dp
+        modifier = Modifier.fillMaxWidth(bubbleFraction.coerceIn(0.70f, 0.96f))
+            .fillMaxHeight(bubbleFraction.coerceIn(0.70f, 0.96f)).padding(8.dp),
+        shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, shadowElevation = 18.dp
     ) {
         Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -680,19 +676,12 @@ private fun CampusAiConfirmDialog(request: CampusAiConfirmState?, onDecision: (B
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text("CampusOS AI", fontWeight = FontWeight.Bold)
-                    Text("Chat with your CampusOS assistant", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Your CampusOS assistant", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = { showHistory = !showHistory }) { Icon(Icons.Default.History, "Chat history") }
-                Box {
-                    IconButton(onClick = { showCopyMenu = true }, enabled = messages.isNotEmpty()) { Icon(Icons.Default.ContentCopy, "Copy chat") }
-                    DropdownMenu(expanded = showCopyMenu, onDismissRequest = { showCopyMenu = false }) {
-                        DropdownMenuItem(text = { Text("Copy whole chat") }, onClick = { copyChat(); showCopyMenu = false })
-                        DropdownMenuItem(text = { Text("New chat") }, onClick = { chatId = ""; messages = emptyList(); input = ""; pendingAttachment = null; showCopyMenu = false })
-                    }
-                }
+                IconButton(onClick = { copyChat() }, enabled = messages.isNotEmpty()) { Icon(Icons.Default.ContentCopy, "Copy chat") }
                 IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close") }
             }
-
             if (showHistory) {
                 Card(colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerHighest)) {
                     Column(Modifier.fillMaxWidth().heightIn(max = 300.dp).padding(8.dp)) {
@@ -700,32 +689,21 @@ private fun CampusAiConfirmDialog(request: CampusAiConfirmState?, onDecision: (B
                             Text("Chat history", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                             IconButton(onClick = { showHistory = false }) { Icon(Icons.Default.Close, "Close history") }
                         }
-                        OutlinedTextField(
-                            historyQuery, { historyQuery = it },
-                            Modifier.fillMaxWidth(), singleLine = true,
-                            placeholder = { Text("Search previous chats") },
-                            leadingIcon = { Icon(Icons.Default.Search, null) }
-                        )
-                        val recent = chatStore.search(historyQuery).take(30)
-                        LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
-                            items(recent) { saved ->
+                        OutlinedTextField(historyQuery, { historyQuery = it }, Modifier.fillMaxWidth(), singleLine = true,
+                            placeholder = { Text("Search previous chats") }, leadingIcon = { Icon(Icons.Default.Search, null) })
+                        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 220.dp)) {
+                            items(chatStore.search(historyQuery)) { saved ->
                                 ListItem(
                                     headlineContent = { Text(saved.title, maxLines = 1) },
-                                    supportingContent = { Text(saved.messages.size.toString() + " messages", maxLines = 1) },
+                                    supportingContent = { Text(saved.messages.size.toString() + " messages") },
                                     leadingContent = { Icon(Icons.Default.ChatBubbleOutline, null) },
-                                    modifier = Modifier.clickable {
-                                        chatId = saved.id
-                                        messages = saved.messages
-                                        showHistory = false
-                                        error = ""
-                                    }
+                                    modifier = Modifier.clickable { chatId = saved.id; messages = saved.messages; showHistory = false; error = "" }
                                 )
                             }
                         }
                     }
                 }
             }
-
             if (messages.isEmpty() && !showHistory) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("What's my next class?", "Show my tasks", "Add a task", "Explain my notes").forEach {
@@ -733,27 +711,16 @@ private fun CampusAiConfirmDialog(request: CampusAiConfirmState?, onDecision: (B
                     }
                 }
             }
-
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                verticalArrangement = Arrangement.spacedBy(7.dp)
-            ) {
+            LazyColumn(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 items(messages) { message ->
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = if (message.role == "user") Arrangement.End else Arrangement.Start
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(18.dp),
-                            color = if (message.role == "user") MaterialTheme.colorScheme.primaryContainer
-                            else MaterialTheme.colorScheme.surfaceContainerHighest
-                        ) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.role == "user") Arrangement.End else Arrangement.Start) {
+                        Surface(shape = RoundedCornerShape(18.dp),
+                            color = if (message.role == "user") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest) {
                             Column(Modifier.padding(4.dp)) {
                                 if (message.attachmentName.isNotBlank()) {
-                                    Row(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Icon(if (message.attachmentMime.startsWith("image/")) Icons.Default.Image else Icons.Default.AttachFile, null, Modifier.size(17.dp))
-                                        Spacer(Modifier.width(5.dp))
-                                        Text(message.attachmentName, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                        Spacer(Modifier.width(5.dp)); Text(message.attachmentName, style = MaterialTheme.typography.labelMedium, maxLines = 1)
                                     }
                                 }
                                 if (message.text.isNotBlank()) {
@@ -765,97 +732,65 @@ private fun CampusAiConfirmDialog(request: CampusAiConfirmState?, onDecision: (B
                                 TextButton(onClick = {
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                     clipboard.setPrimaryClip(android.content.ClipData.newPlainText("message", message.text))
-                                }) {
-                                    Icon(Icons.Default.ContentCopy, null, Modifier.size(15.dp))
-                                    Spacer(Modifier.width(3.dp))
-                                    Text("Copy")
-                                }
+                                }) { Icon(Icons.Default.ContentCopy, null, Modifier.size(15.dp)); Spacer(Modifier.width(3.dp)); Text("Copy") }
                             }
                         }
                     }
                 }
                 if (busy) item {
-                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest) {
-                        Text("Thinking…", Modifier.padding(horizontal = 12.dp, vertical = 9.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Thinking…") }
                 }
             }
-
             if (pendingAttachment != null) {
                 Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(12.dp)) {
                     Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(if (pendingAttachment!!.mimeType.startsWith("image/")) Icons.Default.Image else Icons.Default.AttachFile, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(pendingAttachment!!.name, Modifier.weight(1f), maxLines = 1)
+                        Spacer(Modifier.width(8.dp)); Text(pendingAttachment!!.name, Modifier.weight(1f), maxLines = 1)
                         IconButton(onClick = { pendingAttachment = null }) { Icon(Icons.Default.Close, "Remove attachment") }
                     }
                 }
             }
-
             Row(verticalAlignment = Alignment.Bottom) {
                 Box {
                     IconButton(onClick = { attachmentMenu = true }, enabled = !busy) { Icon(Icons.Default.AttachFile, "Attach") }
                     DropdownMenu(expanded = attachmentMenu, onDismissRequest = { attachmentMenu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Photo or screenshot") },
-                            onClick = { attachmentMenu = false; imagePicker.launch("image/*") },
-                            leadingIcon = { Icon(Icons.Default.Image, null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("File, PDF or document") },
-                            onClick = {
-                                attachmentMenu = false
-                                filePicker.launch(arrayOf("application/pdf", "text/*", "application/msword",
-                                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "*/*"))
-                            },
-                            leadingIcon = { Icon(Icons.Default.InsertDriveFile, null) }
-                        )
+                        DropdownMenuItem(text = { Text("Photo or screenshot") }, onClick = { attachmentMenu = false; imagePicker.launch("image/*") }, leadingIcon = { Icon(Icons.Default.Image, null) })
+                        DropdownMenuItem(text = { Text("File, PDF or document") }, onClick = {
+                            attachmentMenu = false
+                            filePicker.launch(arrayOf("application/pdf", "text/*", "application/msword",
+                                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "*/*"))
+                        }, leadingIcon = { Icon(Icons.Default.InsertDriveFile, null) })
                     }
                 }
-                OutlinedTextField(
-                    input, { input = it }, Modifier.weight(1f),
-                    placeholder = { Text("Message CampusOS AI…") }, maxLines = 4,
-                    shape = RoundedCornerShape(22.dp)
-                )
+                OutlinedTextField(input, { input = it }, Modifier.weight(1f), placeholder = { Text("Message CampusOS AI…") }, maxLines = 4, shape = RoundedCornerShape(22.dp))
                 IconButton(enabled = (input.isNotBlank() || pendingAttachment != null) && !busy, onClick = {
-                    val q = input.trim()
-                    val attachment = pendingAttachment
-                    input = ""
-                    pendingAttachment = null
+                    val q = input.trim(); val attachment = pendingAttachment
+                    input = ""; pendingAttachment = null
                     if (q.isNotBlank() || attachment != null) {
                         if (chatId.isBlank()) chatId = "chat_" + System.currentTimeMillis()
-                        val userMessage = AiChatMessage("user", q, attachment?.name.orEmpty(), attachment?.mimeType.orEmpty(), attachment?.localPath.orEmpty())
                         val previous = messages
-                        messages = previous + userMessage
-                        saveMessages(messages)
-                        busy = true
-                        error = ""
+                        messages = previous + AiChatMessage("user", q, attachment?.name.orEmpty(), attachment?.mimeType.orEmpty(), attachment?.localPath.orEmpty())
+                        saveMessages(messages); busy = true; error = ""
                         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
                             val recall = chatStore.relevant(q, chatId)
                             val prompt = aiChatPrompt(previous, q.ifBlank { "Please analyze the attached file." }) +
                                 (if (attachment != null) "\n\n" + chatAttachmentPrompt(listOf(attachment)) else "") +
                                 (if (recall.isNotBlank()) "\n\nRELEVANT PAST CHAT RECALL:\n" + recall else "")
-                            studyAiCall(
-                                provider, model, key, prompt, listOfNotNull(attachment), store,
-                                { name, _ -> gateTool(name) }
-                            ).onSuccess {
-                                messages = messages + AiChatMessage("assistant", it)
-                                saveMessages(messages)
-                            }.onFailure { error = it.message ?: "AI request failed." }
+                            studyAiCall(provider, model, key, prompt, listOfNotNull(attachment), store) { name, _ -> gateTool(name) }
+                                .onSuccess { messages = messages + AiChatMessage("assistant", it); saveMessages(messages) }
+                                .onFailure { error = it.message ?: "AI request failed." }
                             busy = false
                         }
                     }
                 }) { Icon(Icons.Default.Send, "Send") }
             }
             if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
-            Text("Local chat history • attachments stay on this device.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Chat history, recall and attachments stay on this device.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
     CampusAiConfirmDialog(actionGate) { allowed -> actionGate?.decision?.complete(allowed) }
-}
-actionGate) { allowed -> actionGate?.decision?.complete(allowed) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
