@@ -805,14 +805,7 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (Stri
         chatStore.save(AiChatConversation(id, title, existing?.createdAt ?: now, now, next))
     }
 
-    fun copyChat() {
-        val text = messages.joinToString("\n\n") { message ->
-            (if (message.role == "user") "You" else "CampusOS AI") + ": " + message.text +
-                if (message.attachmentName.isNotBlank()) "\n[Attachment: " + message.attachmentName + "]" else ""
-        }
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("CampusOS AI chat", text))
-    }
+
 
     // The expanded floating AI uses the exact available app display area.
     // The floating AI icon remains on top and is the toggle used to collapse it.
@@ -832,9 +825,7 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (Stri
                     Text("CampusOS AI", fontWeight = FontWeight.Bold)
                     Text("Your CampusOS assistant", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton(onClick = { showHistory = !showHistory }) { Icon(Icons.Default.History, "Chat history") }
-                IconButton(onClick = { copyChat() }, enabled = messages.isNotEmpty()) { Icon(Icons.Default.ContentCopy, "Copy chat") }
-            }
+                IconButton(onClick = { showHistory = !showHistory }) { Icon(Icons.Default.History, "Chat history") }            }
             if (showHistory) {
                 Card(colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerHighest)) {
                     Column(Modifier.fillMaxWidth().heightIn(max = 300.dp).padding(8.dp)) {
@@ -881,13 +872,7 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (Stri
                                         if (message.role == "assistant") AiRichMessage(message.text)
                                         else Text(message.text, Modifier.padding(horizontal = 8.dp, vertical = 5.dp))
                                     }
-                                }
-                                TextButton(onClick = {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("CampusOS AI message", message.text))
-                                    android.widget.Toast.makeText(context, "AI text copied", android.widget.Toast.LENGTH_SHORT).show()
-                                }, enabled = message.text.isNotBlank()) { Icon(Icons.Default.ContentCopy, null, Modifier.size(15.dp)); Spacer(Modifier.width(3.dp)); Text("Copy AI text") }
-                            }
+                                }                            }
                         }
                     }
                 }
@@ -1057,9 +1042,7 @@ fun CampusAiScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
             }, fontWeight = FontWeight.Bold) },
             navigationIcon = { IconButton({ if (page == "chat") done() else page = "chat" }) { Icon(Icons.Default.ArrowBack, "Back") } },
             actions = {
-                if (page == "chat") {
-                    IconButton({ copyCurrentChat() }, enabled = chat.isNotEmpty()) { Icon(Icons.Default.ContentCopy, "Copy whole chat") }
-                    IconButton({ page = "settings"; error = "" }) { Icon(Icons.Default.Settings, "AI settings") }
+                if (page == "chat") {                    IconButton({ page = "settings"; error = "" }) { Icon(Icons.Default.Settings, "AI settings") }
                 }
             }
         )
@@ -1156,16 +1139,7 @@ fun CampusAiScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                                             if(message.role=="assistant") AiRichMessage(message.text)
                                             else Text(message.text,style=MaterialTheme.typography.bodyLarge)
                                         }
-                                    }
-                                    TextButton(onClick={
-                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("message", message.text))
-                                    }) {
-                                        Icon(Icons.Default.ContentCopy,null,Modifier.size(15.dp))
-                                        Spacer(Modifier.width(3.dp))
-                                        Text("Copy")
-                                    }
-                                }
+                                    }                                }
                             }
                         }
                     }
