@@ -1920,48 +1920,61 @@ private fun deleteScheduleAndSync(store: LocalStore, classRecord: Record) {
     }
 }
 
+private fun normalizeScheduleSubjectCode(raw: String): String {
+    return raw.trim()
+        .replace(Regex("\\s+"), " ")
+        .replace(Regex("\\s*[-–—]\\s*(lecture|lec|laboratory|lab)\\s*$", RegexOption.IGNORE_CASE), "")
+        .trim()
+}
+
 private fun syncSubjectsFromSchedule(store: LocalStore, schedule: List<Record>) {
-    val validClasses = schedule.filter { it.title.trim().isNotBlank() }
+    // Schedule is the source of truth. Every distinct subject code in the schedule
+    // must have exactly one corresponding Subjects record.
+    val validClasses = schedule.mapNotNull { record ->
+        val code = normalizeScheduleSubjectCode(record.title)
+        if (code.isBlank()) null else record to code
+    }
     if (validClasses.isEmpty()) return
 
     val existingSubjects = store.get("subjects").toMutableList()
     var changed = false
 
-    // Group by subject code so a subject with both Lecture and Lab is represented by
-    // exactly one Academics subject. Prefer non-empty metadata and never replace a
-    // user-created subject id, notes, favorites, or files.
-    validClasses.groupBy { it.title.trim().lowercase(Locale.getDefault()) }
+    validClasses.groupBy { it.second.lowercase(Locale.getDefault()) }
         .values
-        .forEach { classes ->
-            val first = classes.first()
-            val code = first.title.trim()
-            val existing = existingSubjects.firstOrNull { it.title.trim().equals(code, true) }
-            val bestName = classes.firstOrNull { it.subtitle.isNotBlank() }?.subtitle ?: ""
-            val bestProfessor = classes.firstOrNull { it.professor.isNotBlank() }?.professor ?: ""
-            val bestRoom = classes.firstOrNull { it.room.isNotBlank() }?.room ?: ""
-            val bestType = classes.firstOrNull { it.classType.isNotBlank() }?.classType ?: "Lecture"
+        .forEach { entries ->
+            val classes = entries.map { it.first }
+            val code = entries.first().second
+            val existingIndex = existingSubjects.indexOfFirst {
+                normalizeScheduleSubjectCode(it.title).equals(code, true)
+            }
+            val bestName = classes.firstOrNull { it.subtitle.isNotBlank() }?.subtitle?.trim().orEmpty()
+            val bestProfessor = classes.firstOrNull { it.professor.isNotBlank() }?.professor?.trim().orEmpty()
+            val bestRoom = classes.firstOrNull { it.room.isNotBlank() }?.room?.trim().orEmpty()
+            val bestExtra = classes.firstOrNull { it.extra.isNotBlank() }?.extra?.trim().orEmpty()
+            val bestType = classes.firstOrNull { it.classType.isNotBlank() }?.classType?.trim().orEmpty().ifBlank { "Lecture" }
 
-            if (existing == null) {
+            if (existingIndex < 0) {
                 existingSubjects += Record(
                     title = code,
                     subtitle = bestName,
-                    extra = first.extra,
+                    extra = bestExtra,
                     professor = bestProfessor,
                     room = bestRoom,
                     classType = bestType
                 )
                 changed = true
             } else {
+                val existing = existingSubjects[existingIndex]
                 val updated = existing.copy(
+                    title = code,
                     subtitle = if (bestName.isNotBlank()) bestName else existing.subtitle,
-                    extra = if (first.extra.isNotBlank()) first.extra else existing.extra,
+                    extra = if (bestExtra.isNotBlank()) bestExtra else existing.extra,
                     professor = if (bestProfessor.isNotBlank()) bestProfessor else existing.professor,
                     room = if (bestRoom.isNotBlank()) bestRoom else existing.room,
                     classType = bestType
                 )
                 if (updated != existing) {
-                    val index = existingSubjects.indexOfFirst { it.id == existing.id }
-                    if (index >= 0) existingSubjects[index] = updated
+                    existingSubjects[existingIndex] = updated
                     changed = true
                 }
             }
@@ -1969,7 +1982,6 @@ private fun syncSubjectsFromSchedule(store: LocalStore, schedule: List<Record>) 
 
     if (changed) store.put("subjects", existingSubjects)
 }
-
 private fun syncSubjectFromClass(store: LocalStore, classRecord: Record) {
     syncSubjectsFromSchedule(store, listOf(classRecord))
 }
@@ -2379,11 +2391,12 @@ fun AcademicsScreen(
     openLectureFiles: (Record) -> Unit,
     openStudyMaker: () -> Unit
 ) {
-    // Always repair schedule → Subjects when Academics opens/recomposes.
-    // This also catches schedules imported by older builds or restored without
-    // the academics module selected.
-    syncSubjectsFromSchedule(store, store.get("schedule"))
+    // Repair schedule → Subjects outside composition. This catches classes added
+    // by Schedule, imported/restored schedules, and schedules created by older builds.
     val revision = store.revision
+    LaunchedEffect(revision) {
+        syncSubjectsFromSchedule(store, store.get("schedule"))
+    }
     var selectedKey by rememberSaveable { mutableStateOf(store.toolOrder().firstOrNull() ?: "subjects") }
     var refresh by remember { mutableIntStateOf(0) }
     var showAddSubject by remember { mutableStateOf(false) }
