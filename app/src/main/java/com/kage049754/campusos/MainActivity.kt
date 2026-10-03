@@ -928,7 +928,7 @@ fun CampusOSApp(activity: Activity) {
                                         toolName.contains("schedule") -> screenName = Screen.SCHEDULE.name
                                         toolName.contains("task") -> screenName = Screen.TASKS.name
                                         toolName.contains("subject") || toolName.contains("note") || toolName.contains("lecture_file") -> screenName = Screen.ACADEMICS.name
-                                        toolName.contains("budget") || toolName.contains("saving") -> screenName = Screen.TOOLS.name
+                                        toolName.contains("budget") || toolName.contains("saving") -> screenName = Screen.ACADEMICS.name
                                     }
                                     aiBubbleOpen = false
                                 }
