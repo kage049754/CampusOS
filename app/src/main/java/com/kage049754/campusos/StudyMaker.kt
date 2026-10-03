@@ -280,18 +280,57 @@ private fun campusAiToolDefinitions(): JSONArray = JSONArray().apply {
     val subjectProps = JSONObject().apply {
         put("id",JSONObject().put("type","integer")); put("title",JSONObject().put("type","string")); put("subtitle",JSONObject().put("type","string")); put("room",JSONObject().put("type","string")); put("professor",JSONObject().put("type","string"))
     }
+    val noteProps = JSONObject().apply {
+        put("subjectId",JSONObject().put("type","integer")); put("subject",JSONObject().put("type","string")); put("noteId",JSONObject().put("type","integer"))
+        put("title",JSONObject().put("type","string")); put("body",JSONObject().put("type","string"))
+    }
+    val fileProps = JSONObject().apply {
+        put("subjectId",JSONObject().put("type","integer")); put("subject",JSONObject().put("type","string")); put("fileName",JSONObject().put("type","string"))
+        put("newName",JSONObject().put("type","string")); put("content",JSONObject().put("type","string"))
+    }
+    val budgetProps = JSONObject().apply {
+        put("id",JSONObject().put("type","integer")); put("type",JSONObject().put("type","string")); put("amount",JSONObject().put("type","number"))
+        put("category",JSONObject().put("type","string")); put("note",JSONObject().put("type","string")); put("date",JSONObject().put("type","string")); put("target",JSONObject().put("type","string"))
+    }
+    tool("get_dashboard","Read a compact overview of the student's schedule, tasks, subjects, budget, and saving goal.",JSONObject())
     tool("get_schedule","Read the student's current schedule.",JSONObject())
     tool("get_tasks","Read the student's current tasks.",JSONObject())
     tool("add_schedule","Add one class to the student's schedule.",scheduleProps,listOf("title","day","startTime","endTime"))
     tool("edit_schedule","Edit an existing schedule entry. Prefer id; otherwise title/day.",scheduleProps)
     tool("delete_schedule","Delete a schedule entry. Prefer id; otherwise title/day.",scheduleProps)
     tool("add_task","Add a task.",taskProps,listOf("title")); tool("edit_task","Edit an existing task. Prefer id; otherwise title.",taskProps); tool("delete_task","Delete a task. Prefer id; otherwise title.",taskProps)
-    tool("add_subject","Add a subject.",subjectProps,listOf("title")); tool("edit_subject","Edit an existing subject. Prefer id; otherwise title.",subjectProps); tool("delete_subject","Delete a subject. Prefer id; otherwise title.",subjectProps)
+    tool("add_subject","Add a subject.",subjectProps,listOf("title")); tool("edit_subject","Edit an existing subject. Prefer id; otherwise title.",subjectProps); tool("delete_subject","Delete an existing subject. Prefer id; otherwise title.",subjectProps)
+    tool("get_notes","Read notes from a subject. Use subjectId or subject name.",noteProps)
+    tool("add_note","Create a note in a subject's Notepad.",noteProps,listOf("title","body"))
+    tool("edit_note","Edit an existing subject note. Use noteId when possible.",noteProps)
+    tool("delete_note","Delete a subject note.",noteProps)
+    tool("get_lecture_files","Read lecture files stored for a subject.",fileProps)
+    tool("add_lecture_file","Create a text lecture file inside a subject's Lecture Files.",fileProps,listOf("fileName","content"))
+    tool("rename_lecture_file","Rename a lecture file.",fileProps,listOf("fileName","newName"))
+    tool("delete_lecture_file","Delete a lecture file.",fileProps,listOf("fileName"))
+    tool("get_budget","Read allowance, expenses, saving goal, and recent budget entries.",JSONObject())
+    tool("add_budget","Add a budget income or expense entry.",budgetProps,listOf("type","amount"))
+    tool("delete_budget","Delete a budget entry by id.",budgetProps,listOf("id"))
+    tool("set_budget_plan","Set the budget period and allowance.",JSONObject().apply { put("period",JSONObject().put("type","string")); put("amount",JSONObject().put("type","number")) },listOf("period","amount"))
+    tool("set_saving_goal","Set the saving goal name and target amount.",JSONObject().apply { put("name",JSONObject().put("type","string")); put("amount",JSONObject().put("type","number")) },listOf("name","amount"))
+    tool("add_saving","Add money to the current saving goal.",JSONObject().put("amount",JSONObject().put("type","number")),listOf("amount"))
+    tool("calculate","Use the CampusOS calculator for a basic arithmetic expression.",JSONObject().put("expression",JSONObject().put("type","string")),listOf("expression"))
 }
 
 private fun campusAiRecordJson(r: Record) = JSONObject().apply {
     put("id",r.id); put("title",r.title); put("subtitle",r.subtitle); put("extra",r.extra); put("done",r.done); put("day",r.day); put("startTime",r.startTime); put("endTime",r.endTime); put("room",r.room); put("professor",r.professor); put("classType",r.classType); put("dueDate",r.dueDate); put("dueTime",r.dueTime)
 }
+
+private fun campusAiFindSubject(store: LocalStore, args: JSONObject): Record? {
+    val id=args.optLong("subjectId",0L)
+    val name=args.optString("subject").trim()
+    return if(id>0) store.get("subjects").firstOrNull { it.id==id }
+    else if(name.isNotBlank()) store.get("subjects").firstOrNull { it.title.equals(name,true) || it.subtitle.equals(name,true) }
+    else null
+}
+
+private fun campusAiSafeFileName(raw: String, fallback: String = "Lecture.txt"): String =
+    raw.replace(Regex("[^A-Za-z0-9._-]+"), "_").trim('_').take(100).ifBlank { fallback }
 
 private fun executeCampusAiTool(store: LocalStore, name: String, args: JSONObject): String {
     fun find(list: List<Record>): Record? {
@@ -307,6 +346,13 @@ private fun executeCampusAiTool(store: LocalStore, name: String, args: JSONObjec
         dueTime=args.optString("dueTime").takeIf{it.isNotBlank()} ?: old.dueTime, done=if(args.has("done")) args.optBoolean("done") else old.done
     )
     return when(name) {
+        "get_dashboard" -> JSONObject().apply {
+            put("schedule",JSONArray(store.get("schedule").map(::campusAiRecordJson)))
+            put("tasks",JSONArray(store.get("tasks").map(::campusAiRecordJson)))
+            put("subjects",JSONArray(store.get("subjects").map(::campusAiRecordJson)))
+            put("budget",JSONArray(store.budgetEntries().map { e -> JSONObject().apply { put("id",e.id); put("type",e.type); put("amount",e.amount); put("category",e.category); put("note",e.note); put("date",e.date); put("target",e.target) } }))
+            put("budgetPeriod",store.budgetPeriod()); put("allowance",store.budgetAllowance()); put("savingGoal",store.budgetTargetName()); put("savingTarget",store.budgetTargetAmount()); put("savingSaved",store.budgetTargetSaved())
+        }.toString()
         "get_schedule" -> JSONArray(store.get("schedule").map(::campusAiRecordJson)).toString()
         "get_tasks" -> JSONArray(store.get("tasks").map(::campusAiRecordJson)).toString()
         "add_schedule" -> { val r=Record(title=args.optString("title"),subtitle=args.optString("subtitle"),day=args.optString("day"),startTime=args.optString("startTime"),endTime=args.optString("endTime"),room=args.optString("room"),classType=args.optString("classType","Lecture")); store.put("schedule",store.get("schedule")+r); "Added schedule entry "+r.title+" on "+r.day+" "+r.startTime+"-"+r.endTime+"." }
@@ -318,6 +364,21 @@ private fun executeCampusAiTool(store: LocalStore, name: String, args: JSONObjec
         "add_subject" -> { val r=Record(title=args.optString("title"),subtitle=args.optString("subtitle"),room=args.optString("room"),professor=args.optString("professor")); store.put("subjects",store.get("subjects")+r); "Added subject "+r.title+"." }
         "edit_subject" -> { val list=store.get("subjects").toMutableList(); val old=find(list) ?: return "No matching subject was found."; val index=list.indexOfFirst{it.id==old.id}; list[index]=updated(old); store.put("subjects",list); "Updated subject "+list[index].title+"." }
         "delete_subject" -> { val list=store.get("subjects"); val old=find(list) ?: return "No matching subject was found."; store.put("subjects",list.filterNot{it.id==old.id}); "Deleted subject "+old.title+"." }
+        "get_notes" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; JSONArray(store.subjectNotes(subject.id).map { n -> JSONObject().apply { put("id",n.id); put("title",n.title); put("body",n.body); put("favorite",n.favorite); put("updatedAt",n.updatedAt) } }).toString() }
+        "add_note" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; val notes=store.subjectNotes(subject.id).toMutableList(); notes += SubjectNote(System.currentTimeMillis(),args.optString("title"),args.optString("body"),System.currentTimeMillis(),false,notes.size.toLong()); store.saveSubjectNotes(subject.id,notes); "Added note to "+subject.title+"." }
+        "edit_note" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; val notes=store.subjectNotes(subject.id).toMutableList(); val id=args.optLong("noteId",0L); val index=notes.indexOfFirst{it.id==id || (id==0L && it.title.equals(args.optString("title"),true))}; if(index<0) return "No matching note was found."; val old=notes[index]; notes[index]=old.copy(title=args.optString("title").takeIf{it.isNotBlank()}?:old.title,body=args.optString("body").takeIf{it.isNotBlank()}?:old.body,updatedAt=System.currentTimeMillis()); store.saveSubjectNotes(subject.id,notes); "Updated note "+notes[index].title+"." }
+        "delete_note" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; val notes=store.subjectNotes(subject.id); val id=args.optLong("noteId",0L); val old=notes.firstOrNull{it.id==id || (id==0L && it.title.equals(args.optString("title"),true))} ?: return "No matching note was found."; store.saveSubjectNotes(subject.id,notes.filterNot{it.id==old.id}); "Deleted note "+old.title+"." }
+        "get_lecture_files" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; val files=subjectStudyFolder(store.appContext,subject.id).listFiles()?.filter{it.isFile}.orEmpty(); JSONArray(files.map{JSONObject().apply{put("name",it.name);put("size",it.length());put("modifiedAt",it.lastModified())}}).toString() }
+        "add_lecture_file" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; val folder=subjectStudyFolder(store.appContext,subject.id).apply{mkdirs()}; val file=File(folder,campusAiSafeFileName(args.optString("fileName"))); file.writeText(args.optString("content")); "Created lecture file "+file.name+" for "+subject.title+"." }
+        "rename_lecture_file" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; val folder=subjectStudyFolder(store.appContext,subject.id); val old=File(folder,campusAiSafeFileName(args.optString("fileName"))); val target=File(folder,campusAiSafeFileName(args.optString("newName"))); if(!old.exists()) return "Lecture file not found."; if(target.exists()) return "A lecture file with that name already exists."; if(!old.renameTo(target)) return "Could not rename lecture file."; "Renamed lecture file to "+target.name+"." }
+        "delete_lecture_file" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; val file=File(subjectStudyFolder(store.appContext,subject.id),campusAiSafeFileName(args.optString("fileName"))); if(!file.exists()) return "Lecture file not found."; file.delete(); "Deleted lecture file "+file.name+"." }
+        "get_budget" -> JSONObject().apply { put("period",store.budgetPeriod());put("allowance",store.budgetAllowance());put("savingGoal",store.budgetTargetName());put("savingTarget",store.budgetTargetAmount());put("savingSaved",store.budgetTargetSaved());put("entries",JSONArray(store.budgetEntries().map{e->JSONObject().apply{put("id",e.id);put("type",e.type);put("amount",e.amount);put("category",e.category);put("note",e.note);put("date",e.date);put("target",e.target)}})) }.toString()
+        "add_budget" -> { val type=args.optString("type","expense"); val e=BudgetEntry(type=type,amount=args.optDouble("amount",0.0),category=args.optString("category"),note=args.optString("note"),date=args.optString("date"),target=args.optString("target")); store.addBudgetEntry(e); "Added "+type+" of "+e.amount+" to budget." }
+        "delete_budget" -> { val id=args.optLong("id",0L); if(id<=0) return "A budget entry id is required."; store.deleteBudgetEntry(id); "Deleted budget entry "+id+"." }
+        "set_budget_plan" -> { store.setBudgetPlan(args.optString("period","Weekly"),args.optDouble("amount",0.0)); "Budget plan updated." }
+        "set_saving_goal" -> { store.setBudgetTarget(args.optString("name"),args.optDouble("amount",0.0)); "Saving goal updated." }
+        "add_saving" -> { val amount=args.optDouble("amount",0.0); store.addBudgetTargetSaved(amount); "Added "+amount+" to the saving goal." }
+        "calculate" -> { val expression=args.optString("expression"); "Calculator result: "+basicCalc(expression) }
         else -> "Unknown CampusOS action."
     }
 }
