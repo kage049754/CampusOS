@@ -123,14 +123,16 @@ private fun applyLauncherIcon(context: Context, preset: String) {
     val pm = context.packageManager
     val pkg = context.packageName
     val main = android.content.ComponentName(context, MainActivity::class.java)
-    val forest = android.content.ComponentName(pkg, "com.kage049754.campusos.ForestLauncher")
-    val sunset = android.content.ComponentName(pkg, "com.kage049754.campusos.SunsetLauncher")
+    val presets = listOf("forest","ocean","mint","sky","lavender","plum","rose","coral","sunset","amber","teal","mono")
     runCatching {
         pm.setComponentEnabledSetting(main, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED, android.content.pm.PackageManager.DONT_KILL_APP)
-        pm.setComponentEnabledSetting(forest, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED, android.content.pm.PackageManager.DONT_KILL_APP)
-        pm.setComponentEnabledSetting(sunset, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED, android.content.pm.PackageManager.DONT_KILL_APP)
-        val target = if (preset == "sunset") sunset else forest
-        pm.setComponentEnabledSetting(target, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED, android.content.pm.PackageManager.DONT_KILL_APP)
+        presets.forEach { name ->
+            val componentName = name.replaceFirstChar { it.uppercase() } + "Launcher"
+            pm.setComponentEnabledSetting(android.content.ComponentName(pkg, componentName), android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED, android.content.pm.PackageManager.DONT_KILL_APP)
+        }
+        val selected = if (preset in presets) preset else "forest"
+        val selectedName = selected.replaceFirstChar { it.uppercase() } + "Launcher"
+        pm.setComponentEnabledSetting(android.content.ComponentName(pkg, selectedName), android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED, android.content.pm.PackageManager.DONT_KILL_APP)
     }
 }
 
@@ -368,7 +370,7 @@ class LocalStore(context: Context) {
     // but ignore old system/dark values from previous versions.
     fun theme() = "light"
     fun appearancePreset() = prefs.getString("appearance_preset", "forest") ?: "forest"
-    fun setAppearancePreset(v: String) { prefs.edit().putString("appearance_preset", v).apply(); revision++ }
+    fun setAppearancePreset(v: String) { prefs.edit().putString("appearance_preset", v).apply(); applyLauncherIcon(appContext, v); revision++ }
     fun homeLayoutOrder(): List<String> = (prefs.getString("home_layout_order", "") ?: "").split(",").filter { it.isNotBlank() }
     fun setHomeLayoutOrder(order: List<String>) { prefs.edit().putString("home_layout_order", order.joinToString(",")).apply(); revision++ }
     fun homeHiddenTiles(): Set<String> = (prefs.getString("home_hidden_tiles", "") ?: "").split(",").filter { it.isNotBlank() }.toSet()
@@ -647,6 +649,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent { CampusOSApp(this) }
+        applyLauncherIcon(this, getSharedPreferences("campusos", Context.MODE_PRIVATE).getString("appearance_preset", "forest") ?: "forest")
         CampusReminders.reschedule(this)
         CampusWidgets.updateAll(this)
     }
