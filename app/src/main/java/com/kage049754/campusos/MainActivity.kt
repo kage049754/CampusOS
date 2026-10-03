@@ -348,6 +348,7 @@ class LocalStore(context: Context) {
         CampusWidgets.updateAll(appContext)
     }
     fun get(key: String) = read(key)
+    fun subjectFilesFolder(subjectId: Long): File = subjectStudyFolder(appContext, subjectId)
     fun put(key: String, list: List<Record>) = save(key, list)
     fun delete(key: String, id: Long) = save(key, read(key).filterNot { it.id == id })
     fun pin() = prefs.getString("pin", "") ?: ""
