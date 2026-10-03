@@ -88,10 +88,12 @@ private class StudyAiSecureStore(context: Context) {
     }
     fun setApiKey(value: String) {
         if (value.isBlank()) { prefs.edit().remove("api_key").apply(); return }
-        val iv = ByteArray(12).also { java.security.SecureRandom().nextBytes(it) }
+        // Android Keystore requires a fresh provider-generated IV for encryption.
+        // Supplying our own IV causes "IV not permitted" on affected devices.
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
-            init(Cipher.ENCRYPT_MODE, key(), GCMParameterSpec(128, iv))
+            init(Cipher.ENCRYPT_MODE, key())
         }
+        val iv = cipher.iv
         prefs.edit().putString("api_key", Base64.encodeToString(iv + cipher.doFinal(value.toByteArray(StandardCharsets.UTF_8)), Base64.NO_WRAP)).apply()
     }
     fun provider() = allowedStudyProvider(prefs.getString("provider", "Gemini") ?: "Gemini")
