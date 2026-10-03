@@ -335,7 +335,7 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                     }
                 }}
                 item { Button({ sources = studySources(context, store); page = "sources"; error = "" }, Modifier.fillMaxWidth()) { Icon(Icons.Default.FolderOpen, null); Spacer(Modifier.width(8.dp)); Text("Select Notes & Lecture Files") } }
-                item { OutlinedButton({ if (hasSources()) { page = "chat"; error = "" } }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Chat, null); Spacer(Modifier.width(8.dp)); Text("Study AI Chat") } }
+                item { OutlinedButton({ page = "chat"; error = ""; chat = emptyList() }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Chat, null); Spacer(Modifier.width(8.dp)); Text("AI Chat — Ask Anything") } }
                 item { OutlinedButton({ page = "packs" }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Bookmark, null); Spacer(Modifier.width(8.dp)); Text("My Study Packs (" + packs.size + ")") } }
                 item { Text("Custom Study Maker", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
                 item { Card(Modifier.fillMaxWidth().clickable { if (hasSources()) page = "builder" }) {
@@ -418,7 +418,20 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                         val q = chatInput.trim(); chatInput = ""; chat = chat + ("You" to q)
                     }) { Icon(Icons.Default.Send, "Send") }
                 }
-                if (!busy && chat.lastOrNull()?.first == "You") LaunchedEffect(chat.size) { generate("Chat", chat.last().second) }
+                if (!busy && chat.lastOrNull()?.first == "You") LaunchedEffect(chat.size) {
+                    val q = chat.last().second
+                    if (q.isNotBlank()) {
+                        busy = true
+                        error = ""
+                        val prompt = "You are CampusOS AI, a helpful general-purpose assistant. Answer the student's question directly and clearly. You may discuss any topic. Do not require notes or lecture files. If the user asks about their local study materials, explain that they need to select materials in Study Maker for source-grounded answers.\n\nSTUDENT QUESTION:\n" + q
+                        studyAiCall(provider, model, apiKey, prompt).onSuccess {
+                            chat = chat + ("Study AI" to it)
+                        }.onFailure {
+                            error = it.message ?: "AI request failed."
+                        }
+                        busy = false
+                    }
+                }
                 if (error.isNotBlank()) Text(error, Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.error)
             }
             "packs" -> LazyColumn(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
