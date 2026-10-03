@@ -651,6 +651,7 @@ fun CampusOSApp(activity: Activity) {
     var showHomeAdd by remember { mutableStateOf(false) }
     var showHomeColors by remember { mutableStateOf(false) }
     var showHomeSettings by remember { mutableStateOf(false) }
+    var showAiSettings by remember { mutableStateOf(false) }
     var showAppLock by remember { mutableStateOf(false) }
     var showBackupRecovery by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
@@ -939,8 +940,9 @@ fun CampusOSApp(activity: Activity) {
                 }
             }
                         if (showHomeSettings) {
-                HomeSettingsDialog(store, campusSession?.role ?: "student", onManagement = { screenName = Screen.ADMIN.name; showHomeSettings = false }, onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, onLockNow = { locked = true }, done = { showHomeSettings = false }, openAppLock = { showHomeSettings = false; showAppLock = true }, openBackupRecovery = { showHomeSettings = false; showBackupRecovery = true }, openAbout = { showHomeSettings = false; showAbout = true })
+                HomeSettingsDialog(store, campusSession?.role ?: "student", onManagement = { screenName = Screen.ADMIN.name; showHomeSettings = false }, onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, onAiSettings = { showAiSettings = true; showHomeSettings = false }, onLockNow = { locked = true }, done = { showHomeSettings = false }, openAppLock = { showHomeSettings = false; showAppLock = true }, openBackupRecovery = { showHomeSettings = false; showBackupRecovery = true }, openAbout = { showHomeSettings = false; showAbout = true })
             }
+            if (showAiSettings) CampusAiSettingsDialog(store, { showAiSettings = false }, { showAiSettings = false; screenName = Screen.STUDY_MAKER.name })
             if (showAbout) AboutDialog { showAbout = false }
             if (showHomeAdd) ScheduleDialog(store) { showHomeAdd = false }
             if (showHomeColors) HomeAppearanceDialog(store, theme, { theme = it; store.setTheme(it) }, appearancePreset, { appearancePreset = it; store.setAppearancePreset(it) }) { showHomeColors = false }
@@ -974,6 +976,7 @@ fun HomeSettingsDialog(
     onManagement: () -> Unit,
     onModule:(String)->Unit,
     onAppearance:()->Unit,
+    onAiSettings:()->Unit,
     onLockNow:()->Unit,
     done:()->Unit,
     openAppLock:()->Unit,
@@ -999,6 +1002,7 @@ fun HomeSettingsDialog(
                 SettingsRow(Icons.Default.CalendarMonth, "Schedule", "Class days, timetable and class editing") { onModule("Class Schedule") }
                 SettingsRow(Icons.Default.EventNote, "Notes", "Calendar, notes and reminders") { onModule("Notes") }
                 SettingsRow(Icons.Default.Build, "Tools", "Subjects, Calculator, Budget and study tools") { onModule("Tools") }
+                SettingsRow(Icons.Default.AutoAwesome, "CampusOS AI", "AI chat, floating button, memory, history and permissions") { onAiSettings() }
                 SettingsGroupTitle("App")
                 SettingsRow(Icons.Default.Notifications, "Notifications", "Next-class and deadline reminders") { onModule("Notifications") }
                 SettingsRow(Icons.Default.Palette, "Appearance", "Light, dark and system theme") { onAppearance() }
@@ -1032,6 +1036,115 @@ private fun SettingsRow(icon: androidx.compose.ui.graphics.vector.ImageVector, t
             Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+@Composable
+fun CampusAiSettingsDialog(store: LocalStore, done: () -> Unit, openAi: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val chatStore = remember { AiChatStore(context) }
+    var enabled by remember { mutableStateOf(store.aiFloatingEnabled()) }
+    var opacity by remember { mutableFloatStateOf(store.aiFloatingOpacity()) }
+    var buttonSize by remember { mutableFloatStateOf(store.aiFloatingSize()) }
+    var bubbleSize by remember { mutableFloatStateOf(store.aiBubbleSize()) }
+    var permission by remember { mutableStateOf(store.aiActionPermission()) }
+    var openChangedModule by remember { mutableStateOf(store.aiOpenChangedModule()) }
+    var historyEnabled by remember { mutableStateOf(chatStore.historyEnabled()) }
+    var recallEnabled by remember { mutableStateOf(chatStore.recallEnabled()) }
+    var historyLimit by remember { mutableIntStateOf(chatStore.historyLimit()) }
+    var historyDays by remember { mutableIntStateOf(chatStore.historyDays()) }
+    var confirmClear by remember { mutableStateOf(false) }
+    fun limitLabel(v: Int) = if (v == 0) "Unlimited" else "${v} conversations"
+    fun daysLabel(v: Int) = if (v == 0) "Forever" else if (v == 1) "1 day" else "${v} days"
+
+    Dialog(onDismissRequest = done) {
+        Surface(Modifier.fillMaxWidth().padding(10.dp), shape = MaterialTheme.shapes.extraLarge, tonalElevation = 8.dp, color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 760.dp).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("CampusOS AI Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Text("Control the floating AI, chat memory, history and what AI is allowed to do.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    IconButton(onClick = done) { Icon(Icons.Default.Close, "Close") }
+                }
+
+                SettingsGroupTitle("Floating AI")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Floating AI button", fontWeight = FontWeight.SemiBold)
+                        Text("Show the AI button over CampusOS screens.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(enabled, { enabled = it; store.setAiFloatingEnabled(it) })
+                }
+                Text("Icon transparency: ${(opacity * 100).roundToInt()}%", style = MaterialTheme.typography.labelLarge)
+                Slider(opacity, { opacity = it; store.setAiFloatingOpacity(it) }, valueRange = 0.30f..1f, steps = 13)
+                Text("Icon size: ${buttonSize.roundToInt()} dp", style = MaterialTheme.typography.labelLarge)
+                Slider(buttonSize, { buttonSize = it; store.setAiFloatingSize(it) }, valueRange = 44f..76f, steps = 7)
+                Text("Floating chat size: ${bubbleSize.roundToInt()}% of screen width", style = MaterialTheme.typography.labelLarge)
+                Slider(bubbleSize, { bubbleSize = it; store.setAiBubbleSize(it) }, valueRange = 70f..96f, steps = 12)
+                OutlinedButton({ store.resetAiFloatingPosition() }, Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text("Reset floating button position")
+                }
+                OutlinedButton(openAi, Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.SmartToy, null); Spacer(Modifier.width(8.dp)); Text("Open CampusOS AI & Provider/Model Settings")
+                }
+
+                SettingsGroupTitle("AI permissions")
+                Text("Choose how much control CampusOS AI has over supported local CampusOS data.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                listOf("ask" to "Always ask", "read" to "Allow read actions", "all" to "Allow all actions").forEach { (value, label) ->
+                    FilterChip(selected = permission == value, onClick = { permission = value; store.setAiActionPermission(value) }, label = { Text(label) }, modifier = Modifier.fillMaxWidth())
+                }
+                Text(when (permission) {
+                    "all" -> "AI can read and change supported schedule, tasks, subjects, notes, lecture files, budget and calculator data without an approval prompt."
+                    "read" -> "AI can read supported CampusOS data and calculate. Any change still requires approval."
+                    else -> "AI asks before every supported CampusOS data action."
+                }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Open changed module", fontWeight = FontWeight.SemiBold)
+                        Text("After AI changes data, open the related Schedule, Notes, or Tools page automatically.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(openChangedModule, { openChangedModule = it; store.setAiOpenChangedModule(it) })
+                }
+
+                SettingsGroupTitle("Chat memory & history")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Save chat history", fontWeight = FontWeight.SemiBold)
+                        Text("Keep conversations locally on this phone so they can be searched and reopened.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(historyEnabled, { historyEnabled = it; chatStore.setHistoryEnabled(it) })
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Use past chats for recall", fontWeight = FontWeight.SemiBold)
+                        Text("Use relevant saved chat snippets for a new question. The whole history is not sent.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(recallEnabled, { recallEnabled = it; chatStore.setRecallEnabled(it) })
+                }
+                Text("Maximum saved conversations: ${limitLabel(historyLimit)}", style = MaterialTheme.typography.labelLarge)
+                Slider(value = historyLimit.toFloat(), onValueChange = { historyLimit = (it / 10f).roundToInt() * 10; chatStore.setHistoryLimit(historyLimit) }, valueRange = 0f..200f, steps = 19)
+                Text("0 = unlimited", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Delete chats older than: ${daysLabel(historyDays)}", style = MaterialTheme.typography.labelLarge)
+                Slider(value = historyDays.toFloat(), onValueChange = { historyDays = (it / 7f).roundToInt() * 7; chatStore.setHistoryDays(historyDays) }, valueRange = 0f..3650f, steps = 20)
+                Text("0 = keep forever. History and attachments stay in local app storage.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton({ confirmClear = true }, Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.DeleteSweep, null); Spacer(Modifier.width(8.dp)); Text("Clear all AI chat history")
+                }
+
+                SettingsGroupTitle("Privacy & safety")
+                Text("CampusOS AI can only use the CampusOS tools exposed to it. API keys remain in the app's secure AI settings and are not part of chat history.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("For the safest setup, use “Always ask” so changes require your approval.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(onClick = done, Modifier.align(Alignment.End)) { Text("Done") }
+            }
+        }
+    }
+    if (confirmClear) AlertDialog(
+        onDismissRequest = { confirmClear = false },
+        title = { Text("Clear AI chat history?") },
+        text = { Text("This permanently removes saved CampusOS AI conversations and their local attachments from this phone.") },
+        confirmButton = { Button({ chatStore.deleteAll(); confirmClear = false }) { Text("Clear") } },
+        dismissButton = { TextButton({ confirmClear = false }) { Text("Cancel") } }
+    )
 }
 
 @Composable
