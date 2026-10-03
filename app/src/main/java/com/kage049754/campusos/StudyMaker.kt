@@ -730,7 +730,8 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (Stri
                             toolApproval = { name, _ ->
                                 val allowed = gateTool(name)
                                 if (allowed && !name.startsWith("get_") && name != "calculate") lastChangedTool = name
-                                allowed\n                            }
+                                allowed
+                            }
                         ).onSuccess {
                             val next=userMessages+("assistant" to it)
                             messages=next
