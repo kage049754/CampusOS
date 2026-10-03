@@ -2217,7 +2217,7 @@ private fun normalizeScheduleSubjectCode(raw: String): String {
 
 private fun syncSubjectsFromSchedule(store: LocalStore, schedule: List<Record>) {
     // Schedule is the source of truth. Every distinct subject code in the schedule
-    // must have exactly one corresponding Subjects record.
+    // must have exactly one corresponding Subjects record and one local starter note.
     val validClasses = schedule.mapNotNull { record ->
         val code = normalizeScheduleSubjectCode(record.title)
         if (code.isBlank()) null else record to code
@@ -2225,6 +2225,7 @@ private fun syncSubjectsFromSchedule(store: LocalStore, schedule: List<Record>) 
     if (validClasses.isEmpty()) return
 
     val existingSubjects = store.get("subjects").toMutableList()
+    val subjectIdsNeedingStarterNote = mutableListOf<Pair<Long, String>>()
     var changed = false
 
     validClasses.groupBy { it.second.lowercase(Locale.getDefault()) }
@@ -2235,13 +2236,13 @@ private fun syncSubjectsFromSchedule(store: LocalStore, schedule: List<Record>) 
             val bestName = classes.firstOrNull { it.subtitle.isNotBlank() }?.subtitle?.trim().orEmpty()
             val bestProfessor = classes.firstOrNull { it.professor.isNotBlank() }?.professor?.trim().orEmpty()
             val bestRoom = classes.firstOrNull { it.room.isNotBlank() }?.room?.trim().orEmpty()
+
             var existingIndex = existingSubjects.indexOfFirst {
                 normalizeScheduleSubjectCode(it.title).equals(code, true)
             }
 
             // If the code was edited in Schedule, reuse the old auto-synced subject
-            // when its subject name/room still identifies the same class. This keeps
-            // Tools > Subjects synchronized instead of leaving the old code behind.
+            // when its subject name/room still identifies the same class.
             if (existingIndex < 0) {
                 val nameKey = bestName
                 val roomKey = bestRoom
@@ -2254,11 +2255,14 @@ private fun syncSubjectsFromSchedule(store: LocalStore, schedule: List<Record>) 
                     titleLooksLikeCode && (sameName || sameRoom)
                 }
             }
-            val bestExtra = classes.firstOrNull { it.extra.isNotBlank() }?.extra?.trim().orEmpty()
-            val bestType = classes.firstOrNull { it.classType.isNotBlank() }?.classType?.trim().orEmpty().ifBlank { "Lecture" }
 
+            val bestExtra = classes.firstOrNull { it.extra.isNotBlank() }?.extra?.trim().orEmpty()
+            val bestType = classes.firstOrNull { it.classType.isNotBlank() }?.classType?.trim().orEmpty()
+                .ifBlank { "Lecture" }
+
+            val subject: Record
             if (existingIndex < 0) {
-                existingSubjects += Record(
+                subject = Record(
                     title = code,
                     subtitle = bestName,
                     extra = bestExtra,
@@ -2266,6 +2270,7 @@ private fun syncSubjectsFromSchedule(store: LocalStore, schedule: List<Record>) 
                     room = bestRoom,
                     classType = bestType
                 )
+                existingSubjects += subject
                 changed = true
             } else {
                 val existing = existingSubjects[existingIndex]
@@ -2277,14 +2282,38 @@ private fun syncSubjectsFromSchedule(store: LocalStore, schedule: List<Record>) 
                     room = if (bestRoom.isNotBlank()) bestRoom else existing.room,
                     classType = bestType
                 )
+                subject = updated
                 if (updated != existing) {
                     existingSubjects[existingIndex] = updated
                     changed = true
                 }
             }
+
+            val noteTitle = listOf(subject.title.trim(), subject.subtitle.trim())
+                .filter { it.isNotBlank() }
+                .joinToString(" - ")
+            subjectIdsNeedingStarterNote += subject.id to noteTitle
         }
 
     if (changed) store.put("subjects", existingSubjects)
+
+    // Automatically give every schedule-created subject one local Notepad entry.
+    // Never duplicate it if the user already has any notes for that subject.
+    subjectIdsNeedingStarterNote.distinctBy { it.first }.forEach { (subjectId, noteTitle) ->
+        if (subjectId <= 0L || store.subjectNotes(subjectId).isNotEmpty()) return@forEach
+        val now = System.currentTimeMillis()
+        store.saveSubjectNotes(
+            subjectId,
+            listOf(
+                SubjectNote(
+                    id = now,
+                    title = noteTitle.ifBlank { "Untitled note" },
+                    body = "",
+                    updatedAt = now
+                )
+            )
+        )
+    }
 }
 private fun syncSubjectFromClass(store: LocalStore, classRecord: Record) {
     syncSubjectsFromSchedule(store, listOf(classRecord))
