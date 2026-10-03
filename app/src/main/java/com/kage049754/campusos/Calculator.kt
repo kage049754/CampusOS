@@ -53,7 +53,7 @@ private fun basicCalc(s: String): String = runCatching {
 }.getOrElse { "Error" }
 
 @Composable private fun CalcInput(label:String,value:String,onChange:(String)->Unit) {
-    OutlinedTextField(value,onChange,Modifier.fillMaxWidth(),label={Text(label)},singleLine=true)
+    TextField(value,onChange,Modifier.fillMaxWidth(),label={Text(label)},singleLine=true,colors=TextFieldDefaults.colors(focusedContainerColor=MaterialTheme.colorScheme.surfaceVariant,unfocusedContainerColor=MaterialTheme.colorScheme.surfaceVariant))
 }
 
 @Composable private fun CalcResult(lines: List<String>) {
@@ -72,7 +72,7 @@ private fun basicCalc(s: String): String = runCatching {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment=Alignment.CenterVertically) {
             Text("Calculator",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f))
-            OutlinedButton({menu=true}) { Text(mode.title); Icon(Icons.Default.ArrowDropDown,null) }
+            Button({menu=true}) { Text(mode.title); Icon(Icons.Default.ArrowDropDown,null) }
         }
         if(mode==CalcMode.STANDARD || mode==CalcMode.SCIENTIFIC) {
             CalcResult(listOf(if(expression.isBlank()) "0" else expression,answer))
