@@ -279,6 +279,9 @@ class LocalStore(context: Context) {
             put("day", r.day); put("startTime", r.startTime); put("endTime", r.endTime); put("room", r.room); put("professor", r.professor); put("color", r.color); put("classType", r.classType); put("subjectId", r.subjectId); put("dueDate", r.dueDate); put("dueTime", r.dueTime)
         }) }
         prefs.edit().putString(key, a.toString()).apply()
+        // Keep Academics synchronized for both manual schedule entry and imported schedules.
+        // Never delete subject records here: their notes, favorites, and lecture files must survive.
+        if (key == "schedule") list.forEach { syncSubjectFromClass(this, it) }
         revision++
         CampusReminders.reschedule(appContext)
         CampusWidgets.updateAll(appContext)
@@ -2336,6 +2339,7 @@ fun AcademicsScreen(
     val revision = store.revision
     var selectedKey by rememberSaveable { mutableStateOf(store.toolOrder().firstOrNull() ?: "subjects") }
     var refresh by remember { mutableIntStateOf(0) }
+    var showAddSubject by remember { mutableStateOf(false) }
     val keys = remember(store.revision, refresh) { store.toolOrder() }
     val labels = keys.map { when (it) { "study_maker" -> "Study Maker"; "subjects" -> "Subjects"; "calculator" -> "Calculator"; else -> "Budget" } }
     val tab = keys.indexOf(selectedKey).coerceAtLeast(0)
@@ -2348,7 +2352,10 @@ fun AcademicsScreen(
 
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-            Text("Tools", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Tools", modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                if (keys.getOrNull(tab) == "subjects") IconButton(onClick = { showAddSubject = true }) { Icon(Icons.Default.Add, "Add subject or category") }
+            }
             Text(
                 when (keys.getOrNull(tab)) {
                     "study_maker" -> "Create reviewers, quizzes, flashcards, and study chats from your local materials"
@@ -2535,11 +2542,11 @@ fun AcademicsScreen(
         }
     }
 
-    if (query == "__ADD__" && tab == 0) AddRecordDialog(
-        labels[tab],
-        keys[tab],
+    if ((query == "__ADD__" && tab == 0) || showAddSubject) AddRecordDialog(
+        "Subject / Category",
+        "subjects",
         store,
-        done = { clear(); refresh++ }
+        done = { showAddSubject = false; if (query == "__ADD__") clear(); refresh++ }
     )
 }
 
