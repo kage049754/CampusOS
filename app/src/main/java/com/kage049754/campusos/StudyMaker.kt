@@ -387,6 +387,33 @@ private fun studyPrompt(action: String, context: String): String {
 
 private data class CampusAiConfirmState(val toolName: String, val decision: CompletableDeferred<Boolean>)
 
+private fun campusAiActionDescription(toolName: String): String = when (toolName) {
+    "get_schedule" -> "read your class schedule"
+    "get_tasks" -> "read your tasks"
+    "add_schedule" -> "add a class to your schedule"
+    "edit_schedule" -> "change a class in your schedule"
+    "delete_schedule" -> "delete a class from your schedule"
+    "add_task" -> "add a task"
+    "edit_task" -> "change a task"
+    "delete_task" -> "delete a task"
+    "add_subject" -> "add a subject"
+    "edit_subject" -> "change a subject"
+    "delete_subject" -> "delete a subject"
+    else -> "perform a CampusOS data action"
+}
+
+@Composable
+private fun CampusAiConfirmDialog(request: CampusAiConfirmState?, onDecision: (Boolean) -> Unit) {
+    request ?: return
+    AlertDialog(
+        onDismissRequest = { onDecision(false) },
+        icon = { Icon(Icons.Default.Security, contentDescription = null) },
+        title = { Text("CampusOS AI wants to act") },
+        text = { Text("Allow CampusOS AI to " + campusAiActionDescription(request.toolName) + "? You can change this in Settings.") },
+        confirmButton = { Button(onClick = { onDecision(true) }) { Text("Allow") } },
+        dismissButton = { TextButton(onClick = { onDecision(false) }) { Text("Deny") } }
+    )
+}
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CampusAiBubble(activity: Activity, store: LocalStore, onClose: () -> Unit) {
