@@ -872,7 +872,7 @@ fun CampusOSApp(activity: Activity) {
                 ) { targetScreen ->
                     when (Screen.valueOf(targetScreen)) {
                         Screen.HOME -> HomeScreen(store, { screenName = it.name }, homeEditRequest)
-                        Screen.CAMPUS_AI -> StudyMakerScreen(activity, store) { screenName = Screen.ACADEMICS.name }
+                        Screen.CAMPUS_AI -> CampusAiScreen(activity, store) { screenName = Screen.ACADEMICS.name }
                         Screen.CHAT -> {
                             if (campusSession == null) {
                                 NativeLoginScreen { session ->
