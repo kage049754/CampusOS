@@ -1223,7 +1223,7 @@ fun HomeScreen(store: LocalStore, go: (Screen) -> Unit, editRequest: Int = 0) {
             Spacer(Modifier.height(6.dp))
             if (pendingTasks.isEmpty()) EmptyCard("No pending tasks. You're all caught up.")
             else pendingTasks.forEach { task ->
-                Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium, colors = campusTileColors()) {
                     Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.EventNote, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(10.dp))
@@ -2779,7 +2779,7 @@ fun BudgetScreen(store: LocalStore) {
             }
         }
         item {
-            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium, colors = campusTileColors()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Quick insight", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
@@ -2795,7 +2795,7 @@ fun BudgetScreen(store: LocalStore) {
             }
         }
         item {
-            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium, colors = campusTileColors()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -2812,7 +2812,7 @@ fun BudgetScreen(store: LocalStore) {
             }
         }
         if (entries.isNotEmpty()) item {
-            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium) {
+            Card(campusTileModifier(Modifier.fillMaxWidth()), shape = MaterialTheme.shapes.medium, colors = campusTileColors()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Recent", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     entries.take(5).forEach { entry ->
