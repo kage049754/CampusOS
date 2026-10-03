@@ -119,23 +119,55 @@ private fun applyLauncherIcon(context: Context, preset: String) {
 }
 
 private fun campusColorScheme(preset: String, dark: Boolean): ColorScheme {
+    // Keep surfaces theme-aware too. Previously many cards used surfaceVariant, which
+    // stayed nearly the same across presets and made tiles look like #E8E3E7.
     val colors = when (preset) {
-        "forest" -> Triple(Color(0xFF176B3A), Color(0xFFB8F2C8), Color(0xFF326B67))
-        "lavender" -> Triple(Color(0xFF6750A4), Color(0xFFEADDFF), Color(0xFF7D5260))
-        "sunset" -> Triple(Color(0xFFB3261E), Color(0xFFFFDAD1), Color(0xFF705E1F))
-        "mono" -> Triple(Color(0xFF3F4650), Color(0xFFE0E4E9), Color(0xFF5D636B))
-        "ocean" -> Triple(Color(0xFF006A6A), Color(0xFFB8F2F0), Color(0xFF315E72))
-        "mint" -> Triple(Color(0xFF2E7D5B), Color(0xFFC8F2DC), Color(0xFF36706A))
-        "rose" -> Triple(Color(0xFF9C4168), Color(0xFFFFD9E5), Color(0xFF70465A))
-        else -> Triple(Color(0xFF176B3A), Color(0xFFB8F2C8), Color(0xFF326B67))
+        "forest" -> listOf(Color(0xFF176B3A), Color(0xFFB8F2C8), Color(0xFF326B67), Color(0xFFE8F4EC), Color(0xFFD5E9DC))
+        "lavender" -> listOf(Color(0xFF6750A4), Color(0xFFEADDFF), Color(0xFF7D5260), Color(0xFFF5F0FB), Color(0xFFE9DFF4))
+        "sunset" -> listOf(Color(0xFFB3261E), Color(0xFFFFDAD1), Color(0xFF705E1F), Color(0xFFFFF2EE), Color(0xFFF3DED7))
+        "mono" -> listOf(Color(0xFF3F4650), Color(0xFFE0E4E9), Color(0xFF5D636B), Color(0xFFF1F3F5), Color(0xFFE1E5E9))
+        "ocean" -> listOf(Color(0xFF006A6A), Color(0xFFB8F2F0), Color(0xFF315E72), Color(0xFFE9F6F6), Color(0xFFD5ECEC))
+        "mint" -> listOf(Color(0xFF2E7D5B), Color(0xFFC8F2DC), Color(0xFF36706A), Color(0xFFEBF7F0), Color(0xFFD9EBDD))
+        "rose" -> listOf(Color(0xFF9C4168), Color(0xFFFFD9E5), Color(0xFF70465A), Color(0xFFFFF0F4), Color(0xFFF1DDE5))
+        else -> listOf(Color(0xFF176B3A), Color(0xFFB8F2C8), Color(0xFF326B67), Color(0xFFE8F4EC), Color(0xFFD5E9DC))
     }
-    val (primary, primaryContainer, tertiary) = colors
+    val primary = colors[0]
+    val primaryContainer = colors[1]
+    val tertiary = colors[2]
+    val lightSurface = colors[3]
+    val lightSurfaceVariant = colors[4]
+    val darkSurface = when (preset) {
+        "forest" -> Color(0xFF17251C)
+        "lavender" -> Color(0xFF211B2B)
+        "sunset" -> Color(0xFF2A1C1A)
+        "mono" -> Color(0xFF202326)
+        "ocean" -> Color(0xFF142526)
+        "mint" -> Color(0xFF18251F)
+        "rose" -> Color(0xFF291C23)
+        else -> Color(0xFF17251C)
+    }
+    val darkVariant = when (preset) {
+        "forest" -> Color(0xFF283C30)
+        "lavender" -> Color(0xFF352A42)
+        "sunset" -> Color(0xFF42302C)
+        "mono" -> Color(0xFF34383D)
+        "ocean" -> Color(0xFF263B3D)
+        "mint" -> Color(0xFF2B3C34)
+        "rose" -> Color(0xFF402B36)
+        else -> Color(0xFF283C30)
+    }
     return if (dark) darkColorScheme(
-        primary=primary, primaryContainer=primaryContainer, secondary=primary.copy(alpha=.78f), secondaryContainer=primaryContainer.copy(alpha=.75f),
-        tertiary=tertiary, tertiaryContainer=primaryContainer.copy(alpha=.65f), background=Color(0xFF121417), surface=Color(0xFF1A1D21), surfaceVariant=Color(0xFF292D33)
+        primary=primary, primaryContainer=primaryContainer,
+        secondary=primary.copy(alpha=.78f), secondaryContainer=primaryContainer.copy(alpha=.75f),
+        tertiary=tertiary, tertiaryContainer=primaryContainer.copy(alpha=.65f),
+        background=darkSurface, surface=darkSurface, surfaceVariant=darkVariant,
+        surfaceContainerLow=darkVariant.copy(alpha=.72f)
     ) else lightColorScheme(
-        primary=primary, primaryContainer=primaryContainer, secondary=tertiary, secondaryContainer=primaryContainer.copy(alpha=.78f),
-        tertiary=tertiary, tertiaryContainer=primaryContainer.copy(alpha=.68f), background=Color(0xFFF7F9FC), surface=Color.White, surfaceVariant=Color(0xFFE0E4EA)
+        primary=primary, primaryContainer=primaryContainer,
+        secondary=tertiary, secondaryContainer=primaryContainer.copy(alpha=.78f),
+        tertiary=tertiary, tertiaryContainer=primaryContainer.copy(alpha=.68f),
+        background=lightSurface, surface=Color.White, surfaceVariant=lightSurfaceVariant,
+        surfaceContainerLow=lightSurface.copy(alpha=.72f)
     )
 }
 
