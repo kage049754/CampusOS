@@ -457,7 +457,7 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onClose: () -> Unit) {
                     kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
                         studyAiCall(
                             provider,model,key,
-                            "You are the CampusOS AI assistant. You can read and modify the student's CampusOS schedule, tasks, and subjects using the provided tools. Use tools when the student asks to add, edit, delete, or check CampusOS data. Be concise. If a requested change is ambiguous, ask a question instead of guessing.",
+                            "You are the CampusOS AI assistant. You can read and modify the student's CampusOS schedule, tasks, and subjects using the provided tools. Use tools when the student asks to add, edit, delete, or check CampusOS data. Be concise. If a requested change is ambiguous, ask a question instead of guessing. Student request: " + q,
                             store=store
                         ).onSuccess { messages=messages+("assistant" to it) }
                          .onFailure { error=it.message ?: "AI request failed." }
