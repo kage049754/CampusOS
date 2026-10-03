@@ -172,7 +172,7 @@ private fun campusColorScheme(preset: String, dark: Boolean): ColorScheme {
         primary=primary, primaryContainer=primaryContainer,
         secondary=tertiary, secondaryContainer=primaryContainer.copy(alpha=.78f),
         tertiary=tertiary, tertiaryContainer=primaryContainer.copy(alpha=.68f),
-        background=lightSurface, surface=Color.White, surfaceVariant=lightSurfaceVariant,
+        background=lightSurface, surface=lightSurfaceVariant, surfaceVariant=lightSurfaceVariant,
         surfaceContainerLowest=lightSurface,
         surfaceContainerLow=lightSurface.copy(alpha=.72f),
         surfaceContainer=lightSurface,
