@@ -57,6 +57,12 @@ private fun defaultStudyModel(provider: String) = when (provider) {
 
 private fun allowedStudyProvider(provider: String) = if (provider == "OpenRouter") "OpenRouter" else "Gemini"
 
+private fun enforceFreeStudyModel(provider: String, model: String): String = when (provider) {
+    "OpenRouter" -> "openrouter/free"
+    "Gemini" -> "gemini-3.8-flash"
+    else -> error("Unsupported AI provider.")
+}
+
 private class StudyAiSecureStore(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences(STUDY_AI_PREFS, Context.MODE_PRIVATE)
     private fun key(): SecretKey {
@@ -168,20 +174,22 @@ private fun studyContext(sources: List<StudySource>, maxChars: Int = 180_000): S
 private suspend fun studyAiCall(provider: String, model: String, key: String, prompt: String): Result<String> = withContext(Dispatchers.IO) {
     runCatching {
         require(key.isNotBlank()) { "Add your AI API key first." }
+        val safeProvider = allowedStudyProvider(provider)
+        val safeModel = enforceFreeStudyModel(safeProvider, model)
         val endpoint: String
         val body: String
         val headers = mutableMapOf("Content-Type" to "application/json")
-        if (provider == "Gemini") {
-            endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent"
+        if (safeProvider == "Gemini") {
+            endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + safeModel + ":generateContent"
             body = JSONObject().apply {
                 put("contents", JSONArray().put(JSONObject().apply { put("parts", JSONArray().put(JSONObject().put("text", prompt))) }))
                 put("generationConfig", JSONObject().put("temperature", 0.35).put("maxOutputTokens", 6000))
             }.toString()
             headers["x-goog-api-key"] = key
         } else {
-            endpoint = if (provider == "OpenRouter") "https://openrouter.ai/api/v1/chat/completions" else "https://api.openai.com/v1/chat/completions"
+            endpoint = "https://openrouter.ai/api/v1/chat/completions"
             body = JSONObject().apply {
-                put("model", model)
+                put("model", safeModel)
                 put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
                 put("temperature", 0.35)
             }.toString()
@@ -200,12 +208,12 @@ private suspend fun studyAiCall(provider: String, model: String, key: String, pr
             val lower = response.lowercase(Locale.getDefault())
             val limitMessage = if (code == 429 || lower.contains("rate limit") || lower.contains("quota")) {
                 val reset = resetHeader?.takeIf { it.isNotBlank() }?.let { " Reset: $it." }.orEmpty()
-                "Free AI limit reached for $provider.${if (remainingHeader == "0") " No requests remain." else ""}$reset Try again after the provider limit resets."
+                "Free AI limit reached for $safeProvider.${if (remainingHeader == "0") " No requests remain." else ""}$reset Try again after the provider limit resets."
             } else null
             error(limitMessage ?: "AI request failed (" + code + "): " + response.take(500))
         }
         val json = JSONObject(response)
-        val text = if (provider == "Gemini") {
+        val text = if (safeProvider == "Gemini") {
             val parts = json.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
             buildString { if (parts != null) for (i in 0 until parts.length()) append(parts.optJSONObject(i)?.optString("text").orEmpty()) }
         } else {
@@ -425,7 +433,7 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                 }}
                 OutlinedTextField(apiKey, { apiKey = it }, Modifier.fillMaxWidth(), label = { Text("API key") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
                 OutlinedTextField(model, {}, Modifier.fillMaxWidth(), label = { Text("Free model") }, singleLine = true, readOnly = true)
-                Text(if (provider == "OpenRouter") "OpenRouter automatically selects an available free model. CampusOS will not select paid models." else "Gemini uses the free-tier Gemini model configured by CampusOS. Paid model choices are not shown.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(if (provider == "OpenRouter") "OpenRouter automatically selects an available free model. CampusOS only sends requests to the free router and will never select or fall back to a paid model." else "Gemini uses the fixed free-tier model configured by CampusOS. Paid model choices and fallback models are not used.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button({
                     runCatching { secure.setApiKey(apiKey.trim()); apiKey = secure.getApiKey() }
                         .onSuccess { error = "API key saved securely on this device." }
@@ -438,7 +446,7 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                 }, Modifier.fillMaxWidth(), enabled = !testingConnection && apiKey.isNotBlank()) {
                     if (testingConnection) CircularProgressIndicator(Modifier.size(18.dp)) else Text("Test Connection")
                 }
-                Text("If the provider limit is reached, CampusOS will show a free-limit message instead of switching to a paid model.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("If the free quota is reached, CampusOS stops the request and shows the provider limit message. It never switches to a paid model.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (error.isNotBlank()) Text(error, color = if (error.contains("saved", true)) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
             }
         }
