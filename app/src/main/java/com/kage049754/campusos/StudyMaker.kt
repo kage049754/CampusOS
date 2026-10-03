@@ -256,72 +256,115 @@ private fun studyContext(sources: List<StudySource>, maxChars: Int = 180_000): S
     return out.toString().trim()
 }
 
-private suspend fun studyAiCall(provider: String, model: String, key: String, prompt: String, attachments: List<AiChatAttachment> = emptyList()): Result<String> = withContext(Dispatchers.IO) {
-    runCatching {
-        require(key.isNotBlank()) { "Add your AI API key first." }
-        val safeProvider = allowedStudyProvider(provider)
-        val safeModel = enforceFreeStudyModel(safeProvider, model)
-        val endpoint: String
-        val body: String
-        val headers = mutableMapOf("Content-Type" to "application/json")
-        if (safeProvider == "Gemini") {
-            endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + safeModel + ":generateContent"
-            body = JSONObject().apply {
-                val parts=JSONArray().put(JSONObject().put("text",prompt))
-                attachments.filter { it.base64.isNotBlank() }.forEach { a -> parts.put(JSONObject().put("inline_data",JSONObject().put("mime_type",a.mimeType).put("data",a.base64))) }
-                put("contents",JSONArray().put(JSONObject().apply { put("parts",parts) }))
-                put("generationConfig",JSONObject().put("temperature",0.35).put("maxOutputTokens",6000))
-            }.toString()
-            headers["x-goog-api-key"] = key
-        } else {
-            endpoint = "https://openrouter.ai/api/v1/chat/completions"
-            body = JSONObject().apply {
-                put("model",safeModel)
-                val content=JSONArray().put(JSONObject().put("type","text").put("text",prompt))
-                attachments.filter { it.base64.isNotBlank() }.forEach { a -> content.put(JSONObject().put("type","image_url").put("image_url",JSONObject().put("url","data:"+a.mimeType+";base64,"+a.base64))) }
-                put("messages",JSONArray().put(JSONObject().put("role","user").put("content",content)))
-                put("temperature",0.35)
-            }.toString()
-            headers["Authorization"] = "Bearer " + key
-        }
-        val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"; connectTimeout = 15_000; readTimeout = 45_000; doOutput = true
-            headers.forEach { (k, v) -> setRequestProperty(k, v) }
-        }
-        connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
-        val code = connection.responseCode
-        val resetHeader = connection.getHeaderField("X-RateLimit-Reset") ?: connection.getHeaderField("x-ratelimit-reset")
-        val remainingHeader = connection.getHeaderField("X-RateLimit-Remaining") ?: connection.getHeaderField("x-ratelimit-remaining")
-        val response = (if (code in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
-        if (code !in 200..299) {
-            val lower = response.lowercase(Locale.getDefault())
-            val limitMessage = if (code == 429 || lower.contains("rate limit") || lower.contains("quota")) {
-                val reset = resetHeader?.takeIf { it.isNotBlank() }?.let { " Reset: $it." }.orEmpty()
-                "Free AI limit reached for $safeProvider.${if (remainingHeader == "0") " No requests remain." else ""}$reset Try again after the provider limit resets."
-            } else null
-            error(limitMessage ?: "AI request failed (" + code + "): " + response.take(500))
-        }
-        val json = JSONObject(response)
-        val text = if (safeProvider == "Gemini") {
-            val parts = json.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
-            buildString { if (parts != null) for (i in 0 until parts.length()) append(parts.optJSONObject(i)?.optString("text").orEmpty()) }
-        } else {
-            run {
-                val content = json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.opt("content")
-                when (content) {
-                    is String -> content
-                    is JSONArray -> buildString {
-                        for (i in 0 until content.length()) append(content.optJSONObject(i)?.optString("text").orEmpty())
-                    }
-                    else -> ""
-                }
-            }
-        }.trim()
-        if (text.isBlank()) error("AI returned an empty response.")
-        text
+private fun campusAiToolDefinitions(): JSONArray = JSONArray().apply {
+    fun tool(name: String, description: String, properties: JSONObject, required: List<String> = emptyList()) {
+        put(JSONObject().apply {
+            put("type", "function")
+            put("function", JSONObject().apply {
+                put("name", name); put("description", description)
+                put("parameters", JSONObject().apply { put("type","object"); put("properties",properties); put("required",JSONArray(required)) })
+            })
+        })
+    }
+    val scheduleProps = JSONObject().apply {
+        put("id",JSONObject().put("type","integer")); put("title",JSONObject().put("type","string")); put("subtitle",JSONObject().put("type","string"))
+        put("day",JSONObject().put("type","string")); put("startTime",JSONObject().put("type","string")); put("endTime",JSONObject().put("type","string"))
+        put("room",JSONObject().put("type","string")); put("classType",JSONObject().put("type","string"))
+    }
+    val taskProps = JSONObject().apply {
+        put("id",JSONObject().put("type","integer")); put("title",JSONObject().put("type","string")); put("subtitle",JSONObject().put("type","string")); put("extra",JSONObject().put("type","string"))
+        put("dueDate",JSONObject().put("type","string")); put("dueTime",JSONObject().put("type","string")); put("done",JSONObject().put("type","boolean"))
+    }
+    val subjectProps = JSONObject().apply {
+        put("id",JSONObject().put("type","integer")); put("title",JSONObject().put("type","string")); put("subtitle",JSONObject().put("type","string")); put("room",JSONObject().put("type","string")); put("professor",JSONObject().put("type","string"))
+    }
+    tool("get_schedule","Read the student's current schedule.",JSONObject())
+    tool("get_tasks","Read the student's current tasks.",JSONObject())
+    tool("add_schedule","Add one class to the student's schedule.",scheduleProps,listOf("title","day","startTime","endTime"))
+    tool("edit_schedule","Edit an existing schedule entry. Prefer id; otherwise title/day.",scheduleProps)
+    tool("delete_schedule","Delete a schedule entry. Prefer id; otherwise title/day.",scheduleProps)
+    tool("add_task","Add a task.",taskProps,listOf("title")); tool("edit_task","Edit an existing task. Prefer id; otherwise title.",taskProps); tool("delete_task","Delete a task. Prefer id; otherwise title.",taskProps)
+    tool("add_subject","Add a subject.",subjectProps,listOf("title")); tool("edit_subject","Edit an existing subject. Prefer id; otherwise title.",subjectProps); tool("delete_subject","Delete a subject. Prefer id; otherwise title.",subjectProps)
+}
+
+private fun campusAiRecordJson(r: Record) = JSONObject().apply {
+    put("id",r.id); put("title",r.title); put("subtitle",r.subtitle); put("extra",r.extra); put("done",r.done); put("day",r.day); put("startTime",r.startTime); put("endTime",r.endTime); put("room",r.room); put("professor",r.professor); put("classType",r.classType); put("dueDate",r.dueDate); put("dueTime",r.dueTime)
+}
+
+private fun executeCampusAiTool(store: LocalStore, name: String, args: JSONObject): String {
+    fun find(list: List<Record>): Record? {
+        val id=args.optLong("id",0L); val title=args.optString("title").trim(); val day=args.optString("day").trim()
+        return if(id>0) list.firstOrNull{it.id==id} else list.firstOrNull{it.title.equals(title,true) && (day.isBlank() || it.day.equals(day,true))}
+    }
+    fun updated(old: Record) = old.copy(
+        title=args.optString("title").takeIf{it.isNotBlank()} ?: old.title, subtitle=args.optString("subtitle").takeIf{it.isNotBlank()} ?: old.subtitle,
+        extra=args.optString("extra").takeIf{it.isNotBlank()} ?: old.extra, day=args.optString("day").takeIf{it.isNotBlank()} ?: old.day,
+        startTime=args.optString("startTime").takeIf{it.isNotBlank()} ?: old.startTime, endTime=args.optString("endTime").takeIf{it.isNotBlank()} ?: old.endTime,
+        room=args.optString("room").takeIf{it.isNotBlank()} ?: old.room, professor=args.optString("professor").takeIf{it.isNotBlank()} ?: old.professor,
+        classType=args.optString("classType").takeIf{it.isNotBlank()} ?: old.classType, dueDate=args.optString("dueDate").takeIf{it.isNotBlank()} ?: old.dueDate,
+        dueTime=args.optString("dueTime").takeIf{it.isNotBlank()} ?: old.dueTime, done=if(args.has("done")) args.optBoolean("done") else old.done
+    )
+    return when(name) {
+        "get_schedule" -> JSONArray(store.get("schedule").map(::campusAiRecordJson)).toString()
+        "get_tasks" -> JSONArray(store.get("tasks").map(::campusAiRecordJson)).toString()
+        "add_schedule" -> { val r=Record(title=args.optString("title"),subtitle=args.optString("subtitle"),day=args.optString("day"),startTime=args.optString("startTime"),endTime=args.optString("endTime"),room=args.optString("room"),classType=args.optString("classType","Lecture")); store.put("schedule",store.get("schedule")+r); "Added schedule entry "+r.title+" on "+r.day+" "+r.startTime+"-"+r.endTime+"." }
+        "edit_schedule" -> { val list=store.get("schedule").toMutableList(); val old=find(list) ?: return "No matching schedule entry was found."; val index=list.indexOfFirst{it.id==old.id}; list[index]=updated(old); store.put("schedule",list); "Updated schedule entry "+list[index].title+"." }
+        "delete_schedule" -> { val list=store.get("schedule"); val old=find(list) ?: return "No matching schedule entry was found."; store.put("schedule",list.filterNot{it.id==old.id}); "Deleted schedule entry "+old.title+"." }
+        "add_task" -> { val r=Record(title=args.optString("title"),subtitle=args.optString("subtitle"),extra=args.optString("extra"),dueDate=args.optString("dueDate"),dueTime=args.optString("dueTime")); store.put("tasks",store.get("tasks")+r); "Added task "+r.title+"." }
+        "edit_task" -> { val list=store.get("tasks").toMutableList(); val old=find(list) ?: return "No matching task was found."; val index=list.indexOfFirst{it.id==old.id}; list[index]=updated(old); store.put("tasks",list); "Updated task "+list[index].title+"." }
+        "delete_task" -> { val list=store.get("tasks"); val old=find(list) ?: return "No matching task was found."; store.put("tasks",list.filterNot{it.id==old.id}); "Deleted task "+old.title+"." }
+        "add_subject" -> { val r=Record(title=args.optString("title"),subtitle=args.optString("subtitle"),room=args.optString("room"),professor=args.optString("professor")); store.put("subjects",store.get("subjects")+r); "Added subject "+r.title+"." }
+        "edit_subject" -> { val list=store.get("subjects").toMutableList(); val old=find(list) ?: return "No matching subject was found."; val index=list.indexOfFirst{it.id==old.id}; list[index]=updated(old); store.put("subjects",list); "Updated subject "+list[index].title+"." }
+        "delete_subject" -> { val list=store.get("subjects"); val old=find(list) ?: return "No matching subject was found."; store.put("subjects",list.filterNot{it.id==old.id}); "Deleted subject "+old.title+"." }
+        else -> "Unknown CampusOS action."
     }
 }
 
+private suspend fun studyAiCall(provider: String, model: String, key: String, prompt: String, attachments: List<AiChatAttachment> = emptyList(), store: LocalStore? = null): Result<String> = withContext(Dispatchers.IO) {
+    runCatching {
+        require(key.isNotBlank()){"Add your AI API key first."}
+        val safeProvider=allowedStudyProvider(provider); val safeModel=enforceFreeStudyModel(safeProvider,model); val tools=if(store!=null) campusAiToolDefinitions() else JSONArray()
+        var currentPrompt=prompt
+        repeat(3){ round ->
+            val endpoint:String; val body:String; val headers=mutableMapOf("Content-Type" to "application/json")
+            if(safeProvider=="Gemini"){
+                endpoint="https://generativelanguage.googleapis.com/v1beta/models/"+safeModel+":generateContent"
+                body=JSONObject().apply{
+                    val parts=JSONArray().put(JSONObject().put("text",currentPrompt))
+                    attachments.filter{it.base64.isNotBlank()}.forEach{a->parts.put(JSONObject().put("inline_data",JSONObject().put("mime_type",a.mimeType).put("data",a.base64)))}
+                    put("contents",JSONArray().put(JSONObject().apply{put("parts",parts)}))
+                    if(tools.length()>0) put("tools",JSONArray().put(JSONObject().put("functionDeclarations",tools)))
+                    put("generationConfig",JSONObject().put("temperature",0.35).put("maxOutputTokens",6000))
+                }.toString()
+                headers["x-goog-api-key"]=key
+            } else {
+                endpoint="https://openrouter.ai/api/v1/chat/completions"
+                body=JSONObject().apply{
+                    put("model",safeModel); val content=JSONArray().put(JSONObject().put("type","text").put("text",currentPrompt))
+                    attachments.filter{it.base64.isNotBlank()}.forEach{a->content.put(JSONObject().put("type","image_url").put("image_url",JSONObject().put("url","data:"+a.mimeType+";base64,"+a.base64)))}
+                    put("messages",JSONArray().put(JSONObject().put("role","user").put("content",content))); if(tools.length()>0) put("tools",tools); put("temperature",0.35)
+                }.toString()
+                headers["Authorization"]="Bearer "+key
+            }
+            val connection=(URL(endpoint).openConnection() as HttpURLConnection).apply{requestMethod="POST";connectTimeout=15000;readTimeout=45000;doOutput=true;headers.forEach{(k,v)->setRequestProperty(k,v)}}
+            connection.outputStream.use{it.write(body.toByteArray(StandardCharsets.UTF_8))}
+            val code=connection.responseCode; val response=(if(code in 200..299)connection.inputStream else connection.errorStream)?.bufferedReader()?.use{it.readText()}.orEmpty()
+            if(code !in 200..299) error("AI request failed ("+code+"): "+response.take(500))
+            val json=JSONObject(response)
+            if(store!=null && safeProvider=="Gemini"){
+                val parts=json.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
+                val fc=parts?.let{a->(0 until a.length()).mapNotNull{a.optJSONObject(it)}.firstOrNull{it.has("functionCall")}}
+                if(fc!=null && round<2){ val call=fc.optJSONObject("functionCall")!!; val name=call.optString("name"); val args=call.optJSONObject("args")?:JSONObject(); val result=executeCampusAiTool(store,name,args); currentPrompt="CampusOS tool "+name+" executed. Result: "+result+". Now reply naturally. Do not call another tool unless necessary."; continue }
+            } else if(store!=null){
+                val message=json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message"); val calls=message?.optJSONArray("tool_calls")
+                if(calls!=null&&calls.length()>0&&round<2){ val call=calls.optJSONObject(0)!!; val fn=call.optJSONObject("function"); val name=fn?.optString("name").orEmpty(); val args=runCatching{JSONObject(fn?.optString("arguments").orEmpty())}.getOrElse{JSONObject()}; val result=executeCampusAiTool(store,name,args); currentPrompt="CampusOS tool "+name+" executed. Result: "+result+". Now reply naturally. Do not call another tool unless necessary."; continue }
+            }
+            val text=if(safeProvider=="Gemini"){val parts=json.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts");buildString{if(parts!=null)for(i in 0 until parts.length())append(parts.optJSONObject(i)?.optString("text").orEmpty())}}else{val content=json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.opt("content");when(content){is String->content;is JSONArray->buildString{for(i in 0 until content.length())append(content.optJSONObject(i)?.optString("text").orEmpty())};else->""}}.trim()
+            if(text.isBlank()) error("AI returned an empty response."); return@runCatching text
+        }
+        error("CampusOS AI tool loop stopped before a final response.")
+    }
+}
 private fun studyPrompt(action: String, context: String): String {
     val task = when (action) {
         "Reviewer" -> "Create a clear student-friendly reviewer with headings, key concepts, definitions, examples, and a short remember section."
