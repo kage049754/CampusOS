@@ -1177,7 +1177,7 @@ fun AboutDialog(done: () -> Unit) {
             Text("CampusOS 1.0.0", fontWeight = FontWeight.Bold)
             Text("A student-focused offline-first planner for everyday school work.")
             Text("Included functions", fontWeight = FontWeight.SemiBold)
-            listOf("Homepage dashboard and profile","Class Schedule with Lecture/Lab editing","Notes, calendar and reminders","Tools: Subjects, Calculator and Student Budget","Subject Notepad and Lecture Files","Appearance presets, light/dark mode and app lock","Local backup and recovery by module","Home-screen widgets for classes and tasks").forEach { Text("• $it") }
+            listOf("Homepage dashboard and profile","Class Schedule with Lecture/Lab editing","Notes, calendar and reminders","Tools: Notepad, Calculator and Student Budget","Subject Notepad and Lecture Files","Appearance presets, light/dark mode and app lock","Local backup and recovery by module","Home-screen widgets for classes and tasks").forEach { Text("• $it") }
             Text("This About page lists local app functions only and intentionally does not describe online or campus-network functions.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }, confirmButton = { TextButton(done) { Text("Done") } })
@@ -1572,9 +1572,9 @@ fun ToolOrderDialog(store: LocalStore, done: () -> Unit) {
     var order by remember { mutableStateOf(store.toolOrder()) }
     AlertDialog(onDismissRequest = done, title = { Text("Tool Order") }, text = {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Choose the order of Study Maker, Subjects, Calculator and Budget.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Choose the order of Study Maker, Notepad, Calculator and Budget.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             order.forEachIndexed { index, key ->
-                val label = when (key) { "study_maker" -> "Study Maker"; "subjects" -> "Subjects"; "calculator" -> "Calculator"; else -> "Budget" }
+                val label = when (key) { "study_maker" -> "Study Maker"; "subjects" -> "Notepad"; "calculator" -> "Calculator"; else -> "Budget" }
                 Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text((index + 1).toString(), Modifier.width(28.dp), fontWeight = FontWeight.Bold)
                     Text(label, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
@@ -2680,6 +2680,11 @@ fun AcademicsScreen(
     // by Schedule, imported/restored schedules, and schedules created by older builds.
     val revision = store.revision
     LaunchedEffect(revision) {
+        // Schedule is the source of truth for automatically-created Notepad subject records.
+        syncSubjectsFromSchedule(store, store.get("schedule"))
+    }
+    LaunchedEffect(Unit) {
+        // Repair older installs as soon as Tools > Notepad is opened.
         syncSubjectsFromSchedule(store, store.get("schedule"))
     }
     var selectedKey by rememberSaveable { mutableStateOf(store.toolOrder().firstOrNull() ?: "subjects") }
@@ -2705,12 +2710,12 @@ fun AcademicsScreen(
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Tools", modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                if (keys.getOrNull(tab) == "subjects") IconButton(onClick = { showAddSubject = true }) { Icon(Icons.Default.Add, "Add subject or category") }
+                if (keys.getOrNull(tab) == "subjects") IconButton(onClick = { showAddSubject = true }) { Icon(Icons.Default.Add, "Add Notepad") }
             }
             Text(
                 when (keys.getOrNull(tab)) {
                     "study_maker" -> "Create reviewers, quizzes, flashcards, and study chats from your local materials"
-                    "subjects" -> "Your subjects, notes, and lecture files"
+                    "subjects" -> "Your Notepad categories, notes, and lecture files"
                     "budget" -> "Track allowance, expenses, savings, and targets"
                     else -> "Study and productivity tools"
                 },
@@ -2893,14 +2898,75 @@ fun AcademicsScreen(
         }
     }
 
-    if ((query == "__ADD__" && tab == 0) || showAddSubject) AddRecordDialog(
-        "Subject / Category",
-        "subjects",
-        store,
+    if ((query == "__ADD__" && tab == 0) || showAddSubject) AddNotepadDialog(
+        store = store,
         done = { showAddSubject = false; if (query == "__ADD__") clear(); refresh++ }
     )
 }
 
+
+@Composable
+fun AddNotepadDialog(
+    store: LocalStore,
+    done: () -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = done,
+        title = { Text("New Notepad") },
+        text = {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    "Create a subject/notebook or any category for your notes.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Name") },
+                    placeholder = { Text("e.g. ITEC65 or Personal") },
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Description (optional)") },
+                    maxLines = 3
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = name.trim().isNotBlank(),
+                onClick = {
+                    val title = name.trim()
+                    val existing = store.get("subjects")
+                    if (!existing.any { it.title.trim().equals(title, true) }) {
+                        store.put(
+                            "subjects",
+                            existing + Record(
+                                title = title,
+                                subtitle = description.trim()
+                            )
+                        )
+                    }
+                    done()
+                }
+            ) { Text("Create") }
+        },
+        dismissButton = { TextButton(onClick = done) { Text("Cancel") } }
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
