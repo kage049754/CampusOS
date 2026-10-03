@@ -121,19 +121,21 @@ private fun applyLauncherIcon(context: Context, preset: String) {
     val pm = context.packageManager
     val pkg = context.packageName
 
-    // Run #570 only registered these two launcher aliases. Do not reference
-    // removed aliases here: PackageManager can throw when a component is absent,
-    // which would make MainActivity crash during startup.
-    val presets = listOf("forest", "sunset")
+    // Keep MainActivity itself as a permanently enabled launcher entry.
+    // This guarantees Android always has a normal launchable activity, even if
+    // a launcher implementation ignores or resets an activity-alias state.
     val main = android.content.ComponentName(context, MainActivity::class.java)
+    val presets = listOf("forest", "sunset")
 
     runCatching {
         pm.setComponentEnabledSetting(
             main,
-            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
             android.content.pm.PackageManager.DONT_KILL_APP
         )
 
+        // Keep the optional #570 aliases disabled so they cannot replace or
+        // hide the real MainActivity launcher entry.
         presets.forEach { name ->
             val componentName = name.replaceFirstChar { it.uppercase() } + "Launcher"
             pm.setComponentEnabledSetting(
@@ -142,14 +144,6 @@ private fun applyLauncherIcon(context: Context, preset: String) {
                 android.content.pm.PackageManager.DONT_KILL_APP
             )
         }
-
-        val selected = if (preset in presets) preset else "forest"
-        val selectedName = selected.replaceFirstChar { it.uppercase() } + "Launcher"
-        pm.setComponentEnabledSetting(
-            android.content.ComponentName(pkg, selectedName),
-            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-            android.content.pm.PackageManager.DONT_KILL_APP
-        )
     }
 }
 
