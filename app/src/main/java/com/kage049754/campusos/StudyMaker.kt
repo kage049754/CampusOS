@@ -767,7 +767,6 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (Stri
     val provider = secure.provider()
     val model = secure.model()
     val key = secure.getApiKey(provider)
-    val bubbleFraction = store.aiBubbleSize() / 100f
     val aiBackground = chatStore.chatBackground()
     val initialChat = remember { chatStore.list().firstOrNull() }
     var chatId by rememberSaveable { mutableStateOf(initialChat?.id ?: "") }
@@ -815,10 +814,13 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (Stri
         clipboard.setPrimaryClip(android.content.ClipData.newPlainText("CampusOS AI chat", text))
     }
 
+    // The expanded floating AI uses the exact available app display area.
+    // The floating AI icon remains on top and is the toggle used to collapse it.
     Surface(
-        modifier = Modifier.fillMaxWidth(bubbleFraction.coerceIn(0.70f, 0.96f))
-            .fillMaxHeight(bubbleFraction.coerceIn(0.70f, 0.96f)).padding(8.dp),
-        shape = RoundedCornerShape(28.dp), color = aiChatBackgroundColor(aiBackground), shadowElevation = 18.dp
+        modifier = Modifier.fillMaxSize(),
+        shape = RoundedCornerShape(0.dp),
+        color = aiChatBackgroundColor(aiBackground),
+        shadowElevation = 18.dp
     ) {
         Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -832,7 +834,6 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (Stri
                 }
                 IconButton(onClick = { showHistory = !showHistory }) { Icon(Icons.Default.History, "Chat history") }
                 IconButton(onClick = { copyChat() }, enabled = messages.isNotEmpty()) { Icon(Icons.Default.ContentCopy, "Copy chat") }
-                IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close") }
             }
             if (showHistory) {
                 Card(colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerHighest)) {
