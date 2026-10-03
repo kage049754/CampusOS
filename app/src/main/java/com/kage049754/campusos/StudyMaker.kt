@@ -385,6 +385,93 @@ private fun studyPrompt(action: String, context: String): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+fun CampusAiBubble(activity: Activity, store: LocalStore, onClose: () -> Unit) {
+    val context = LocalContext.current
+    val secure = remember { StudyAiSecureStore(context) }
+    val provider = secure.provider()
+    val model = secure.model()
+    val key = secure.getApiKey(provider)
+    var input by rememberSaveable { mutableStateOf("") }
+    var messages by remember { mutableStateOf(listOf<Pair<String,String>>()) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        activity.window.decorView.systemUiVisibility = 0
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp),
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shadowElevation = 14.dp
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
+                    Icon(Icons.Default.SmartToy, null, Modifier.padding(9.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("CampusOS AI", fontWeight = FontWeight.Bold)
+                    Text("Ask or manage your CampusOS", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close") }
+            }
+            if (messages.isEmpty()) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("What's my next class?","Show my tasks","Add a task").forEach { suggestion ->
+                        AssistChip(onClick={input=suggestion},label={Text(suggestion)})
+                    }
+                }
+            }
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().heightIn(min=60.dp,max=280.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                items(messages) { (role,text) ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = if(role=="user") Arrangement.End else Arrangement.Start) {
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = if(role=="user") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest
+                        ) {
+                            Text(text, Modifier.padding(horizontal=12.dp,vertical=9.dp))
+                        }
+                    }
+                }
+                if (busy) item {
+                    Surface(shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.surfaceContainerHighest) {
+                        Text("Thinking…",Modifier.padding(horizontal=12.dp,vertical=9.dp),color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Row(verticalAlignment=Alignment.Bottom) {
+                OutlinedTextField(
+                    value=input,onValueChange={input=it},modifier=Modifier.weight(1f),
+                    placeholder={Text("Ask CampusOS AI…")},maxLines=3,shape=RoundedCornerShape(22.dp)
+                )
+                IconButton(enabled=input.isNotBlank()&&!busy,onClick={
+                    val q=input.trim(); input=""; messages=messages+("user" to q); busy=true; error=""
+                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                        studyAiCall(
+                            provider,model,key,
+                            "You are the CampusOS AI assistant. You can read and modify the student's CampusOS schedule, tasks, and subjects using the provided tools. Use tools when the student asks to add, edit, delete, or check CampusOS data. Be concise. If a requested change is ambiguous, ask a question instead of guessing.",
+                            store=store
+                        ).onSuccess { messages=messages+("assistant" to it) }
+                         .onFailure { error=it.message ?: "AI request failed." }
+                        busy=false
+                    }
+                }) { Icon(Icons.Default.Send,"Send") }
+            }
+            if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
     if (!STUDY_AI_EXPERIMENT) { done(); return }
     val context = LocalContext.current
