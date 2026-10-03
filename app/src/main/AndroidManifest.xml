@@ -13,6 +13,7 @@
         android:supportsRtl="true">
         <activity
             android:name=".MainActivity"
+            android:enabled="false"
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
             <intent-filter>
@@ -20,7 +21,7 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <activity-alias android:name=".ForestLauncher" android:enabled="false" android:exported="true" android:icon="@drawable/ic_launcher_forest" android:roundIcon="@drawable/ic_launcher_forest" android:targetActivity=".MainActivity">
+        <activity-alias android:name=".ForestLauncher" android:enabled="true" android:exported="true" android:icon="@drawable/ic_launcher_forest" android:roundIcon="@drawable/ic_launcher_forest" android:targetActivity=".MainActivity">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
         </activity-alias>
         <activity-alias android:name=".OceanLauncher" android:enabled="false" android:exported="true" android:icon="@drawable/ic_launcher_ocean" android:roundIcon="@drawable/ic_launcher_ocean" android:targetActivity=".MainActivity">
