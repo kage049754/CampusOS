@@ -645,6 +645,10 @@ enum class Screen(val label: String) {
 @Composable
 fun CampusOSApp(activity: Activity) {
     val store = remember { LocalStore(activity) }
+    // LocalStore.revision is the Compose-observable invalidation signal for settings/data.
+    // Reading it here makes floating-AI enable/size/opacity/chat-size changes immediately
+    // update the root UI instead of waiting for an unrelated recomposition.
+    val storeRevision = store.revision
     var theme by remember { mutableStateOf(store.theme()) }
     var appearancePreset by remember { mutableStateOf(store.appearancePreset()) }
     var locked by remember { mutableStateOf(store.lockEnabled() && store.authMethod() != "none") }
