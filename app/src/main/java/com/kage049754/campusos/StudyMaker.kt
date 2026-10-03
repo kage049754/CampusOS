@@ -866,6 +866,15 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
     DisposableEffect(Unit) { onDispose { activity.window.decorView.systemUiVisibility = 0 } }
     BackHandler { when { page=="chat" -> { chatHistory=chatStore.list(); page="home" }; page=="chat_history" -> page="home"; page=="home" -> done(); else -> page="home" } }
 
+    fun copyCurrentChat() {
+        val text = chat.joinToString("\n\n") { message ->
+            (if (message.role == "user") "You" else "CampusOS AI") + ": " + message.text +
+                if (message.attachmentName.isNotBlank()) "\n[Attachment: " + message.attachmentName + "]" else ""
+        }
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("CampusOS AI chat", text))
+    }
+
     fun selectedSources() = sources.filter { it.id in selectedIds }
     fun hasSources(): Boolean {
         if (selectedIds.isEmpty()) { error = "Select at least one note or lecture file."; return false }
@@ -901,7 +910,13 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                 "chat" -> "Chat"; "packs" -> "My Study Packs"; "settings" -> "AI Settings"; else -> "CampusOS AI"
             }, fontWeight = FontWeight.Bold) },
             navigationIcon = { IconButton({ if (page == "home") done() else page = "home" }) { Icon(Icons.Default.ArrowBack, "Back") } },
-            actions = { if (page == "home") IconButton({ page = "settings"; error = "" }) { Icon(Icons.Default.Settings, "AI settings") } }
+            actions = {
+                if (page == "home") {
+                    IconButton({ page = "settings"; error = "" }) { Icon(Icons.Default.Settings, "AI settings") }
+                } else if (page == "chat") {
+                    IconButton({ copyCurrentChat() }, enabled = chat.isNotEmpty()) { Icon(Icons.Default.ContentCopy, "Copy whole chat") }
+                }
+            }
         )
     }) { padding ->
         when (page) {
@@ -991,7 +1006,20 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                             Surface(Modifier.widthIn(max=340.dp),shape=RoundedCornerShape(18.dp),color=if(message.role=="user") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow){
                                 Column(Modifier.padding(horizontal=14.dp,vertical=10.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){
                                     if(message.attachmentName.isNotBlank()) Row(verticalAlignment=Alignment.CenterVertically){ Icon(if(message.attachmentMime.startsWith("image/")) Icons.Default.Image else Icons.Default.AttachFile,null,Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(message.attachmentName,style=MaterialTheme.typography.labelMedium,fontWeight=FontWeight.Bold) }
-                                    if(message.text.isNotBlank()){ if(message.role=="assistant") AiRichMessage(message.text) else Text(message.text,style=MaterialTheme.typography.bodyLarge) }
+                                    if(message.text.isNotBlank()){
+                                        SelectionContainer {
+                                            if(message.role=="assistant") AiRichMessage(message.text)
+                                            else Text(message.text,style=MaterialTheme.typography.bodyLarge)
+                                        }
+                                    }
+                                    TextButton(onClick={
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("message", message.text))
+                                    }) {
+                                        Icon(Icons.Default.ContentCopy,null,Modifier.size(15.dp))
+                                        Spacer(Modifier.width(3.dp))
+                                        Text("Copy")
+                                    }
                                 }
                             }
                         }
