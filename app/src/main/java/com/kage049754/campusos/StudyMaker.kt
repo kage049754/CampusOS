@@ -580,7 +580,7 @@ private fun CampusAiConfirmDialog(request: CampusAiConfirmState?, onDecision: (B
 }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CampusAiBubble(activity: Activity, store: LocalStore, onClose: () -> Unit) {
+fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (String) -> Unit = {}, onClose: () -> Unit) {
     val context = LocalContext.current
     val secure = remember { StudyAiSecureStore(context) }
     val chatStore = remember { AiChatStore(context) }
@@ -595,7 +595,7 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onClose: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var actionGate by remember { mutableStateOf<CampusAiConfirmState?>(null) }
-    var showHistory by remember { mutableStateOf(false) }
+    var showHistory by remember { mutableStateOf(false) }\n    var lastChangedTool by remember { mutableStateOf<String?>(null) }
 
     suspend fun gateTool(name: String): Boolean {
         if (!store.aiActionNeedsApproval(name)) return true
@@ -726,7 +726,7 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onClose: () -> Unit) {
                             provider,model,key,
                             "You are CampusOS AI, the student's assistant inside CampusOS. You can read and, when permitted, modify the student's schedule, tasks, subjects, subject Notepad notes, subject Lecture Files, student Budget/Saving Goal, and use the Calculator. Use the appropriate CampusOS tools instead of only explaining how to do the action. Be concise. If a requested change is ambiguous, ask a question instead of guessing. Student request: " + q,
                             store=store,
-                            toolApproval = { name, _ -> gateTool(name) }
+                            toolApproval = { name, _ ->\n                                val allowed = gateTool(name)\n                                if (allowed && !name.startsWith("get_") && name != "calculate") lastChangedTool = name\n                                allowed\n                            }
                         ).onSuccess {
                             val next=userMessages+("assistant" to it)
                             messages=next
@@ -997,7 +997,16 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                 OutlinedTextField(model, {}, Modifier.fillMaxWidth(), label = { Text("Free model") }, singleLine = true, readOnly = true)
                 Text(if (provider == "OpenRouter") "OpenRouter automatically selects an available free model. CampusOS only sends requests to the free router and will never select or fall back to a paid model." else "Gemini uses the fixed free-tier model configured by CampusOS. Paid model choices and fallback models are not used.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 var historyLimit by remember { mutableIntStateOf(chatStore.historyLimit()) }
-                var historyDays by remember { mutableIntStateOf(chatStore.historyDays()) }
+                var historyDays by remember { mutableIntStateOf(chatStore.historyDays()) }\n                var openChangedModule by remember { mutableStateOf(store.aiOpenChangedModule()) }
+                Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
+                    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Open changed module after AI action", fontWeight = FontWeight.Bold)
+                            Text("After CampusOS AI adds or changes something, automatically open the related module. Turn this off if you want to stay in the AI chat.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = openChangedModule, onCheckedChange = { openChangedModule = it; store.setAiOpenChangedModule(it) })
+                    }
+                }
                 Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Chat memory & history", fontWeight = FontWeight.Bold)
