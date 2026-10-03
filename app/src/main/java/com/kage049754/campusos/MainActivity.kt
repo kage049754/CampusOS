@@ -643,7 +643,7 @@ class MainActivity : ComponentActivity() {
 }
 
 enum class Screen(val label: String) {
-    HOME("Home"), SCHEDULE("Schedule"), TASKS("Notes"), ACADEMICS("Tools"), CAMPUS_AI("CampusOS AI"),
+    HOME("Home"), SCHEDULE("Schedule"), TASKS("Notes"), ACADEMICS("Tools"), CAMPUS_AI("Campus AI"),
     FILES("Files"), CHAT("Chats"), ANNOUNCEMENTS("Announcements"), ADMIN("Campus Management"), SETTINGS("Settings")
 }
 
