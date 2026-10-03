@@ -653,9 +653,11 @@ fun CampusOSApp(activity: Activity) {
     var subjectPageId by rememberSaveable { mutableLongStateOf(0L) }
     var subjectPageMode by rememberSaveable { mutableIntStateOf(0) }
     var subjectOpenedFile by rememberSaveable { mutableStateOf("") }
+    var aiBubbleOpen by rememberSaveable { mutableStateOf(false) }
 
     BackHandler {
         when {
+            aiBubbleOpen -> aiBubbleOpen = false
             subjectPageId != 0L && subjectOpenedFile.isNotBlank() -> subjectOpenedFile = ""
             subjectPageId != 0L -> { subjectPageId = 0L; subjectOpenedFile = "" }
             showScheduleDetails -> showScheduleDetails = false
@@ -906,10 +908,15 @@ fun CampusOSApp(activity: Activity) {
                 }
                 }
                 if (store.aiFloatingEnabled() && !scheduleFullscreen && screen != Screen.STUDY_MAKER) {
-                    CampusAiFloatingButton(store) { screenName = Screen.STUDY_MAKER.name }
+                    if (aiBubbleOpen) {
+                        Box(Modifier.fillMaxSize().padding(bottom = 8.dp, end = 8.dp), contentAlignment = Alignment.BottomEnd) {
+                            CampusAiBubble(activity, store) { aiBubbleOpen = false }
+                        }
+                    }
+                    CampusAiFloatingButton(store) { aiBubbleOpen = !aiBubbleOpen }
                 }
             }
-            if (showHomeSettings) {
+                        if (showHomeSettings) {
                 HomeSettingsDialog(store, campusSession?.role ?: "student", onManagement = { screenName = Screen.ADMIN.name; showHomeSettings = false }, onModule = { settingsModule = it; settingsParent = null; showHomeSettings = false }, onAppearance = { showHomeColors = true; settingsParent = null; showHomeSettings = false }, onLockNow = { locked = true }, done = { showHomeSettings = false }, openAppLock = { showHomeSettings = false; showAppLock = true }, openBackupRecovery = { showHomeSettings = false; showBackupRecovery = true }, openAbout = { showHomeSettings = false; showAbout = true })
             }
             if (showAbout) AboutDialog { showAbout = false }
