@@ -381,6 +381,8 @@ class LocalStore(context: Context) {
     fun setAiFloatingOpacity(value: Float) { prefs.edit().putFloat("ai_floating_opacity", value.coerceIn(0.30f, 1f)).apply(); revision++ }
     fun aiFloatingSize() = prefs.getFloat("ai_floating_size", 52f).coerceIn(44f, 76f)
     fun setAiFloatingSize(value: Float) { prefs.edit().putFloat("ai_floating_size", value.coerceIn(44f, 76f)).apply(); revision++ }
+    fun aiBubbleSize() = prefs.getFloat("ai_bubble_size", 90f).coerceIn(70f, 96f)
+    fun setAiBubbleSize(value: Float) { prefs.edit().putFloat("ai_bubble_size", value.coerceIn(70f, 96f)).apply(); revision++ }
     fun aiFloatingX() = prefs.getFloat("ai_floating_x", -1f)
     fun aiFloatingY() = prefs.getFloat("ai_floating_y", -1f)
     fun setAiFloatingPosition(x: Float, y: Float) { prefs.edit().putFloat("ai_floating_x", x).putFloat("ai_floating_y", y).apply() }
@@ -389,7 +391,7 @@ class LocalStore(context: Context) {
     fun setAiActionPermission(value: String) { prefs.edit().putString("ai_action_permission", value).apply(); revision++ }
     fun aiActionNeedsApproval(toolName: String): Boolean = when (aiActionPermission()) {
         "all" -> false
-        "read" -> toolName !in setOf("get_schedule", "get_tasks")
+        "read" -> !(toolName.startsWith("get_") || toolName == "calculate")
         else -> true
     }
 
@@ -3786,9 +3788,9 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
                     }
                     Text(
                         when (aiPermission) {
-                            "all" -> "AI can read and change schedule, tasks, and subjects without asking."
-                            "read" -> "AI can read schedule and tasks. Changes still require your approval."
-                            else -> "AI asks before every CampusOS data action, including reads."
+                            "all" -> "AI can read and change supported CampusOS data: schedule, tasks, subjects, notes, lecture files, budget, and calculator actions without asking."
+                            "read" -> "AI can read supported CampusOS data and use the calculator. Changes still require your approval."
+                            else -> "AI asks before every CampusOS data action, including reads and changes."
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -3800,6 +3802,7 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
             var aiEnabled by remember { mutableStateOf(store.aiFloatingEnabled()) }
             var aiOpacity by remember { mutableFloatStateOf(store.aiFloatingOpacity()) }
             var aiSize by remember { mutableFloatStateOf(store.aiFloatingSize()) }
+            var aiBubbleSize by remember { mutableFloatStateOf(store.aiBubbleSize()) }
             Card(campusTileModifier(Modifier.fillMaxWidth()), colors = campusTileColors()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -3827,6 +3830,12 @@ fun SettingsScreen(store: LocalStore, theme: String, setTheme: (String) -> Unit,
                         aiSize = it
                         store.setAiFloatingSize(it)
                     }, valueRange = 44f..76f, steps = 7)
+                    Text("AI chat bubble size: " + aiBubbleSize.roundToInt() + "% of the screen", style = MaterialTheme.typography.labelLarge)
+                    Slider(value = aiBubbleSize, onValueChange = {
+                        aiBubbleSize = it
+                        store.setAiBubbleSize(it)
+                    }, valueRange = 70f..96f, steps = 12)
+                    Text("The chat opens as a large bubble over the current screen. Back closes it without losing the conversation.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("Drag the floating AI button anywhere on the current CampusOS screen. Its position is saved on this device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedButton(onClick = { store.resetAiFloatingPosition() }, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Default.RestartAlt, null)
