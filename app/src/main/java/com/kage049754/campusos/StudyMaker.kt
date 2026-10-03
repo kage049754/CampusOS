@@ -949,14 +949,14 @@ fun CampusAiBubble(activity: Activity, store: LocalStore, onModuleChanged: (Stri
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
+fun CampusAiScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
     if (!STUDY_AI_EXPERIMENT) { done(); return }
     val context = LocalContext.current
     val secure = remember { StudyAiSecureStore(context) }
     var provider by remember { mutableStateOf(secure.provider()) }
     var model by remember { mutableStateOf(secure.model()) }
     var apiKey by remember { mutableStateOf(secure.getApiKey(provider)) }
-    var page by rememberSaveable { mutableStateOf("home") }
+    var page by rememberSaveable { mutableStateOf("chat") }
     var sources by remember { mutableStateOf(emptyList<StudySource>()) }
     var selectedIds by rememberSaveable { mutableStateOf(setOf<String>()) }
     var action by rememberSaveable { mutableStateOf("") }
@@ -976,7 +976,7 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
     var error by remember { mutableStateOf("") }
     var chatInput by rememberSaveable { mutableStateOf("") }
     var chat by remember { mutableStateOf(listOf<AiChatMessage>()) }
-    var chatId by rememberSaveable { mutableStateOf("") }
+    var chatId by rememberSaveable { mutableStateOf(System.currentTimeMillis().toString()) }
     var chatAttachment by remember { mutableStateOf<AiChatAttachment?>(null) }
     var chatHistory by remember { mutableStateOf(emptyList<AiChatConversation>()) }
     var attachmentMenu by remember { mutableStateOf(false) }
@@ -1010,7 +1010,7 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
         }
     }
     DisposableEffect(Unit) { onDispose { activity.window.decorView.systemUiVisibility = 0 } }
-    BackHandler { when { page=="chat" -> { chatHistory=chatStore.list(); page="home" }; page=="chat_history" -> page="home"; page=="home" -> done(); else -> page="home" } }
+    BackHandler { when { page=="chat" -> done(); page=="chat_history" -> page="chat"; page=="home" -> done(); else -> page="chat" } }
 
     fun copyCurrentChat() {
         val text = chat.joinToString("\n\n") { message ->
@@ -1051,13 +1051,13 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
 
     Scaffold(topBar = {
         TopAppBar(
-            title = { Text(if (page == "home") "CampusOS AI" else when (page) {
+            title = { Text(if (page == "chat") "Campus AI" else when (page) {
                 "sources" -> "Select Materials"; "builder" -> "Create Study Material"; "result" -> resultTitle
                 "chat" -> "Chat"; "packs" -> "My Study Packs"; "settings" -> "AI Settings"; else -> "CampusOS AI"
             }, fontWeight = FontWeight.Bold) },
-            navigationIcon = { IconButton({ if (page == "home") done() else page = "home" }) { Icon(Icons.Default.ArrowBack, "Back") } },
+            navigationIcon = { IconButton({ if (page == "chat") done() else page = "chat" }) { Icon(Icons.Default.ArrowBack, "Back") } },
             actions = {
-                if (page == "home") {
+                if (page == "chat") {
                     IconButton({ page = "settings"; error = "" }) { Icon(Icons.Default.Settings, "AI settings") }
                 } else if (page == "chat") {
                     IconButton({ copyCurrentChat() }, enabled = chat.isNotEmpty()) { Icon(Icons.Default.ContentCopy, "Copy whole chat") }
