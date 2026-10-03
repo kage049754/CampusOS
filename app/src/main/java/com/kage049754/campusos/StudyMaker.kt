@@ -503,7 +503,30 @@ private fun executeCampusAiTool(store: LocalStore, name: String, args: JSONObjec
         "rename_lecture_file" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; val folder=store.subjectFilesFolder(subject.id); val old=File(folder,campusAiSafeFileName(args.optString("fileName"))); val target=File(folder,campusAiSafeFileName(args.optString("newName"))); if(!old.exists()) return "Lecture file not found."; if(target.exists()) return "A lecture file with that name already exists."; if(!old.renameTo(target)) return "Could not rename lecture file."; "Renamed lecture file to "+target.name+"." }
         "delete_lecture_file" -> { val subject=campusAiFindSubject(store,args) ?: return "No matching subject was found."; val file=File(store.subjectFilesFolder(subject.id),campusAiSafeFileName(args.optString("fileName"))); if(!file.exists()) return "Lecture file not found."; file.delete(); "Deleted lecture file "+file.name+"." }
         "get_budget" -> JSONObject().apply { put("period",store.budgetPeriod());put("allowance",store.budgetAllowance());put("savingGoal",store.budgetTargetName());put("savingTarget",store.budgetTargetAmount());put("savingSaved",store.budgetTargetSaved());put("entries",JSONArray(store.budgetEntries().map{e->JSONObject().apply{put("id",e.id);put("type",e.type);put("amount",e.amount);put("category",e.category);put("note",e.note);put("date",e.date);put("target",e.target)}})) }.toString()
-        "add_budget" -> { val type=args.optString("type","expense"); val e=BudgetEntry(type=type,amount=args.optDouble("amount",0.0),category=args.optString("category"),note=args.optString("note"),date=args.optString("date"),target=args.optString("target")); store.addBudgetEntry(e); "Added "+type+" of "+e.amount+" to budget." }
+        "add_budget" -> {
+            // AI may omit the date or return "Expense"/"EXPENSE". Normalize it exactly like
+            // the manual Budget dialog so the entry belongs to the current budget period.
+            val rawType = args.optString("type","expense").trim().lowercase(Locale.getDefault())
+            val type = when {
+                rawType.contains("saving") -> "saving"
+                rawType.contains("income") || rawType.contains("allowance") -> "income"
+                else -> "expense"
+            }
+            val amount = kotlin.math.abs(args.optDouble("amount",0.0))
+            val date = args.optString("date").trim().ifBlank {
+                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            }
+            val e = BudgetEntry(
+                type = type,
+                amount = amount,
+                category = args.optString("category"),
+                note = args.optString("note"),
+                date = date,
+                target = args.optString("target")
+            )
+            store.addBudgetEntry(e)
+            "Added "+type+" of "+amount+" to budget for "+date+"."
+        }
         "delete_budget" -> { val id=args.optLong("id",0L); if(id<=0) return "A budget entry id is required."; store.deleteBudgetEntry(id); "Deleted budget entry "+id+"." }
         "set_budget_plan" -> { store.setBudgetPlan(args.optString("period","Weekly"),args.optDouble("amount",0.0)); "Budget plan updated." }
         "set_saving_goal" -> { store.setBudgetTarget(args.optString("name"),args.optDouble("amount",0.0)); "Saving goal updated." }
