@@ -161,13 +161,25 @@ private fun campusColorScheme(preset: String, dark: Boolean): ColorScheme {
         secondary=primary.copy(alpha=.78f), secondaryContainer=primaryContainer.copy(alpha=.75f),
         tertiary=tertiary, tertiaryContainer=primaryContainer.copy(alpha=.65f),
         background=darkSurface, surface=darkSurface, surfaceVariant=darkVariant,
-        surfaceContainerLow=darkVariant.copy(alpha=.72f)
+        surfaceContainerLowest=darkSurface,
+        surfaceContainerLow=darkVariant.copy(alpha=.72f),
+        surfaceContainer=darkVariant,
+        surfaceContainerHigh=darkVariant.copy(alpha=.86f),
+        surfaceContainerHighest=darkVariant.copy(alpha=.96f),
+        surfaceDim=darkSurface,
+        surfaceBright=darkVariant
     ) else lightColorScheme(
         primary=primary, primaryContainer=primaryContainer,
         secondary=tertiary, secondaryContainer=primaryContainer.copy(alpha=.78f),
         tertiary=tertiary, tertiaryContainer=primaryContainer.copy(alpha=.68f),
         background=lightSurface, surface=Color.White, surfaceVariant=lightSurfaceVariant,
-        surfaceContainerLow=lightSurface.copy(alpha=.72f)
+        surfaceContainerLowest=lightSurface,
+        surfaceContainerLow=lightSurface.copy(alpha=.72f),
+        surfaceContainer=lightSurface,
+        surfaceContainerHigh=lightSurface.copy(alpha=.86f),
+        surfaceContainerHighest=lightSurface.copy(alpha=.96f),
+        surfaceDim=lightSurface,
+        surfaceBright=Color.White
     )
 }
 
@@ -759,7 +771,7 @@ fun CampusOSApp(activity: Activity) {
             },
             bottomBar = {
                 if (!scheduleFullscreen && screen != Screen.STUDY_MAKER) {
-                    NavigationBar {
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                         listOf(
                             Screen.HOME,
                             Screen.SCHEDULE,
