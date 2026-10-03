@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -325,7 +326,7 @@ private suspend fun studyAiCall(provider: String, model: String, key: String, pr
         require(key.isNotBlank()){"Add your AI API key first."}
         val safeProvider=allowedStudyProvider(provider); val safeModel=enforceFreeStudyModel(safeProvider,model); val tools=if(store!=null) campusAiToolDefinitions() else JSONArray()
         var currentPrompt=prompt
-        repeat(3){ round ->
+        for (round in 0 until 3) {
             val endpoint:String; val body:String; val headers=mutableMapOf("Content-Type" to "application/json")
             if(safeProvider=="Gemini"){
                 endpoint="https://generativelanguage.googleapis.com/v1beta/models/"+safeModel+":generateContent"
