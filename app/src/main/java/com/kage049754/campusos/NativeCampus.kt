@@ -12,6 +12,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -384,6 +385,7 @@ fun NativeChatScreen() {
     var groups by remember { mutableStateOf<List<CampusGroup>>(emptyList()) }
     var selected by remember { mutableStateOf<CampusGroup?>(null) }
     var messages by remember { mutableStateOf<List<CampusMessage>>(emptyList()) }
+    val messageListState = rememberLazyListState()
     var draft by rememberSaveable { mutableStateOf("") }
     var search by rememberSaveable { mutableStateOf("") }
     var people by remember { mutableStateOf<List<CampusProfile>>(emptyList()) }
@@ -411,6 +413,9 @@ fun NativeChatScreen() {
         val id = selected?.id
         if (id != null) runCatching { messages = CampusNativeApi.messages(session, id) }.onFailure { error = it.message ?: "Unable to load messages" }
         else messages = emptyList()
+    }
+    LaunchedEffect(selected?.id, messages.size) {
+        if (messages.isNotEmpty()) messageListState.animateScrollToItem(messages.size - 1)
     }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -453,7 +458,7 @@ fun NativeChatScreen() {
                 }
             }
             Divider()
-            LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
+            LazyColumn(state = messageListState, modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
                 items(messages) { m ->
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (m.senderId == session.userId) Alignment.End else Alignment.Start) {
                         Surface(color = if (m.senderId == session.userId) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.large) {
