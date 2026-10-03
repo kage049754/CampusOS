@@ -254,8 +254,16 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
     LaunchedEffect(testRequest) {
         if (testRequest > 0 && apiKey.isNotBlank()) {
             testingConnection = true
-            studyAiCall(provider, model, apiKey, "Reply with only: OK").onSuccess { error = "Connection successful." }.onFailure { error = it.message ?: "Connection test failed." }
-            testingConnection = false
+            error = "Testing connection…"
+            try {
+                studyAiCall(provider, model, apiKey.trim(), "Reply with only: OK")
+                    .onSuccess { error = "Connection successful." }
+                    .onFailure { error = it.message ?: "Connection test failed." }
+            } catch (e: Exception) {
+                error = e.message ?: "Connection test failed. Check the provider, model, and internet connection."
+            } finally {
+                testingConnection = false
+            }
         }
     }
     DisposableEffect(Unit) { onDispose { activity.window.decorView.systemUiVisibility = 0 } }
@@ -406,8 +414,16 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
                 }}
                 OutlinedTextField(apiKey, { apiKey = it }, Modifier.fillMaxWidth(), label = { Text("API key") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
                 OutlinedTextField(model, { model = it; secure.setModel(it) }, Modifier.fillMaxWidth(), label = { Text("Model") }, singleLine = true)
-                Button({ secure.setApiKey(apiKey.trim()); apiKey = secure.getApiKey(); error = "API key saved on this device." }, Modifier.fillMaxWidth()) { Text("Save API Key") }
-                OutlinedButton({ secure.setApiKey(apiKey.trim()); apiKey = secure.getApiKey(); testRequest++ }, Modifier.fillMaxWidth(), enabled = !testingConnection && apiKey.isNotBlank()) {
+                Button({
+                    runCatching { secure.setApiKey(apiKey.trim()); apiKey = secure.getApiKey() }
+                        .onSuccess { error = "API key saved securely on this device." }
+                        .onFailure { error = it.message ?: "Could not save the API key on this device." }
+                }, Modifier.fillMaxWidth()) { Text("Save API Key") }
+                OutlinedButton({
+                    runCatching { secure.setApiKey(apiKey.trim()); apiKey = secure.getApiKey() }
+                        .onSuccess { testRequest++ }
+                        .onFailure { error = it.message ?: "Could not save the API key on this device." }
+                }, Modifier.fillMaxWidth(), enabled = !testingConnection && apiKey.isNotBlank()) {
                     if (testingConnection) CircularProgressIndicator(Modifier.size(18.dp)) else Text("Test Connection")
                 }
                 Text("Use a model available to your provider account. API usage is billed/limited by that provider.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
