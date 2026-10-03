@@ -92,12 +92,13 @@ private class StudyAiSecureStore(context: Context) {
         val name = keyName(provider)
         var encoded = prefs.getString(name, "") ?: ""
         if (!prefs.getBoolean("api_keys_migrated", false)) {
+            // Legacy key was provider-ambiguous. Never duplicate it into both providers.
             val legacy = prefs.getString("api_key", "") ?: ""
-            if (legacy.isNotBlank()) {
+            if (legacy.isNotBlank() && encoded.isBlank()) {
                 prefs.edit().putString(name, legacy).remove("api_key").putBoolean("api_keys_migrated", true).apply()
                 encoded = legacy
             } else {
-                prefs.edit().putBoolean("api_keys_migrated", true).apply()
+                prefs.edit().remove("api_key").putBoolean("api_keys_migrated", true).apply()
             }
         }
         if (encoded.isBlank()) return ""
@@ -440,31 +441,49 @@ fun StudyMakerScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
             "chat" -> Column(Modifier.fillMaxSize().padding(padding)) {
                 LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
                     if (chat.isEmpty()) item { Text("Ask anything — no notes or lecture files required.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    items(chat) { pair -> Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(if (pair.first == "You") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)) {
-                        Column(Modifier.padding(12.dp)) { Text(pair.first, fontWeight = FontWeight.Bold); Spacer(Modifier.height(4.dp)); Text(pair.second) }
+                    items(chat) { pair ->
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = if (pair.first == "You") Arrangement.End else Arrangement.Start
+                        ) {
+                            Surface(
+                                modifier = Modifier.widthIn(max = 320.dp),
+                                shape = RoundedCornerShape(18.dp),
+                                color = if (pair.first == "You") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow
+                            ) {
+                                Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                                    Text(
+                                        pair.second,
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
+                                }
+                            }
+                        }
                     }}
                     if (busy) item { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Thinking…") } }
                 }
                 Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.Bottom) {
-                    OutlinedTextField(chatInput, { chatInput = it }, Modifier.weight(1f), label = { Text("Ask anything") }, maxLines = 4)
+                    OutlinedTextField(chatInput, { chatInput = it }, Modifier.weight(1f), label = { Text("Message CampusOS AI") }, maxLines = 4)
                     IconButton(enabled = chatInput.isNotBlank() && !busy, onClick = {
-                        val q = chatInput.trim(); chatInput = ""; chat = chat + ("You" to q)
+                        val q = chatInput.trim()
+                        chatInput = ""
+                        if (q.isNotBlank()) {
+                            chat = chat + ("You" to q)
+                            busy = true
+                            error = ""
+                            val prompt = "You are CampusOS AI, a helpful general-purpose assistant. Answer the student's question directly and clearly. You may discuss any topic. Do not require notes or lecture files.\n\nSTUDENT QUESTION:\n" + q
+                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                                studyAiCall(provider, model, apiKey.trim(), prompt).onSuccess {
+                                    chat = chat + ("Study AI" to it)
+                                }.onFailure {
+                                    error = it.message ?: "AI request failed."
+                                }
+                                busy = false
+                            }
+                        }
                     }) { Icon(Icons.Default.Send, "Send") }
                 }
-                if (!busy && chat.lastOrNull()?.first == "You") LaunchedEffect(chat.size) {
-                    val q = chat.last().second
-                    if (q.isNotBlank()) {
-                        busy = true
-                        error = ""
-                        val prompt = "You are CampusOS AI, a helpful general-purpose assistant. Answer the student's question directly and clearly. You may discuss any topic. Do not require notes or lecture files. If the user asks about their local study materials, explain that they need to select materials in Study Maker for source-grounded answers.\n\nSTUDENT QUESTION:\n" + q
-                        studyAiCall(provider, model, apiKey, prompt).onSuccess {
-                            chat = chat + ("Study AI" to it)
-                        }.onFailure {
-                            error = it.message ?: "AI request failed."
-                        }
-                        busy = false
-                    }
-                }
+                
                 if (error.isNotBlank()) Text(error, Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.error)
             }
             "packs" -> LazyColumn(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
