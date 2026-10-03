@@ -333,7 +333,7 @@ private suspend fun studyAiCall(provider: String, model: String, key: String, pr
                     val parts=JSONArray().put(JSONObject().put("text",currentPrompt))
                     attachments.filter{it.base64.isNotBlank()}.forEach{a->parts.put(JSONObject().put("inline_data",JSONObject().put("mime_type",a.mimeType).put("data",a.base64)))}
                     put("contents",JSONArray().put(JSONObject().apply{put("parts",parts)}))
-                    if(tools.length()>0) put("tools",JSONArray().put(JSONObject().put("functionDeclarations",tools)))
+                    if(tools.length()>0) { val declarations=JSONArray(); for(i in 0 until tools.length()) declarations.put(tools.optJSONObject(i)?.optJSONObject("function")); put("tools",JSONArray().put(JSONObject().put("functionDeclarations",declarations))) }
                     put("generationConfig",JSONObject().put("temperature",0.35).put("maxOutputTokens",6000))
                 }.toString()
                 headers["x-goog-api-key"]=key
