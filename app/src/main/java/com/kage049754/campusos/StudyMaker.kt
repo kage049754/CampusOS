@@ -1058,9 +1058,8 @@ fun CampusAiScreen(activity: Activity, store: LocalStore, done: () -> Unit) {
             navigationIcon = { IconButton({ if (page == "chat") done() else page = "chat" }) { Icon(Icons.Default.ArrowBack, "Back") } },
             actions = {
                 if (page == "chat") {
-                    IconButton({ page = "settings"; error = "" }) { Icon(Icons.Default.Settings, "AI settings") }
-                } else if (page == "chat") {
                     IconButton({ copyCurrentChat() }, enabled = chat.isNotEmpty()) { Icon(Icons.Default.ContentCopy, "Copy whole chat") }
+                    IconButton({ page = "settings"; error = "" }) { Icon(Icons.Default.Settings, "AI settings") }
                 }
             }
         )
