@@ -433,6 +433,8 @@ class LocalStore(context: Context) {
         }.sortedByDescending { it.id }
     }.getOrElse { emptyList() }
     fun addBudgetEntry(entry: BudgetEntry) {
+        // Match the manual Budget UI: amounts are always positive; type determines the effect.
+        val normalized = entry.copy(amount = kotlin.math.abs(entry.amount))
         val a = JSONArray()
         budgetEntries().forEach { e ->
             a.put(JSONObject().apply {
@@ -441,10 +443,14 @@ class LocalStore(context: Context) {
             })
         }
         a.put(JSONObject().apply {
-            put("id", entry.id); put("type", entry.type); put("amount", entry.amount)
-            put("category", entry.category); put("note", entry.note); put("date", entry.date); put("target", entry.target)
+            put("id", normalized.id); put("type", normalized.type); put("amount", normalized.amount)
+            put("category", normalized.category); put("note", normalized.note); put("date", normalized.date); put("target", normalized.target)
         })
         prefs.edit().putString("budget_entries", a.toString()).apply()
+        // Saving entries created by AI use the same target update as the manual Saving dialog.
+        if (normalized.type.equals("saving", true) && normalized.target.isNotBlank()) {
+            addBudgetTargetSaved(normalized.amount)
+        }
         revision++
     }
     fun deleteBudgetEntry(id: Long) {
@@ -1798,6 +1804,7 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
     var classType by remember { mutableStateOf("Lecture") }
     var selectedSlots by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var removedSlots by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var originalSubject by remember { mutableStateOf("") }
     var refresh by remember { mutableIntStateOf(0) }
 
     val startHour = store.scheduleStartHour().coerceIn(0,23)
@@ -1825,6 +1832,7 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
                                 selected = subject.equals(code, true),
                                 onClick = {
                                     subject = code
+                                    originalSubject = code
                                     val records = existingSchedule.filter { it.title.trim().equals(code.trim(), true) }
                                     selectedSlots = records.associate { r ->
                                         val hour = r.startTime.toMinutesOrNull()?.div(60) ?: 0
@@ -1940,12 +1948,25 @@ fun ScheduleManagerDialog(store: LocalStore, done: () -> Unit) {
                         val type = if (entry.value.equals("Lab", true)) "Lab" else "Lecture"
                         Record(id = idBase + index, title = normalizedSubject, subtitle = fullName.trim(), extra = notes.trim(), day = day, startTime = "%02d:00".format(hour), endTime = "%02d:00".format(hour + 1), room = if (type == "Lab") labRoom.trim() else lectureRoom.trim(), professor = professor.trim(), color = 0L, classType = type)
                     }
-                    val withoutSubject = existing.filterNot { it.title.trim().equals(normalizedSubject, true) }
-                    store.put("schedule", withoutSubject + newRecords)
+                    val oldSubject = originalSubject.trim()
+                    val withoutEditedSubject = existing.filterNot {
+                        (oldSubject.isNotBlank() && it.title.trim().equals(oldSubject, true)) ||
+                            it.title.trim().equals(normalizedSubject, true)
+                    }
+                    store.put("schedule", withoutEditedSubject + newRecords)
                     if (newRecords.isEmpty()) {
-                        store.put("subjects", store.get("subjects").filterNot { it.title.trim().equals(normalizedSubject, true) })
+                        store.put("subjects", store.get("subjects").filterNot {
+                            it.title.trim().equals(normalizedSubject, true) ||
+                                (oldSubject.isNotBlank() && it.title.trim().equals(oldSubject, true))
+                        })
                     } else {
-                        newRecords.forEach { syncSubjectFromClass(store, it) }
+                        val subjects = store.get("subjects").toMutableList()
+                        if (oldSubject.isNotBlank() && !oldSubject.equals(normalizedSubject, true) &&
+                            store.get("schedule").none { it.title.trim().equals(oldSubject, true) }) {
+                            subjects.removeAll { it.title.trim().equals(oldSubject, true) }
+                        }
+                        store.put("subjects", subjects)
+                        syncSubjectsFromSchedule(store, store.get("schedule"))
                     }
                 }
                 done()
@@ -2035,12 +2056,24 @@ fun EditScheduleRecordDialog(record: Record, store: LocalStore, done: () -> Unit
                             it.startTime.toMinutesOrNull() == newStartHour * 60 &&
                             it.title.trim().equals(subject.trim(), true)
                     }
+                    if (!record.title.equals(updated.title, true)) {
+                        val subjects = store.get("subjects").toMutableList()
+                        val oldIndex = subjects.indexOfFirst { it.title.trim().equals(record.title.trim(), true) }
+                        if (oldIndex >= 0) {
+                            subjects[oldIndex] = subjects[oldIndex].copy(
+                                title = updated.title.trim(), subtitle = updated.subtitle.trim(),
+                                extra = updated.extra.trim(), room = updated.room.trim(),
+                                professor = updated.professor.trim(), classType = updated.classType
+                            )
+                            store.put("subjects", subjects)
+                        }
+                    }
                     store.put(
                         "schedule",
                         cleaned.map { if (it.id == record.id) updated else it } +
                             if (cleaned.none { it.id == record.id }) listOf(updated) else emptyList()
                     )
-                    syncSubjectFromClass(store, updated)
+                    syncSubjectsFromSchedule(store, store.get("schedule"))
                     done()
                 }
             }) { Text("Save changes") }
@@ -3125,7 +3158,6 @@ private fun BudgetEntryDialog(
                 if (value > 0) {
                     val target = if (typeLabel == "Saving" && targetName.isNotBlank()) targetName else ""
                     store.addBudgetEntry(BudgetEntry(type = typeLabel.lowercase(), amount = value, category = category, note = note.trim(), date = date, target = target))
-                    if (target.isNotBlank()) store.addBudgetTargetSaved(value)
                 }
                 done()
             }) { Text("Add") }
