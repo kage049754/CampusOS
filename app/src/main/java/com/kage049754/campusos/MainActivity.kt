@@ -137,12 +137,17 @@ private fun campusColorScheme(preset: String, dark: Boolean): ColorScheme {
     // stayed nearly the same across presets and made tiles look like #E8E3E7.
     val colors = when (preset) {
         "forest" -> listOf(Color(0xFF176B3A), Color(0xFFB8F2C8), Color(0xFF326B67), Color(0xFFE8F4EC), Color(0xFFD5E9DC))
-        "lavender" -> listOf(Color(0xFF6750A4), Color(0xFFEADDFF), Color(0xFF7D5260), Color(0xFFF5F0FB), Color(0xFFE9DFF4))
-        "sunset" -> listOf(Color(0xFFB3261E), Color(0xFFFFDAD1), Color(0xFF705E1F), Color(0xFFFFF2EE), Color(0xFFF3DED7))
-        "mono" -> listOf(Color(0xFF3F4650), Color(0xFFE0E4E9), Color(0xFF5D636B), Color(0xFFF1F3F5), Color(0xFFE1E5E9))
         "ocean" -> listOf(Color(0xFF006A6A), Color(0xFFB8F2F0), Color(0xFF315E72), Color(0xFFE9F6F6), Color(0xFFD5ECEC))
         "mint" -> listOf(Color(0xFF2E7D5B), Color(0xFFC8F2DC), Color(0xFF36706A), Color(0xFFEBF7F0), Color(0xFFD9EBDD))
+        "sky" -> listOf(Color(0xFF2674C8), Color(0xFFD7E9FF), Color(0xFF4F6480), Color(0xFFF1F7FF), Color(0xFFDFEBF7))
+        "lavender" -> listOf(Color(0xFF6750A4), Color(0xFFEADDFF), Color(0xFF7D5260), Color(0xFFF5F0FB), Color(0xFFE9DFF4))
+        "plum" -> listOf(Color(0xFF7A4E9B), Color(0xFFEBD9F7), Color(0xFF6B5878), Color(0xFFF8F2FC), Color(0xFFEDE1F3))
         "rose" -> listOf(Color(0xFF9C4168), Color(0xFFFFD9E5), Color(0xFF70465A), Color(0xFFFFF0F4), Color(0xFFF1DDE5))
+        "coral" -> listOf(Color(0xFFC85A4A), Color(0xFFFFDDD6), Color(0xFF795B55), Color(0xFFFFF4F1), Color(0xFFF3E1DD))
+        "sunset" -> listOf(Color(0xFFB3261E), Color(0xFFFFDAD1), Color(0xFF705E1F), Color(0xFFFFF2EE), Color(0xFFF3DED7))
+        "amber" -> listOf(Color(0xFF9A6700), Color(0xFFFFE2A8), Color(0xFF74602B), Color(0xFFFFF8EA), Color(0xFFF1E5C9))
+        "teal" -> listOf(Color(0xFF00796B), Color(0xFFB8EEE6), Color(0xFF3F6864), Color(0xFFEBF8F5), Color(0xFFD7ECE8))
+        "mono" -> listOf(Color(0xFF3F4650), Color(0xFFE0E4E9), Color(0xFF5D636B), Color(0xFFF1F3F5), Color(0xFFE1E5E9))
         else -> listOf(Color(0xFF176B3A), Color(0xFFB8F2C8), Color(0xFF326B67), Color(0xFFE8F4EC), Color(0xFFD5E9DC))
     }
     val primary = colors[0]
@@ -357,7 +362,9 @@ class LocalStore(context: Context) {
     fun setPattern(v: String) { prefs.edit().putString("lock_pattern", v).apply(); revision++ }
     fun authMethod(): String { val stored = prefs.getString("lock_method", "") ?: ""; if (stored.isNotBlank()) return stored; return if (pin().isNotBlank()) "pin" else "none" }
     fun setAuthMethod(v: String) { prefs.edit().putString("lock_method", v).apply(); revision++ }
-    fun theme() = prefs.getString("theme", "system") ?: "system"
+    // CampusOS uses light mode only. Keep the stored key for backward compatibility,
+    // but ignore old system/dark values from previous versions.
+    fun theme() = "light"
     fun appearancePreset() = prefs.getString("appearance_preset", "forest") ?: "forest"
     fun setAppearancePreset(v: String) { prefs.edit().putString("appearance_preset", v).apply(); revision++ }
     fun homeLayoutOrder(): List<String> = (prefs.getString("home_layout_order", "") ?: "").split(",").filter { it.isNotBlank() }
@@ -365,16 +372,16 @@ class LocalStore(context: Context) {
     fun homeHiddenTiles(): Set<String> = (prefs.getString("home_hidden_tiles", "") ?: "").split(",").filter { it.isNotBlank() }.toSet()
     fun setHomeHiddenTiles(hidden: Set<String>) { prefs.edit().putString("home_hidden_tiles", hidden.joinToString(",")).apply(); revision++ }
     fun resetHomeLayout() { prefs.edit().remove("home_layout_order").remove("home_hidden_tiles").apply(); revision++ }
-    fun setTheme(v: String) { prefs.edit().putString("theme", v).apply(); revision++ }
+    fun setTheme(v: String) { prefs.edit().putString("theme", "light").apply(); revision++ }
     fun toolOrder(): List<String> {
         // Campus AI is a primary app screen, not a reorderable tool. Keep legacy study_maker
         // out of the visible tool list while preserving the existing subjects storage key.
-        val allowed = listOf("subjects", "calculator", "budget")
+        val allowed = listOf("campus_ai", "subjects", "calculator", "budget")
         val saved = (prefs.getString("tool_order", "") ?: "").split(",").filter { it in allowed }
         return (saved + allowed).distinct()
     }
     fun setToolOrder(order: List<String>) {
-        prefs.edit().putString("tool_order", order.filter { it in listOf("subjects","calculator","budget") }.distinct().joinToString(",")).apply()
+        prefs.edit().putString("tool_order", order.filter { it in listOf("campus_ai","subjects","calculator","budget") }.distinct().joinToString(",")).apply()
         revision++
     }
 
@@ -738,11 +745,8 @@ fun CampusOSApp(activity: Activity) {
         }
     }
 
-    val dark = when (theme) {
-        "dark" -> true
-        "light" -> false
-        else -> androidx.compose.foundation.isSystemInDarkTheme()
-    }
+    // Light mode is the only supported app theme now.
+    val dark = false
 
     var subjectPageVisible by remember(subjectPageId, subjectPageMode, subjectOpenedFile) { mutableStateOf(false) }
     LaunchedEffect(subjectPageId, subjectPageMode, subjectOpenedFile) {
@@ -1018,11 +1022,11 @@ fun HomeSettingsDialog(
                 SettingsRow(Icons.Default.Home, "Homepage", "Dashboard layout and home tiles") { onModule("Homepage") }
                 SettingsRow(Icons.Default.CalendarMonth, "Schedule", "Class days, timetable and class editing") { onModule("Class Schedule") }
                 SettingsRow(Icons.Default.EventNote, "Notes", "Calendar, notes and reminders") { onModule("Notes") }
-                SettingsRow(Icons.Default.Build, "Tools", "Subjects, Calculator, Budget and study tools") { onModule("Tools") }
+                SettingsRow(Icons.Default.Build, "Tools", "Campus AI, Notepad, Calculator and Budget") { onModule("Tools") }
                 SettingsRow(Icons.Default.AutoAwesome, "CampusOS AI", "AI chat, floating button, memory, history and permissions") { onAiSettings() }
                 SettingsGroupTitle("App")
                 SettingsRow(Icons.Default.Notifications, "Notifications", "Next-class and deadline reminders") { onModule("Notifications") }
-                SettingsRow(Icons.Default.Palette, "Appearance", "Light, dark and system theme") { onAppearance() }
+                SettingsRow(Icons.Default.Palette, "Appearance", "Light mode and color combinations") { onAppearance() }
                 SettingsRow(Icons.Default.Backup, "Data & Backup", "Backup or recover selected modules") { openBackupRecovery() }
                 SettingsRow(Icons.Default.Lock, "App Lock", "PIN or pattern protection") { openAppLock() }
                 SettingsRow(Icons.Default.Info, "About", "Features, modules and offline functions") { openAbout() }
@@ -1273,7 +1277,7 @@ fun ModuleSettingsDialog(module:String,close:()->Unit,profile:()->Unit,scheduleM
             }
             "Class Schedule"->{Text("Class Schedule controls",fontWeight=FontWeight.Bold);OutlinedButton(addClass,Modifier.fillMaxWidth()){Icon(Icons.Default.Add,null);Spacer(Modifier.width(8.dp));Text("Add Class")};OutlinedButton(scheduleManager,Modifier.fillMaxWidth()){Icon(Icons.Default.EditCalendar,null);Spacer(Modifier.width(8.dp));Text("Edit / Delete Classes")};OutlinedButton(scheduleSettings,Modifier.fillMaxWidth()){Icon(Icons.Default.CalendarMonth,null);Spacer(Modifier.width(8.dp));Text("Schedule Settings")};}
             "Notes"->{Text("Notes controls",fontWeight=FontWeight.Bold);Text("Calendar, notes, reminders and deadlines are stored locally.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openTasks,Modifier.fillMaxWidth()){Icon(Icons.Default.EventNote,null);Spacer(Modifier.width(8.dp));Text("Open Notes")};OutlinedButton({ showTaskSettings = true },Modifier.fillMaxWidth()){Icon(Icons.Default.Settings,null);Spacer(Modifier.width(8.dp));Text("Notes Settings")}}
-            "Tools"->{Text("Tools controls",fontWeight=FontWeight.Bold);Text("Subjects, Calculator, Budget, Notepad and Lecture Files are available from Tools.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openAcademics,Modifier.fillMaxWidth()){Icon(Icons.Default.Build,null);Spacer(Modifier.width(8.dp));Text("Open Tools")};OutlinedButton({ showTaskSettings = true },Modifier.fillMaxWidth()){Icon(Icons.Default.SwapVert,null);Spacer(Modifier.width(8.dp));Text("Tool Order")}}
+            "Tools"->{Text("Tools controls",fontWeight=FontWeight.Bold);Text("Campus AI, Notepad, Calculator and Budget are available from Tools.",color=MaterialTheme.colorScheme.onSurfaceVariant);OutlinedButton(openAcademics,Modifier.fillMaxWidth()){Icon(Icons.Default.Build,null);Spacer(Modifier.width(8.dp));Text("Open Tools")};OutlinedButton({ showTaskSettings = true },Modifier.fillMaxWidth()){Icon(Icons.Default.SwapVert,null);Spacer(Modifier.width(8.dp));Text("Tool Order")}}
         }
     }},confirmButton={TextButton(close){Text("Close")}})
     if (showTaskSettings) { if (module == "Tools") ToolOrderDialog(homeStore) { showTaskSettings = false } else TaskSettingsDialog(LocalStore(androidx.compose.ui.platform.LocalContext.current)) { showTaskSettings = false } }
@@ -1574,9 +1578,9 @@ fun ToolOrderDialog(store: LocalStore, done: () -> Unit) {
     var order by remember { mutableStateOf(store.toolOrder()) }
     AlertDialog(onDismissRequest = done, title = { Text("Tool Order") }, text = {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Choose the order of Notepad, Calculator and Budget.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Choose the order of Campus AI, Notepad, Calculator and Budget.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             order.forEachIndexed { index, key ->
-                val label = when (key) { "subjects" -> "Notepad"; "calculator" -> "Calculator"; else -> "Budget" }
+                val label = when (key) { "campus_ai" -> "Campus AI"; "subjects" -> "Notepad"; "calculator" -> "Calculator"; else -> "Budget" }
                 Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text((index + 1).toString(), Modifier.width(28.dp), fontWeight = FontWeight.Bold)
                     Text(label, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
@@ -1589,21 +1593,21 @@ fun ToolOrderDialog(store: LocalStore, done: () -> Unit) {
 }
 @Composable
 fun HomeAppearanceDialog(store: LocalStore, theme: String, setTheme: (String) -> Unit, appearancePreset: String, setAppearancePreset: (String) -> Unit, done: () -> Unit) {
-    val presets = listOf("forest" to "Forest","sunset" to "Sunset","ocean" to "Ocean","mint" to "Mint","lavender" to "Lavender","rose" to "Rose","mono" to "Monochrome")
+    val presets = listOf("forest" to "Forest","ocean" to "Ocean","mint" to "Mint","sky" to "Sky","lavender" to "Lavender","plum" to "Plum","rose" to "Rose","coral" to "Coral","sunset" to "Sunset","amber" to "Amber","teal" to "Teal","mono" to "Monochrome")
     AlertDialog(
         onDismissRequest=done,
         title={Text("Appearance")},
         text={
             Column(Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(14.dp)){
-                Text("Theme mode",fontWeight=FontWeight.SemiBold)
-                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){listOf("system","light","dark").forEach{mode->FilterChip(theme==mode,{setTheme(mode)},label={Text(mode.replaceFirstChar{it.uppercase()})})}}
+                Text("Light mode",fontWeight=FontWeight.SemiBold)
+                Text("CampusOS always stays in light mode. Choose a color combination below.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Color appearance",fontWeight=FontWeight.SemiBold)
                 Text("Choose a ready-made combination. It changes the whole CampusOS UI: background, surfaces, text, buttons, tiles, cards and schedule accents.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 presets.forEach{(id,label)->
                     val selected=appearancePreset==id
                     Card(Modifier.fillMaxWidth().clickable{setAppearancePreset(id)},colors=CardDefaults.cardColors(containerColor=if(selected)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)){
                         Row(Modifier.fillMaxWidth().padding(14.dp),verticalAlignment=Alignment.CenterVertically){
-                            Box(Modifier.size(42.dp).background(when(id){"forest"->Color(0xFF176B3A);"sunset"->Color(0xFFB3261E);"ocean"->Color(0xFF006A6A);"mint"->Color(0xFF2E7D5B);"lavender"->Color(0xFF6750A4);"rose"->Color(0xFF9C4168);"mono"->Color(0xFF3F4650);else->Color(0xFF176B3A)},RoundedCornerShape(12.dp)))
+                            Box(Modifier.size(42.dp).background(when(id){"forest"->Color(0xFF176B3A);"sunset"->Color(0xFFB3261E);"ocean"->Color(0xFF006A6A);"mint"->Color(0xFF2E7D5B);"sky"->Color(0xFF2674C8);"lavender"->Color(0xFF6750A4);"plum"->Color(0xFF7A4E9B);"rose"->Color(0xFF9C4168);"coral"->Color(0xFFC85A4A);"amber"->Color(0xFF9A6700);"teal"->Color(0xFF00796B);"mono"->Color(0xFF3F4650);else->Color(0xFF176B3A)},RoundedCornerShape(12.dp)))
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)){
                                 Text(label,fontWeight=FontWeight.SemiBold)
@@ -2699,10 +2703,10 @@ fun AcademicsScreen(
     var refresh by remember { mutableIntStateOf(0) }
     var showAddSubject by remember { mutableStateOf(false) }
     val keys = remember(store.revision, refresh) { store.toolOrder() }
-    val labels = keys.map { when (it) { "study_maker" -> "Study Maker"; "subjects" -> "Subjects"; "calculator" -> "Calculator"; else -> "Budget" } }
+    val labels = keys.map { when (it) { "campus_ai" -> "Campus AI"; "subjects" -> "Notepad"; "calculator" -> "Calculator"; else -> "Budget" } }
     val tab = keys.indexOf(selectedKey).coerceAtLeast(0)
     val list = remember(refresh, revision, query, tab) {
-        if (keys[tab] == "study_maker") emptyList() else store.get(keys[tab]).filter {
+        if (keys[tab] == "campus_ai") emptyList() else store.get(keys[tab]).filter {
             query.isBlank() || query == "__ADD__" ||
                 (it.title + " " + it.subtitle + " " + it.extra).contains(query, true)
         }
@@ -2736,15 +2740,15 @@ fun AcademicsScreen(
             }
         }
 
-        if (keys.getOrNull(tab) == "study_maker") {
+        if (keys.getOrNull(tab) == "campus_ai") {
             Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Card(campusTileModifier(Modifier.fillMaxWidth()), colors = CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer)) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Study Maker + Study AI", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text("Use selected Notepad notes and Lecture Files with your own AI provider. Your source files stay local.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Campus AI", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text("Chat with Campus AI, ask questions, and manage CampusOS with natural-language commands.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                Button(openStudyMaker, Modifier.fillMaxWidth()) { Icon(Icons.Default.AutoAwesome, null); Spacer(Modifier.width(8.dp)); Text("Open Study Maker") }
+                Button(openStudyMaker, Modifier.fillMaxWidth()) { Icon(Icons.Default.AutoAwesome, null); Spacer(Modifier.width(8.dp)); Text("Open Campus AI") }
             }
         } else if (keys.getOrNull(tab) == "calculator") {
             CalculatorScreen()
@@ -2752,7 +2756,7 @@ fun AcademicsScreen(
             BudgetScreen(store)
         }
 
-        if (keys.getOrNull(tab) != "study_maker" && keys.getOrNull(tab) != "calculator" && keys.getOrNull(tab) != "budget" && list.isEmpty()) {
+        if (keys.getOrNull(tab) != "campus_ai" && keys.getOrNull(tab) != "calculator" && keys.getOrNull(tab) != "budget" && list.isEmpty()) {
             Box(
                 Modifier.fillMaxSize().padding(16.dp),
                 contentAlignment = Alignment.Center
