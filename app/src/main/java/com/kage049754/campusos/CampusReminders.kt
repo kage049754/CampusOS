@@ -185,11 +185,10 @@ object CampusWidgets {
     fun updateAll(context: Context) {
         val app = context.applicationContext
         val manager = android.appwidget.AppWidgetManager.getInstance(app)
-        updateProvider(app, manager, CampusTodayWidgetProvider::class.java)
         updateProvider(app, manager, CampusNextClassWidgetProvider::class.java)
         updateProvider(app, manager, CampusTaskWidgetProvider::class.java)
         updateProvider(app, manager, CampusScheduleWidgetProvider::class.java)
-        updateProvider(app, manager, CampusOverviewWidgetProvider::class.java)
+        updateProvider(app, manager, CampusSuggestionsWidgetProvider::class.java)
         ensureLiveUpdates(app, manager)
     }
 
@@ -205,11 +204,11 @@ object CampusWidgets {
 
     private fun ensureLiveUpdates(context: Context, manager: android.appwidget.AppWidgetManager) {
         val hasWidgets = listOf(
-            CampusTodayWidgetProvider::class.java,
             CampusNextClassWidgetProvider::class.java,
             CampusTaskWidgetProvider::class.java,
             CampusScheduleWidgetProvider::class.java,
-            CampusOverviewWidgetProvider::class.java
+            CampusOverviewWidgetProvider::class.java,
+            CampusSuggestionsWidgetProvider::class.java
         ).any { manager.getAppWidgetIds(ComponentName(context, it)).isNotEmpty() }
 
         val alarmManager = context.getSystemService(AlarmManager::class.java)
@@ -252,16 +251,39 @@ private fun appOpenPendingIntent(context: Context, screen: String? = null, subje
     )
 }
 
-class CampusTodayWidgetProvider : android.appwidget.AppWidgetProvider() {
+class CampusSuggestionsWidgetProvider : android.appwidget.AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: android.appwidget.AppWidgetManager, ids: IntArray) { ids.forEach { update(context, manager, it) } }
     companion object {
         fun update(context: Context, manager: android.appwidget.AppWidgetManager, id: Int) {
-            val v = android.widget.RemoteViews(context.packageName, R.layout.widget_today)
+            val v = android.widget.RemoteViews(context.packageName, R.layout.widget_suggestions)
+            val store = LocalStore(context)
             val day = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date())
-            v.setTextViewText(R.id.widget_title, "CampusOS")
-            v.setTextViewText(R.id.widget_main, SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date()))
-            v.setTextViewText(R.id.widget_secondary, "Today • " + day)
-            v.setOnClickPendingIntent(R.id.widget_root, appOpenPendingIntent(context)); manager.updateAppWidget(id, v)
+            val now = Calendar.getInstance()
+            val nowMinutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+            val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            val classes = mergeAdjacentWidgetClasses(store.get("schedule").filter { it.day.equals(day, true) })
+                .sortedBy { widgetMinutes(it.startTime) ?: Int.MAX_VALUE }
+            val upcoming = classes.firstOrNull { (widgetMinutes(it.startTime) ?: -1) > nowMinutes }
+            val current = classes.firstOrNull {
+                val s = widgetMinutes(it.startTime); val e = widgetMinutes(it.endTime)
+                s != null && e != null && nowMinutes in s until e
+            }
+            val overdue = store.get("tasks").count { !it.done && it.dueDate.isNotBlank() && it.dueDate < today }
+            val dueToday = store.get("tasks").count { !it.done && it.dueDate == today }
+            val suggestion = when {
+                current != null -> "Focus now: ${current.title}. You have ${((widgetMinutes(current.endTime) ?: nowMinutes) - nowMinutes).coerceAtLeast(0)} min left."
+                upcoming != null -> "Get ready for ${upcoming.title} at ${upcoming.startTime}."
+                overdue > 0 -> "You have $overdue overdue task${if (overdue == 1) "" else "s"}. Clear one next."
+                dueToday > 0 -> "You have $dueToday task${if (dueToday == 1) "" else "s"} due today."
+                classes.isNotEmpty() -> "No more classes today. Good time to review your notes."
+                store.get("schedule").isEmpty() -> "Add your class schedule to get useful study suggestions."
+                else -> "Review a subject, organize notes, or plan your next task."
+            }
+            v.setTextViewText(R.id.widget_title, "Suggestions")
+            v.setTextViewText(R.id.widget_main, suggestion)
+            v.setTextViewText(R.id.widget_secondary, "Personalized from your schedule and tasks")
+            v.setOnClickPendingIntent(R.id.widget_root, appOpenPendingIntent(context))
+            manager.updateAppWidget(id, v)
         }
     }
 }
