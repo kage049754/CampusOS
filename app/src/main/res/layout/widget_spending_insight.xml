@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="14dp" android:background="@drawable/widget_bg">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Spending Insight" android:textStyle="bold" android:textSize="13sp" android:textColor="?android:attr/textColorPrimary"/>
+    <LinearLayout android:id="@+id/insight_small_group" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center_vertical" android:orientation="vertical">
+        <TextView android:id="@+id/insight_small_main" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Food" android:textStyle="bold" android:textSize="21sp" android:maxLines="1" android:textColor="?android:attr/textColorPrimary"/>
+        <TextView android:id="@+id/insight_small_detail" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="₱200" android:textSize="12sp" android:textColor="?android:attr/textColorSecondary"/>
+    </LinearLayout>
+    <LinearLayout android:id="@+id/insight_medium_group" android:visibility="gone" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center_vertical" android:orientation="vertical">
+        <TextView android:id="@+id/insight_medium_main" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Food" android:textStyle="bold" android:textSize="24sp" android:maxLines="1" android:textColor="?android:attr/textColorPrimary"/>
+        <TextView android:id="@+id/insight_medium_detail" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="₱200 • 57% of spending" android:textSize="12sp" android:textColor="?android:attr/textColorSecondary"/>
+    </LinearLayout>
+    <LinearLayout android:id="@+id/insight_large_group" android:visibility="gone" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center_vertical" android:orientation="vertical">
+        <TextView android:id="@+id/insight_large_rows" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Food  ₱200&#10;Transportation  ₱100&#10;School  ₱50" android:textStyle="bold" android:textSize="16sp" android:lineSpacingExtra="5dp" android:textColor="?android:attr/textColorPrimary"/>
+    </LinearLayout>
+</LinearLayout>
