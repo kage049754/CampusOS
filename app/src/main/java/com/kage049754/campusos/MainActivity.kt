@@ -206,36 +206,6 @@ private val CampusShapes = Shapes(
     extraLarge = RoundedCornerShape(24.dp)
 )
 
-private fun applyLauncherIcon(context: Context, preset: String) {
-    val pm = context.packageManager
-    val pkg = context.packageName
-
-    // Keep MainActivity itself as a permanently enabled launcher entry.
-    // This guarantees Android always has a normal launchable activity, even if
-    // a launcher implementation ignores or resets an activity-alias state.
-    val main = android.content.ComponentName(context, MainActivity::class.java)
-    val presets = listOf("forest", "sunset")
-
-    runCatching {
-        pm.setComponentEnabledSetting(
-            main,
-            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-            android.content.pm.PackageManager.DONT_KILL_APP
-        )
-
-        // Keep the optional #570 aliases disabled so they cannot replace or
-        // hide the real MainActivity launcher entry.
-        presets.forEach { name ->
-            val componentName = name.replaceFirstChar { it.uppercase() } + "Launcher"
-            pm.setComponentEnabledSetting(
-                android.content.ComponentName(pkg, componentName),
-                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                android.content.pm.PackageManager.DONT_KILL_APP
-            )
-        }
-    }
-}
-
 private fun campusColorScheme(preset: String, dark: Boolean): ColorScheme {
     // Keep surfaces theme-aware too. Previously many cards used surfaceVariant, which
     // stayed nearly the same across presets and made tiles look like #E8E3E7.
@@ -470,7 +440,7 @@ class LocalStore(context: Context) {
     // but ignore old system/dark values from previous versions.
     fun theme() = "light"
     fun appearancePreset() = prefs.getString("appearance_preset", "forest") ?: "forest"
-    fun setAppearancePreset(v: String) { prefs.edit().putString("appearance_preset", v).apply(); applyLauncherIcon(appContext, v); revision++ }
+    fun setAppearancePreset(v: String) { prefs.edit().putString("appearance_preset", v).apply(); revision++ }
     fun homeLayoutOrder(): List<String> = (prefs.getString("home_layout_order", "") ?: "").split(",").filter { it.isNotBlank() }
     fun setHomeLayoutOrder(order: List<String>) { prefs.edit().putString("home_layout_order", order.joinToString(",")).apply(); revision++ }
     fun homeHiddenTiles(): Set<String> = (prefs.getString("home_hidden_tiles", "") ?: "").split(",").filter { it.isNotBlank() }.toSet()
@@ -749,7 +719,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent { CampusOSApp(this) }
-        applyLauncherIcon(this, getSharedPreferences("campusos", Context.MODE_PRIVATE).getString("appearance_preset", "forest") ?: "forest")
         CampusReminders.reschedule(this)
         CampusWidgets.updateAll(this)
     }
