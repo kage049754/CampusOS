@@ -754,7 +754,7 @@ class CampusStudyTimerWidgetProvider : android.appwidget.AppWidgetProvider() {
             val start = PendingIntent.getBroadcast(context, 905, Intent(context, CampusStudyTimerWidgetProvider::class.java).setAction("com.kage049754.campusos.STUDY_START"), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             val reset = PendingIntent.getBroadcast(context, 906, Intent(context, CampusStudyTimerWidgetProvider::class.java).setAction("com.kage049754.campusos.STUDY_RESET"), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             v.setOnClickPendingIntent(R.id.timer_start, start); v.setOnClickPendingIntent(R.id.timer_reset, reset)
-            v.setOnClickPendingIntent(R.id.widget_root, openBudgetPendingIntent(context, 907))
+            v.setOnClickPendingIntent(R.id.timer_small_time, start); v.setOnClickPendingIntent(R.id.timer_medium_time, start); v.setOnClickPendingIntent(R.id.timer_large_time, start)
             setSizeVisibility(v, widgetSizeBucket(manager, id), R.id.timer_small_group, R.id.timer_medium_group, R.id.timer_large_group)
             manager.updateAppWidget(id, v)
         }
