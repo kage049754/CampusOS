@@ -213,6 +213,13 @@ object CampusWidgets {
         }
     }
 
+    fun updateLiveWidgets(context: Context) {
+        val app = context.applicationContext
+        val manager = android.appwidget.AppWidgetManager.getInstance(app)
+        updateProvider(app, manager, CampusNextClassWidgetProvider::class.java)
+        updateProvider(app, manager, CampusStudyTimerWidgetProvider::class.java)
+    }
+
     private fun ensureLiveUpdates(context: Context, manager: android.appwidget.AppWidgetManager) {
         val hasWidgets = listOf(
             CampusNextClassWidgetProvider::class.java,
@@ -251,7 +258,7 @@ object CampusWidgets {
 
 class CampusWidgetTickReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
-        CampusWidgets.updateAll(context.applicationContext)
+        CampusWidgets.updateLiveWidgets(context.applicationContext)
     }
 }
 
