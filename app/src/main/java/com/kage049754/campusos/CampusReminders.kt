@@ -189,6 +189,11 @@ object CampusWidgets {
         updateProvider(app, manager, CampusTaskWidgetProvider::class.java)
         updateProvider(app, manager, CampusScheduleWidgetProvider::class.java)
         updateProvider(app, manager, CampusSuggestionsWidgetProvider::class.java)
+        updateProvider(app, manager, CampusBudgetOverviewWidgetProvider::class.java)
+        updateProvider(app, manager, CampusSpendingInsightWidgetProvider::class.java)
+        updateProvider(app, manager, CampusSavingsGoalWidgetProvider::class.java)
+        updateProvider(app, manager, CampusQuickExpenseWidgetProvider::class.java)
+        updateProvider(app, manager, CampusStudyTimerWidgetProvider::class.java)
         ensureLiveUpdates(app, manager)
     }
 
@@ -200,6 +205,11 @@ object CampusWidgets {
             CampusScheduleWidgetProvider::class.java -> ids.forEach { CampusScheduleWidgetProvider.update(context, manager, it) }
             CampusOverviewWidgetProvider::class.java -> ids.forEach { CampusOverviewWidgetProvider.update(context, manager, it) }
             CampusSuggestionsWidgetProvider::class.java -> ids.forEach { CampusSuggestionsWidgetProvider.update(context, manager, it) }
+            CampusBudgetOverviewWidgetProvider::class.java -> ids.forEach { CampusBudgetOverviewWidgetProvider.update(context, manager, it) }
+            CampusSpendingInsightWidgetProvider::class.java -> ids.forEach { CampusSpendingInsightWidgetProvider.update(context, manager, it) }
+            CampusSavingsGoalWidgetProvider::class.java -> ids.forEach { CampusSavingsGoalWidgetProvider.update(context, manager, it) }
+            CampusQuickExpenseWidgetProvider::class.java -> ids.forEach { CampusQuickExpenseWidgetProvider.update(context, manager, it) }
+            CampusStudyTimerWidgetProvider::class.java -> ids.forEach { CampusStudyTimerWidgetProvider.update(context, manager, it) }
         }
     }
 
@@ -209,7 +219,12 @@ object CampusWidgets {
             CampusTaskWidgetProvider::class.java,
             CampusScheduleWidgetProvider::class.java,
             CampusOverviewWidgetProvider::class.java,
-            CampusSuggestionsWidgetProvider::class.java
+            CampusSuggestionsWidgetProvider::class.java,
+            CampusBudgetOverviewWidgetProvider::class.java,
+            CampusSpendingInsightWidgetProvider::class.java,
+            CampusSavingsGoalWidgetProvider::class.java,
+            CampusQuickExpenseWidgetProvider::class.java,
+            CampusStudyTimerWidgetProvider::class.java
         ).any { manager.getAppWidgetIds(ComponentName(context, it)).isNotEmpty() }
 
         val alarmManager = context.getSystemService(AlarmManager::class.java)
@@ -580,4 +595,168 @@ private fun nextClassText(store: LocalStore): String {
 private fun nextTaskText(store: LocalStore): String {
     val task = store.get("tasks").filter { !it.done && it.dueDate.isNotBlank() }.minByOrNull { it.dueDate + it.dueTime }
     return task?.let { it.title + " • Due " + it.dueDate + if (it.dueTime.isNotBlank()) " " + it.dueTime else "" } ?: "No pending deadline"
+}
+
+
+private data class BudgetWidgetSnapshot(
+    val period: String, val allowance: Double, val spent: Double, val saved: Double,
+    val remaining: Double, val categories: List<Pair<String, Double>>,
+    val targetName: String, val targetAmount: Double, val targetSaved: Double
+)
+
+private fun budgetWidgetSnapshot(store: LocalStore): BudgetWidgetSnapshot {
+    val period = store.budgetPeriod()
+    val allowance = store.budgetAllowance()
+    val entries = store.budgetEntries()
+    fun inPeriod(date: String): Boolean {
+        val parsed = runCatching { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(date) }.getOrNull() ?: return false
+        val now = Calendar.getInstance()
+        val then = Calendar.getInstance().apply { time = parsed }
+        return when (period) {
+            "Daily" -> now.get(Calendar.YEAR) == then.get(Calendar.YEAR) && now.get(Calendar.DAY_OF_YEAR) == then.get(Calendar.DAY_OF_YEAR)
+            "Monthly" -> now.get(Calendar.YEAR) == then.get(Calendar.YEAR) && now.get(Calendar.MONTH) == then.get(Calendar.MONTH)
+            else -> now.get(Calendar.YEAR) == then.get(Calendar.YEAR) && now.get(Calendar.WEEK_OF_YEAR) == then.get(Calendar.WEEK_OF_YEAR)
+        }
+    }
+    val current = entries.filter { inPeriod(it.date) }
+    val spent = current.filter { it.type == "expense" }.sumOf { it.amount }
+    val saved = current.filter { it.type == "saving" }.sumOf { it.amount }
+    val categories = listOf("Food", "Transportation", "School", "Projects", "Bills", "Personal", "Other")
+        .map { c -> c to current.filter { it.type == "expense" && it.category == c }.sumOf { it.amount } }
+        .filter { it.second > 0 }.sortedByDescending { it.second }
+    return BudgetWidgetSnapshot(period, allowance, spent, saved, allowance - spent - saved, categories,
+        store.budgetTargetName(), store.budgetTargetAmount(), store.budgetTargetSaved())
+}
+
+private fun widgetMoney(value: Double): String = "₱" + String.format(Locale.getDefault(), "%,.0f", value.coerceAtLeast(0.0))
+
+private fun widgetSizeBucket(manager: android.appwidget.AppWidgetManager, id: Int): Int {
+    val o = manager.getAppWidgetOptions(id)
+    val w = o.getInt(android.appwidget.AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 180)
+    val h = o.getInt(android.appwidget.AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 110)
+    return when { w < 180 || h < 100 -> 0; w < 270 || h < 180 -> 1; else -> 2 }
+}
+
+private fun openBudgetPendingIntent(context: Context, requestCode: Int): PendingIntent =
+    PendingIntent.getActivity(context, requestCode, Intent(context, MainActivity::class.java).apply {
+        putExtra("widget_tool", "budget")
+    }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+private fun setSizeVisibility(v: android.widget.RemoteViews, size: Int, small: Int, medium: Int, large: Int) {
+    v.setViewVisibility(small, if (size == 0) android.view.View.VISIBLE else android.view.View.GONE)
+    v.setViewVisibility(medium, if (size == 1) android.view.View.VISIBLE else android.view.View.GONE)
+    v.setViewVisibility(large, if (size == 2) android.view.View.VISIBLE else android.view.View.GONE)
+}
+
+class CampusBudgetOverviewWidgetProvider : android.appwidget.AppWidgetProvider() {
+    override fun onUpdate(context: Context, manager: android.appwidget.AppWidgetManager, ids: IntArray) { ids.forEach { update(context, manager, it) } }
+    companion object {
+        fun update(context: Context, manager: android.appwidget.AppWidgetManager, id: Int) {
+            val v = android.widget.RemoteViews(context.packageName, R.layout.widget_budget_overview)
+            val s = budgetWidgetSnapshot(LocalStore(context))
+            val pct = if (s.allowance > 0) (s.remaining / s.allowance * 100).coerceIn(0.0, 100.0) else 0.0
+            val size = widgetSizeBucket(manager, id)
+            v.setTextViewText(R.id.budget_small_remaining, widgetMoney(s.remaining))
+            v.setTextViewText(R.id.budget_medium_remaining, widgetMoney(s.remaining))
+            v.setTextViewText(R.id.budget_medium_detail, widgetMoney(s.spent) + " spent • " + s.period)
+            v.setTextViewText(R.id.budget_large_remaining, widgetMoney(s.remaining))
+            v.setTextViewText(R.id.budget_large_detail, widgetMoney(s.spent) + " spent • " + widgetMoney(s.saved) + " saved • " + s.period)
+            v.setTextViewText(R.id.budget_large_percent, String.format(Locale.getDefault(), "%.0f%% remaining", pct))
+            v.setProgressBar(R.id.budget_progress, 100, pct.toInt(), false)
+            v.setOnClickPendingIntent(R.id.widget_root, openBudgetPendingIntent(context, 901))
+            setSizeVisibility(v, size, R.id.budget_small_group, R.id.budget_medium_group, R.id.budget_large_group)
+            manager.updateAppWidget(id, v)
+        }
+    }
+}
+
+class CampusSpendingInsightWidgetProvider : android.appwidget.AppWidgetProvider() {
+    override fun onUpdate(context: Context, manager: android.appwidget.AppWidgetManager, ids: IntArray) { ids.forEach { update(context, manager, it) } }
+    companion object {
+        fun update(context: Context, manager: android.appwidget.AppWidgetManager, id: Int) {
+            val v = android.widget.RemoteViews(context.packageName, R.layout.widget_spending_insight)
+            val s = budgetWidgetSnapshot(LocalStore(context)); val top = s.categories.firstOrNull()
+            val total = s.categories.sumOf { it.second }; val pct = if (total > 0 && top != null) top.second / total * 100 else 0.0
+            val size = widgetSizeBucket(manager, id)
+            v.setTextViewText(R.id.insight_small_main, top?.first ?: "No spending yet")
+            v.setTextViewText(R.id.insight_small_detail, top?.let { widgetMoney(it.second) } ?: "Add an expense")
+            v.setTextViewText(R.id.insight_medium_main, top?.first ?: "No spending yet")
+            v.setTextViewText(R.id.insight_medium_detail, top?.let { widgetMoney(it.second) + " • " + String.format(Locale.getDefault(), "%.0f%% of spending", pct) } ?: "Add an expense")
+            v.setTextViewText(R.id.insight_large_rows, s.categories.take(4).joinToString("\n") { it.first + "  " + widgetMoney(it.second) }.ifBlank { "No spending recorded yet" })
+            v.setOnClickPendingIntent(R.id.widget_root, openBudgetPendingIntent(context, 902))
+            setSizeVisibility(v, size, R.id.insight_small_group, R.id.insight_medium_group, R.id.insight_large_group)
+            manager.updateAppWidget(id, v)
+        }
+    }
+}
+
+class CampusSavingsGoalWidgetProvider : android.appwidget.AppWidgetProvider() {
+    override fun onUpdate(context: Context, manager: android.appwidget.AppWidgetManager, ids: IntArray) { ids.forEach { update(context, manager, it) } }
+    companion object {
+        fun update(context: Context, manager: android.appwidget.AppWidgetManager, id: Int) {
+            val v = android.widget.RemoteViews(context.packageName, R.layout.widget_savings_goal)
+            val s = budgetWidgetSnapshot(LocalStore(context))
+            val pct = if (s.targetAmount > 0) (s.targetSaved / s.targetAmount).coerceIn(0.0, 1.0) else 0.0
+            val left = (s.targetAmount - s.targetSaved).coerceAtLeast(0.0); val size = widgetSizeBucket(manager, id)
+            v.setTextViewText(R.id.savings_small_main, if (s.targetAmount > 0) String.format(Locale.getDefault(), "%.0f%%", pct * 100) else "No goal")
+            v.setTextViewText(R.id.savings_medium_name, s.targetName.ifBlank { "Savings goal" })
+            v.setTextViewText(R.id.savings_medium_detail, if (s.targetAmount > 0) widgetMoney(s.targetSaved) + " / " + widgetMoney(s.targetAmount) else "Set a target in Budget")
+            v.setProgressBar(R.id.savings_medium_progress, 100, (pct * 100).toInt(), false)
+            v.setTextViewText(R.id.savings_large_name, s.targetName.ifBlank { "Savings goal" })
+            v.setTextViewText(R.id.savings_large_detail, if (s.targetAmount > 0) widgetMoney(left) + " left • " + String.format(Locale.getDefault(), "%.0f%% complete", pct * 100) else "Set a target in Budget")
+            v.setProgressBar(R.id.savings_large_progress, 100, (pct * 100).toInt(), false)
+            v.setOnClickPendingIntent(R.id.widget_root, openBudgetPendingIntent(context, 903))
+            setSizeVisibility(v, size, R.id.savings_small_group, R.id.savings_medium_group, R.id.savings_large_group)
+            manager.updateAppWidget(id, v)
+        }
+    }
+}
+
+class CampusQuickExpenseWidgetProvider : android.appwidget.AppWidgetProvider() {
+    override fun onUpdate(context: Context, manager: android.appwidget.AppWidgetManager, ids: IntArray) { ids.forEach { update(context, manager, it) } }
+    companion object {
+        fun update(context: Context, manager: android.appwidget.AppWidgetManager, id: Int) {
+            val v = android.widget.RemoteViews(context.packageName, R.layout.widget_quick_expense)
+            val size = widgetSizeBucket(manager, id); val open = openBudgetPendingIntent(context, 904)
+            v.setOnClickPendingIntent(R.id.quick_expense_small, open); v.setOnClickPendingIntent(R.id.quick_expense_medium, open); v.setOnClickPendingIntent(R.id.quick_expense_large, open)
+            setSizeVisibility(v, size, R.id.quick_expense_small_group, R.id.quick_expense_medium_group, R.id.quick_expense_large_group)
+            manager.updateAppWidget(id, v)
+        }
+    }
+}
+
+private const val STUDY_TIMER_PREFS = "campusos_study_timer"
+private const val STUDY_TIMER_END = "end_millis"
+private const val STUDY_TIMER_RUNNING = "running"
+
+class CampusStudyTimerWidgetProvider : android.appwidget.AppWidgetProvider() {
+    override fun onUpdate(context: Context, manager: android.appwidget.AppWidgetManager, ids: IntArray) { ids.forEach { update(context, manager, it) } }
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+        val prefs = context.getSharedPreferences(STUDY_TIMER_PREFS, Context.MODE_PRIVATE)
+        when (intent.action) {
+            "com.kage049754.campusos.STUDY_START" -> prefs.edit().putBoolean(STUDY_TIMER_RUNNING, true).putLong(STUDY_TIMER_END, System.currentTimeMillis() + 25 * 60_000L).apply()
+            "com.kage049754.campusos.STUDY_RESET" -> prefs.edit().putBoolean(STUDY_TIMER_RUNNING, false).remove(STUDY_TIMER_END).apply()
+        }
+        CampusWidgets.updateAll(context)
+    }
+    companion object {
+        fun update(context: Context, manager: android.appwidget.AppWidgetManager, id: Int) {
+            val v = android.widget.RemoteViews(context.packageName, R.layout.widget_study_timer)
+            val p = context.getSharedPreferences(STUDY_TIMER_PREFS, Context.MODE_PRIVATE)
+            val running = p.getBoolean(STUDY_TIMER_RUNNING, false); val end = p.getLong(STUDY_TIMER_END, 0L)
+            val remaining = (end - System.currentTimeMillis()).coerceAtLeast(0L); val active = running && remaining > 0
+            if (running && !active) p.edit().putBoolean(STUDY_TIMER_RUNNING, false).apply()
+            val mm = (remaining / 60_000L).toInt(); val ss = ((remaining % 60_000L) / 1000L).toInt()
+            val text = if (active) String.format(Locale.getDefault(), "%02d:%02d", mm, ss) else "25:00"
+            v.setTextViewText(R.id.timer_small_time, text); v.setTextViewText(R.id.timer_medium_time, text); v.setTextViewText(R.id.timer_large_time, text)
+            v.setTextViewText(R.id.timer_status, if (active) "Focus session running" else "25-minute focus")
+            val start = PendingIntent.getBroadcast(context, 905, Intent(context, CampusStudyTimerWidgetProvider::class.java).setAction("com.kage049754.campusos.STUDY_START"), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val reset = PendingIntent.getBroadcast(context, 906, Intent(context, CampusStudyTimerWidgetProvider::class.java).setAction("com.kage049754.campusos.STUDY_RESET"), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            v.setOnClickPendingIntent(R.id.timer_start, start); v.setOnClickPendingIntent(R.id.timer_reset, reset)
+            v.setOnClickPendingIntent(R.id.widget_root, openBudgetPendingIntent(context, 907))
+            setSizeVisibility(v, widgetSizeBucket(manager, id), R.id.timer_small_group, R.id.timer_medium_group, R.id.timer_large_group)
+            manager.updateAppWidget(id, v)
+        }
+    }
 }
