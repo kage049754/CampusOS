@@ -43,4 +43,56 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
+  firebase-test-lab:
+    name: Firebase Test Lab (Robo)
+    needs: build
+    runs-on: ubuntu-latest
+    # Firebase credentials are configured as repository secret/variable.
+    # The build remains usable before Firebase is configured; once configured,
+    # every successful APK build automatically gets a cloud Robo test.
+    env:
+      FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - name: Download built APK
+        uses: actions/download-artifact@v5
+        with:
+          name: CampusOS-debug
+          path: app/build/outputs/apk/debug
+
+      - name: Check Firebase Test Lab configuration
+        id: firebase-config
+        shell: bash
+        run: |
+          if [[ -z "$FIREBASE_PROJECT_ID" || -z "$FIREBASE_SERVICE_ACCOUNT_JSON" ]]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Firebase Test Lab is not configured yet. Add FIREBASE_PROJECT_ID (repository variable) and FIREBASE_SERVICE_ACCOUNT_JSON (repository secret) to enable automatic Robo testing."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Authenticate to Google Cloud
+        if: steps.firebase-config.outputs.configured == 'true'
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          project_id: ${{ vars.FIREBASE_PROJECT_ID }}
+
+      - name: Set up Google Cloud CLI
+        if: steps.firebase-config.outputs.configured == 'true'
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Run Firebase Test Lab Robo test
+        if: steps.firebase-config.outputs.configured == 'true'
+        shell: bash
+        run: |
+          set -o pipefail
+          gcloud firebase test android run \
+            --type robo \
+            --app app/build/outputs/apk/debug/app-debug.apk \
+            --device model=Pixel2,version=30,locale=en,orientation=portrait \
+            --timeout 5m \
+            --client-details matrixLabel="CampusOS GitHub Actions"
+          echo "Firebase Test Lab Robo test completed successfully."
+
 # AI intent, Tagalog, and PHPeso formatting verification trigger (2026-10-03)
