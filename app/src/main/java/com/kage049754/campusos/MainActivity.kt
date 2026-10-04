@@ -741,7 +741,7 @@ fun CampusOSApp(activity: Activity) {
     var appearancePreset by remember { mutableStateOf(store.appearancePreset()) }
     var locked by remember { mutableStateOf(store.lockEnabled() && store.authMethod() != "none") }
     var screenName by rememberSaveable {
-        mutableStateOf(activity.intent.getStringExtra("widget_open_screen")?.let { runCatching { Screen.valueOf(it) }.getOrNull()?.name } ?: Screen.HOME.name)
+        mutableStateOf(activity.intent.getStringExtra("widget_open_screen")?.let { runCatching { Screen.valueOf(it) }.getOrNull()?.name } ?: if (activity.intent.getStringExtra("widget_tool").isNullOrBlank()) Screen.HOME.name else Screen.ACADEMICS.name)
     }
     var widgetSubjectId by rememberSaveable { mutableLongStateOf(activity.intent.getLongExtra("widget_subject_id", 0L)) }
     val screen = Screen.valueOf(screenName)
@@ -765,7 +765,7 @@ fun CampusOSApp(activity: Activity) {
     var subjectPageMode by rememberSaveable { mutableIntStateOf(0) }
     var subjectOpenedFile by rememberSaveable { mutableStateOf("") }
     var aiBubbleOpen by rememberSaveable { mutableStateOf(false) }
-    var academicsToolRequest by remember { mutableStateOf<String?>(null) }
+    var academicsToolRequest by remember { mutableStateOf(activity.intent.getStringExtra("widget_tool")) }
 
     BackHandler {
         when {
