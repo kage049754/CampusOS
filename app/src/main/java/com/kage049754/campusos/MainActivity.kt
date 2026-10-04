@@ -79,7 +79,7 @@ import java.util.Locale
 import java.util.Calendar
 import kotlinx.coroutines.delay
 
-private object AuthStore {
+object AuthStore {
     private const val PREFS = "campusos_auth"
     private const val KEY_ALIAS = "campusos_auth_key_v1"
     private const val SECURE_PREFIX = "secure_"
@@ -867,7 +867,7 @@ fun CampusOSApp(activity: Activity) {
         campusSession?.let { current ->
             runCatching { CampusNativeApi.loadRole(current) }.onSuccess { fresh ->
                 campusSession = fresh
-                authPrefs.edit().putString("role", fresh.role).apply()
+                AuthStore.save(activity, fresh)
             }
         }
     }
