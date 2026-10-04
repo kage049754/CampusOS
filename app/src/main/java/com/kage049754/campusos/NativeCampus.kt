@@ -290,8 +290,7 @@ private fun NativeAnnouncementImage(session: CampusSession, path: String, modifi
 @Composable
 fun NativeAnnouncementsScreen() {
     val context=androidx.compose.ui.platform.LocalContext.current
-    val p=context.getSharedPreferences("campusos_auth",Context.MODE_PRIVATE)
-    val session=remember{CampusSession(p.getString("token","")?:"",p.getString("uid","")?:"",p.getString("email","")?:"",p.getString("role","student")?:"student")}
+    val session=remember { AuthStore.load(context) ?: CampusSession("", "", "", "student") }
     var items by remember{mutableStateOf<List<CampusAnnouncement>>(emptyList())}; var error by remember{mutableStateOf("")}
     var composer by rememberSaveable{mutableStateOf(false)}; var editing by remember{mutableStateOf<CampusAnnouncement?>(null)}
     var draft by rememberSaveable{mutableStateOf("")}; var busy by remember{mutableStateOf(false)}; var selectedUris by remember{mutableStateOf<List<Uri>>(emptyList())}
@@ -380,8 +379,7 @@ fun NativeAnnouncementsScreen() {
 @Composable
 fun NativeChatScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val prefs = context.getSharedPreferences("campusos_auth", Context.MODE_PRIVATE)
-    val session = remember { CampusSession(prefs.getString("token","") ?: "", prefs.getString("uid","") ?: "", prefs.getString("email","") ?: "", prefs.getString("role","student") ?: "student") }
+    val session = remember { AuthStore.load(context) ?: CampusSession("", "", "", "student") }
     var groups by remember { mutableStateOf<List<CampusGroup>>(emptyList()) }
     var selected by remember { mutableStateOf<CampusGroup?>(null) }
     var messages by remember { mutableStateOf<List<CampusMessage>>(emptyList()) }
