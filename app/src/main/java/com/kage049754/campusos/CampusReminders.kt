@@ -271,7 +271,7 @@ class CampusSuggestionsWidgetProvider : android.appwidget.AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: android.appwidget.AppWidgetManager, ids: IntArray) { ids.forEach { update(context, manager, it) } }
     companion object {
         fun update(context: Context, manager: android.appwidget.AppWidgetManager, id: Int) {
-            val v = android.widget.RemoteViews(context.packageName, R.layout.widget_suggestions)
+            val v = responsiveWidgetViews(context, manager, id, R.layout.widget_suggestions_small, R.layout.widget_suggestions, R.layout.widget_suggestions_large)
             val store = LocalStore(context)
             val day = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date())
             val now = Calendar.getInstance()
@@ -308,7 +308,7 @@ class CampusNextClassWidgetProvider : android.appwidget.AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: android.appwidget.AppWidgetManager, ids: IntArray) { ids.forEach { update(context, manager, it) } }
     companion object {
         fun update(context: Context, manager: android.appwidget.AppWidgetManager, id: Int) {
-            val v = android.widget.RemoteViews(context.packageName, R.layout.widget_next_class)
+            val v = responsiveWidgetViews(context, manager, id, R.layout.widget_next_class_small, R.layout.widget_next_class, R.layout.widget_next_class_large)
             val store = LocalStore(context)
             val state = nextWidgetClass(store)
             if (state == null) {
@@ -359,13 +359,14 @@ class CampusScheduleWidgetProvider : android.appwidget.AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: android.appwidget.AppWidgetManager, ids: IntArray) { ids.forEach { update(context, manager, it) } }
     companion object {
         fun update(context: Context, manager: android.appwidget.AppWidgetManager, id: Int) {
-            val v = android.widget.RemoteViews(context.packageName, R.layout.widget_schedule)
+            val v = responsiveWidgetViews(context, manager, id, R.layout.widget_schedule_small, R.layout.widget_schedule, R.layout.widget_schedule_large)
             val day = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date())
             val nowMinutes = Calendar.getInstance().let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) }
             val classes = mergeAdjacentWidgetClasses(
                 LocalStore(context).get("schedule").filter { it.day.equals(day, true) }
             ).sortedBy { widgetMinutes(it.startTime) ?: Int.MAX_VALUE }
-            val rows = classes.take(6).joinToString("\n") { r ->
+            val size = widgetSizeBucket(manager, id)
+            val rows = classes.take(if (size == 0) 3 else if (size == 1) 6 else 10).joinToString("\n") { r ->
                 val start = widgetMinutes(r.startTime)
                 val end = widgetMinutes(r.endTime)
                 when {
@@ -387,11 +388,12 @@ class CampusTaskWidgetProvider : android.appwidget.AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: android.appwidget.AppWidgetManager, ids: IntArray) { ids.forEach { update(context, manager, it) } }
     companion object {
         fun update(context: Context, manager: android.appwidget.AppWidgetManager, id: Int) {
-            val v = android.widget.RemoteViews(context.packageName, R.layout.widget_task)
+            val v = responsiveWidgetViews(context, manager, id, R.layout.widget_task_small, R.layout.widget_task, R.layout.widget_task_large)
+            val size = widgetSizeBucket(manager, id)
             val text = nextTaskText(LocalStore(context))
             v.setTextViewText(R.id.widget_title, "To-do / Deadline")
             v.setTextViewText(R.id.widget_main, text)
-            v.setTextViewText(R.id.widget_secondary, "Tap to open Tasks")
+            v.setTextViewText(R.id.widget_secondary, if (size == 0) "Tap for tasks" else "Tap to open Tasks")
             v.setOnClickPendingIntent(R.id.widget_root, appOpenPendingIntent(context)); manager.updateAppWidget(id, v)
         }
     }
@@ -403,7 +405,7 @@ class CampusOverviewWidgetProvider : android.appwidget.AppWidgetProvider() {
     }
     companion object {
         fun update(context: Context, manager: android.appwidget.AppWidgetManager, id: Int) {
-            val v = android.widget.RemoteViews(context.packageName, R.layout.widget_overview)
+            val v = responsiveWidgetViews(context, manager, id, R.layout.widget_overview_small, R.layout.widget_overview, R.layout.widget_overview_large)
             val store = LocalStore(context)
             val day = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date())
             val nowMinutes = Calendar.getInstance().let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) }
@@ -427,7 +429,8 @@ class CampusOverviewWidgetProvider : android.appwidget.AppWidgetProvider() {
                 upcoming != null -> "Starts in " + widgetCountdownMinutes((widgetMinutes(upcoming.startTime) ?: nowMinutes) - nowMinutes)
                 else -> ""
             })
-            val scheduleText = classes.take(3).joinToString("\n") { r ->
+            val size = widgetSizeBucket(manager, id)
+            val scheduleText = classes.take(if (size == 0) 1 else if (size == 1) 3 else 6).joinToString("\n") { r ->
                 val s = widgetMinutes(r.startTime); val e = widgetMinutes(r.endTime)
                 when {
                     s != null && e != null && nowMinutes >= e -> "✓ " + r.startTime + "–" + r.endTime + "  " + r.title
@@ -641,6 +644,13 @@ private fun openBudgetPendingIntent(context: Context, requestCode: Int): Pending
     PendingIntent.getActivity(context, requestCode, Intent(context, MainActivity::class.java).apply {
         putExtra("widget_tool", "budget")
     }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+private fun responsiveWidgetViews(context: Context, manager: android.appwidget.AppWidgetManager, id: Int, small: Int, medium: Int, large: Int): android.widget.RemoteViews =
+    android.widget.RemoteViews(context.packageName, when (widgetSizeBucket(manager, id)) {
+        0 -> small
+        1 -> medium
+        else -> large
+    })
 
 private fun setSizeVisibility(v: android.widget.RemoteViews, size: Int, small: Int, medium: Int, large: Int) {
     v.setViewVisibility(small, if (size == 0) android.view.View.VISIBLE else android.view.View.GONE)
