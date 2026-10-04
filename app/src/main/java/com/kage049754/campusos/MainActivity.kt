@@ -64,7 +64,13 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import java.io.File
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.spec.GCMParameterSpec
 import java.util.zip.ZipFile
 import javax.xml.parsers.DocumentBuilderFactory
 import java.text.SimpleDateFormat
@@ -72,6 +78,89 @@ import java.util.Date
 import java.util.Locale
 import java.util.Calendar
 import kotlinx.coroutines.delay
+
+private object AuthStore {
+    private const val PREFS = "campusos_auth"
+    private const val KEY_ALIAS = "campusos_auth_key_v1"
+    private const val SECURE_PREFIX = "secure_"
+    private const val TRANSFORMATION = "AES/GCM/NoPadding"
+
+    private fun key(): javax.crypto.SecretKey {
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (keyStore.getKey(KEY_ALIAS, null) as? javax.crypto.SecretKey)?.let { return it }
+
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        generator.init(
+            KeyGenParameterSpec.Builder(
+                KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setUserAuthenticationRequired(false)
+                .build()
+        )
+        return generator.generateKey()
+    }
+
+    private fun encrypt(value: String): String {
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, key())
+        val ciphertext = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+        return Base64.encodeToString(cipher.iv, Base64.NO_WRAP) + ":" +
+            Base64.encodeToString(ciphertext, Base64.NO_WRAP)
+    }
+
+    private fun decrypt(value: String): String? = runCatching {
+        val parts = value.split(":", limit = 2)
+        if (parts.size != 2) return null
+        val iv = Base64.decode(parts[0], Base64.NO_WRAP)
+        val ciphertext = Base64.decode(parts[1], Base64.NO_WRAP)
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
+        String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+    }.getOrNull()
+
+    fun load(context: Context): CampusSession? {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val secureToken = prefs.getString(SECURE_PREFIX + "token", null)?.let(::decrypt)
+        val token = secureToken ?: prefs.getString("token", null)
+        if (token.isNullOrBlank()) return null
+
+        val secureUid = prefs.getString(SECURE_PREFIX + "uid", null)?.let(::decrypt)
+        val secureEmail = prefs.getString(SECURE_PREFIX + "email", null)?.let(::decrypt)
+        val secureRole = prefs.getString(SECURE_PREFIX + "role", null)?.let(::decrypt)
+        val uid = secureUid ?: prefs.getString("uid", "") ?: ""
+        val email = secureEmail ?: prefs.getString("email", "") ?: ""
+        val role = secureRole ?: prefs.getString("role", "student") ?: "student"
+
+        if (secureToken == null || secureUid == null || secureEmail == null || secureRole == null) {
+            save(context, CampusSession(token, uid, email, role))
+        }
+        return CampusSession(token, uid, email, role)
+    }
+
+    fun save(context: Context, session: CampusSession) {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        runCatching {
+            prefs.edit()
+                .putString(SECURE_PREFIX + "token", encrypt(session.accessToken))
+                .putString(SECURE_PREFIX + "uid", encrypt(session.userId))
+                .putString(SECURE_PREFIX + "email", encrypt(session.email))
+                .putString(SECURE_PREFIX + "role", encrypt(session.role))
+                .remove("token")
+                .remove("uid")
+                .remove("email")
+                .remove("role")
+                .apply()
+        }
+    }
+
+    fun clear(context: Context) {
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().clear().apply()
+    }
+}
 
 data class Record(
     val id: Long = System.currentTimeMillis(),
@@ -772,17 +861,7 @@ fun CampusOSApp(activity: Activity) {
         subjectPageVisible = true
     }
 
-    val authPrefs = remember { activity.getSharedPreferences("campusos_auth", Context.MODE_PRIVATE) }
-    var campusSession by remember {
-        mutableStateOf(authPrefs.getString("token", null)?.let {
-            CampusSession(
-                it,
-                authPrefs.getString("uid", "") ?: "",
-                authPrefs.getString("email", "") ?: "",
-                authPrefs.getString("role", "student") ?: "student"
-            )
-        })
-    }
+    var campusSession by remember { mutableStateOf(AuthStore.load(activity)) }
 
     LaunchedEffect(campusSession?.userId) {
         campusSession?.let { current ->
@@ -897,12 +976,7 @@ fun CampusOSApp(activity: Activity) {
                         Screen.CHAT -> {
                             if (campusSession == null) {
                                 NativeLoginScreen { session ->
-                                    authPrefs.edit()
-                                        .putString("token", session.accessToken)
-                                        .putString("uid", session.userId)
-                                        .putString("email", session.email)
-                                        .putString("role", session.role)
-                                        .apply()
+                                    AuthStore.save(activity, session)
                                     campusSession = session
                                 }
                             } else {
@@ -912,12 +986,7 @@ fun CampusOSApp(activity: Activity) {
                         Screen.ANNOUNCEMENTS -> {
                             if (campusSession == null) {
                                 NativeLoginScreen { session ->
-                                    authPrefs.edit()
-                                        .putString("token", session.accessToken)
-                                        .putString("uid", session.userId)
-                                        .putString("email", session.email)
-                                        .putString("role", session.role)
-                                        .apply()
+                                    AuthStore.save(activity, session)
                                     campusSession = session
                                 }
                             } else {
