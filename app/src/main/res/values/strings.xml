@@ -5,4 +5,9 @@
     <string name="widget_description_tasks">Shows upcoming and due today tasks.</string>
     <string name="widget_description_schedule">Shows the class schedule for today.</string>
     <string name="widget_description_overview">Quick overview of classes and tasks for today.</string>
+    <string name="widget_description_budget_overview">Shows your remaining allowance, spending, savings, and budget progress.</string>
+    <string name="widget_description_spending_insight">Shows your top spending category and simple spending insights.</string>
+    <string name="widget_description_savings_goal">Shows savings progress, target amount, and money left to reach your goal.</string>
+    <string name="widget_description_quick_expense">Quickly open Budget to record an expense.</string>
+    <string name="widget_description_study_timer">Starts a simple 25-minute focus timer from your home screen.</string>
 </resources>
