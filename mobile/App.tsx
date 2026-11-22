@@ -1,6 +1,6 @@
 import React,{useEffect,useMemo,useState} from 'react';
 import {ActivityIndicator,Pressable,SafeAreaView,ScrollView,StatusBar,StyleSheet,Text,View} from 'react-native';
-import {initializeDatabase} from './src/database';
+import {database,initializeDatabase} from './src/database';
 import {PaletteName,resolveTheme} from './src/theme';
 import {BudgetScreen,FilesScreen,HomeScreen,NotesScreen,ScheduleScreen,SettingsScreen,TasksScreen} from './src/screens';
 
