@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "CampusOS",
+    "slug": "campusos",
+    "version": "2.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "scheme": "campusos",
+    "android": {
+      "package": "com.kage049754.campusos",
+      "versionCode": 2,
+      "minSdkVersion": 24,
+      "permissions": [
+        "POST_NOTIFICATIONS",
+        "RECEIVE_BOOT_COMPLETED",
+        "USE_EXACT_ALARM"
+      ],
+      "edgeToEdgeEnabled": true
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-document-picker",
+      "expo-notifications",
+      "expo-secure-store",
+      "expo-local-authentication",
+      "expo-file-system",
+      "expo-widgets"
+    ]
+  }
+}
