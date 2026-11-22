@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { File as ExpoFile } from 'expo-file-system';
@@ -42,7 +42,7 @@ const DEFAULT_HOME_TILES:HomeTileRow[]=[
  {tile_key:'tasks',visible:1,position:4}
 ];
 export function HomeScreen({theme,go}:P&{go:(v:string)=>void}){
- const [profile,setProfile]=useState({full_name:'',student_number:'',year_section:''});
+ const [profile,setProfile]=useState({full_name:'',student_number:'',year_section:'',photo_uri:''});
  const [stats,setStats]=useState([0,0,0]);
  const [todayClasses,setTodayClasses]=useState<ClassRow[]>([]);
  const [next,setNext]=useState<ClassRow|null>(null);
@@ -51,7 +51,7 @@ export function HomeScreen({theme,go}:P&{go:(v:string)=>void}){
  const [tiles,setTiles]=useState<HomeTileRow[]>(DEFAULT_HOME_TILES);
  const refresh=useCallback(async()=>{
   const db=await database;
-  const profileRow=await db.getFirstAsync<typeof profile>('SELECT full_name,student_number,year_section FROM profile WHERE id=1');
+  const profileRow=await db.getFirstAsync<typeof profile>('SELECT full_name,student_number,year_section,photo_uri FROM profile WHERE id=1');
   if(profileRow)setProfile(profileRow);
   const todayIndex=(new Date().getDay()+6)%7;
   const classRows=await db.getAllAsync<ClassRow>('SELECT * FROM schedule_entries WHERE day=? ORDER BY start_time',todayIndex);
@@ -81,7 +81,16 @@ export function HomeScreen({theme,go}:P&{go:(v:string)=>void}){
  },[]);
  useEffect(()=>{refresh();},[refresh]);
  const renderTile=(key:string)=>{
-  if(key==='profile')return <View style={[s.hero,{backgroundColor:theme.primary}]}><Text style={s.eyebrow}>YOUR PERSONAL STUDENT PLANNER</Text><Text style={s.heroTitle}>{profile.full_name?'Hello, '+profile.full_name.split(' ')[0]:'Good day.'}</Text><Text style={s.heroSub}>{[profile.year_section,profile.student_number].filter(Boolean).join(' · ')||'Your classes, tasks, and notes in one place.'}</Text></View>;
+  if(key==='profile')return <View style={[s.hero,{backgroundColor:theme.primary}]}>
+   <View style={{flexDirection:'row',alignItems:'center',gap:13}}>
+    {profile.photo_uri?<Image source={{uri:profile.photo_uri}} style={{width:62,height:62,borderRadius:31,borderWidth:2,borderColor:'#FFFFFF88'}}/>:<View style={{width:62,height:62,borderRadius:31,backgroundColor:'#FFFFFF28',alignItems:'center',justifyContent:'center',borderWidth:1,borderColor:'#FFFFFF66'}}><Text style={{color:'#FFFFFF',fontSize:25,fontWeight:'900'}}>{profile.full_name.trim().charAt(0).toUpperCase()||'C'}</Text></View>}
+    <View style={{flex:1,gap:3}}>
+     <Text style={s.eyebrow}>YOUR PERSONAL STUDENT PLANNER</Text>
+     <Text style={s.heroTitle}>{profile.full_name?'Hello, '+profile.full_name.split(' ')[0]:'Good day.'}</Text>
+     <Text style={s.heroSub}>{[profile.year_section,profile.student_number].filter(Boolean).join(' · ')||'Your classes, tasks, and notes in one place.'}</Text>
+    </View>
+   </View>
+  </View>;
   if(key==='stats')return <View style={s.quickGrid}>{[['Open tasks',stats[0]],['Subjects',stats[1]],['Notes',stats[2]]].map(([label,value])=><View key={String(label)} style={[s.quick,{backgroundColor:theme.surface,borderColor:theme.border}]}><Text style={{color:theme.primary,fontSize:22,fontWeight:'900'}}>{value}</Text><Text style={{color:theme.text,fontWeight:'700'}}>{label}</Text></View>)}</View>;
   if(key==='classes')return <Card theme={theme} title="Today's classes"><Text style={{color:theme.muted,fontSize:11}}>{todayClasses.length} class session{todayClasses.length===1?'':'s'} today</Text>{next?<View style={{gap:4}}><Text style={{color:theme.primary,fontSize:11,fontWeight:'800'}}>NEXT CLASS</Text><Text style={[s.itemTitle,{color:theme.text}]}>{next.title}</Text><Text style={{color:theme.muted}}>{next.start_time}–{next.end_time} · {next.kind}{next.room?' · '+next.room:''}</Text></View>:<Text style={{color:theme.muted}}>No more classes scheduled today.</Text>}{todayClasses.slice(0,4).map(row=><View key={row.id} style={[s.listRow,{borderBottomColor:theme.border}]}><View style={{flex:1}}><Text style={{color:theme.text,fontWeight:'700'}}>{row.title}</Text><Text style={{color:theme.muted,fontSize:11}}>{row.start_time}–{row.end_time} · {row.kind}{row.room?' · '+row.room:''}</Text></View></View>)}<Button theme={theme} label="Open schedule" secondary onPress={()=>go('Schedule')}/></Card>;
   if(key==='pinned')return <Card theme={theme} title="Pinned notes">{pinnedNotes.length?pinnedNotes.map(row=><Pressable key={row.id} onPress={()=>go('Notepad')} style={[s.listRow,{borderBottomColor:theme.border,alignItems:'flex-start'}]}><View style={{flex:1,gap:3}}><Text style={{color:theme.text,fontWeight:'800'}}>{row.title}</Text><Text style={{color:theme.muted,fontSize:11}} numberOfLines={2}>{row.body}</Text></View><Text style={{color:theme.primary}}>★</Text></Pressable>):<Text style={{color:theme.muted}}>Favorite a note to pin it here.</Text>}<Button theme={theme} label="Open Notepad" secondary onPress={()=>go('Notepad')}/></Card>;
@@ -864,7 +873,7 @@ export function SettingsScreen({theme,palette,onPalette,dark,onDark,onLockChange
  onDark:(v:boolean)=>void;
  onLockChange:(enabled:boolean,pin?:string|null,biometric?:boolean)=>void;
 }){
- const [name,setName]=useState(''),[student,setStudent]=useState(''),[section,setSection]=useState('');
+ const [name,setName]=useState(''),[student,setStudent]=useState(''),[section,setSection]=useState(''),[photoUri,setPhotoUri]=useState('');
  const [homeTiles,setHomeTiles]=useState<HomeTileRow[]>(DEFAULT_HOME_TILES);
  const [remindersEnabled,setRemindersEnabled]=useState(false),[notificationPermission,setNotificationPermission]=useState(false),[reminderBusy,setReminderBusy]=useState(false);
  const [lockEnabled,setLockEnabled]=useState(false),[pinExists,setPinExists]=useState(false),[biometricSupported,setBiometricSupported]=useState(false),[biometricEnabled,setBiometricEnabled]=useState(false);
@@ -888,8 +897,8 @@ export function SettingsScreen({theme,palette,onPalette,dark,onDark,onLockChange
  useEffect(()=>{loadHomeTiles();},[loadHomeTiles]);
  useEffect(()=>{(async()=>{
   const db=await database;
-  const p=await db.getFirstAsync<{full_name:string;student_number:string;year_section:string}>('SELECT * FROM profile WHERE id=1');
-  if(p){setName(p.full_name);setStudent(p.student_number);setSection(p.year_section);}
+  const p=await db.getFirstAsync<{full_name:string;student_number:string;year_section:string;photo_uri:string}>('SELECT * FROM profile WHERE id=1');
+  if(p){setName(p.full_name);setStudent(p.student_number);setSection(p.year_section);setPhotoUri(p.photo_uri||'');}
   const [reminderValue,lockValue,bioValue]=await Promise.all([
    db.getFirstAsync<{value:string}>("SELECT value FROM app_settings WHERE key='reminders_enabled'"),
    db.getFirstAsync<{value:string}>("SELECT value FROM app_settings WHERE key='app_lock_enabled'"),
@@ -903,7 +912,23 @@ export function SettingsScreen({theme,palette,onPalette,dark,onDark,onLockChange
   const [hasHardware,enrolled]=await Promise.all([LocalAuthentication.hasHardwareAsync(),LocalAuthentication.isEnrolledAsync()]);
   setBiometricSupported(hasHardware&&enrolled);
  })().catch(error=>console.warn('CampusOS settings could not be loaded',error));},[]);
- const save=async()=>{const db=await database;await db.runAsync('UPDATE profile SET full_name=?,student_number=?,year_section=? WHERE id=1',name.trim(),student.trim(),section.trim());Alert.alert('Profile saved','Your information is stored on this device.');};
+ const save=async()=>{const db=await database;await db.runAsync('UPDATE profile SET full_name=?,student_number=?,year_section=?,photo_uri=? WHERE id=1',name.trim(),student.trim(),section.trim(),photoUri);Alert.alert('Profile saved','Your information is stored on this device.');};
+ const chooseProfilePhoto=async()=>{
+  try{
+   const picked=await DocumentPicker.getDocumentAsync({type:'image/*',copyToCacheDirectory:true,multiple:false});
+   if(picked.canceled||!picked.assets?.[0])return;
+   const asset=picked.assets[0],id=uid('profile-photo');
+   const uri=await persistPickedFile(asset.uri,asset.name||'profile.jpg',id);
+   const db=await database;
+   await db.runAsync('UPDATE profile SET photo_uri=? WHERE id=1',uri);
+   if(photoUri)await removeStoredFile(photoUri);
+   setPhotoUri(uri);
+  }catch(error){Alert.alert('Unable to update profile photo',error instanceof Error?error.message:'Try another image.');}
+ };
+ const removeProfilePhoto=async()=>{
+  const old=photoUri;const db=await database;await db.runAsync("UPDATE profile SET photo_uri='' WHERE id=1");setPhotoUri('');
+  if(old)await removeStoredFile(old);
+ };
  const toggleReminders=async(enabled:boolean)=>{
   if(reminderBusy)return;setReminderBusy(true);
   try{

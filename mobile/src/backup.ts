@@ -237,13 +237,17 @@ async function restoreMobileData(root: AnyRow, selected: Set<BackupModule>) {
 
   await db.withTransactionAsync(async () => {
     if (selected.has('homepage')) {
-      const profiles = safeArray(tables.profile);
+      let restoredPhotoUri = '';
+      for (const payload of payloads.filter(item => asText(item.kind) === 'profile_photo')) {
+        restoredPhotoUri = await writeStoredFileBase64(asText(payload.path, 'Profile/profile-photo'), asText(payload.data));
+      }
+      const profiles = safeArray(tables.profile).map(profile => restoredPhotoUri ? { ...profile, photo_uri: restoredPhotoUri } : profile);
       if (profiles.length) {
         await db.runAsync('DELETE FROM profile');
         await upsertRows(db, 'profile', profiles);
       } else {
         await db.runAsync('UPDATE profile SET full_name=?,student_number=?,year_section=?,photo_uri=? WHERE id=1',
-          asText(root.profileName), asText(root.profileStudentId), asText(root.profileSection), '');
+          asText(root.profileName), asText(root.profileStudentId), asText(root.profileSection), restoredPhotoUri);
       }
       await db.runAsync('DELETE FROM app_settings');
       await upsertRows(db, 'app_settings', safeArray(tables.app_settings));
