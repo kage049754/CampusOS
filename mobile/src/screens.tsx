@@ -11,7 +11,7 @@ import { PaletteName, palettes, Theme } from './theme';
 
 type P = { theme: Theme };
 type ClassRow = { id:string; subject_id:string|null; title:string; day:number; start_time:string; end_time:string; kind:string; room:string; professor:string; notes:string };
-type TaskRow = { id:string; title:string; details:string; checklist:string; due_date:string; due_time:string; done:number; pinned:number; priority:string; status:string; subject_id:string|null };
+type TaskRow = { id:string; title:string; details:string; checklist:string; due_date:string; due_time:string; done:number; pinned:number; priority:string; status:string; subject_id:string|null; created_at:number };
 type NoteRow = { id:string; title:string; body:string; subject_id:string|null; favorite:number; note_date:string; created_at:number; updated_at:number };
 type BudgetRow = { id:string; type:string; amount:number; category:string; note:string; date:string };
 type FileRow = { id:string; subject_id:string|null; name:string; mime_type:string; local_uri:string; size:number; folder_name?:string; favorite?:number };
