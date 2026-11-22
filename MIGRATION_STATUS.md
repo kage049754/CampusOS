@@ -40,7 +40,8 @@ Do not add a cloud account, campus backend, social feed, chat, role management, 
 - [x] Created an isolated migration branch.
 - [x] Added the initial React Native/Expo Android project scaffold.
 - [x] Add first React Native CRUD screens for Schedule, Tasks, Notes, Budget, Profile, and local document imports.
-- [ ] Continue deeper parity: weekly timetable configuration, month calendar, subject-linked notes/files, checklists, savings goals, dashboard layout controls, and rich file viewing.
+- [x] Add Academics subject management, subject-linked Notepad entries, class listings, and subject-folder lecture file imports.
+- [ ] Continue deeper parity: weekly timetable configuration, month calendar, checklists, savings goals, dashboard layout controls, and rich file viewing.
 - [ ] Add legacy JSON backup import/export and migration.
 - [ ] Implement native reminders and home-screen widgets.
 - [ ] Remove legacy online/community code from the replacement.
