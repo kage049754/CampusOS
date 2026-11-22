@@ -18,6 +18,7 @@ export async function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS budget_entries (id TEXT PRIMARY KEY NOT NULL, type TEXT NOT NULL, amount REAL NOT NULL, category TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '', date TEXT NOT NULL, target TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS savings_goals (id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, target REAL NOT NULL, saved REAL NOT NULL DEFAULT 0, due_date TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS home_tiles (tile_key TEXT PRIMARY KEY NOT NULL, visible INTEGER NOT NULL DEFAULT 1, position INTEGER NOT NULL DEFAULT 0);
+    INSERT OR IGNORE INTO home_tiles (tile_key,visible,position) VALUES ('profile',1,0),('stats',1,1),('classes',1,2),('pinned',1,3),('tasks',1,4);
   `);
   const taskColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(tasks)');
   if (!taskColumns.some(column => column.name === 'checklist')) await db.execAsync("ALTER TABLE tasks ADD COLUMN checklist TEXT NOT NULL DEFAULT '[]'");

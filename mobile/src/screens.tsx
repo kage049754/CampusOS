@@ -29,29 +29,64 @@ function Button({theme,label,onPress,secondary=false}:{theme:Theme;label:string;
 function Empty({theme,text}:{theme:Theme;text:string}){return <View style={[s.empty,{backgroundColor:theme.surfaceAlt}]}><Text style={{color:theme.muted,textAlign:'center'}}>{text}</Text></View>}
 function Editor({theme,title,visible,onClose,children}:{theme:Theme;title:string;visible:boolean;onClose:()=>void;children:React.ReactNode}){return <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}><View style={s.shade}><View style={[s.editor,{backgroundColor:theme.surface}]}><View style={s.editorHead}><Text style={[s.heading,{color:theme.text,flex:1}]}>{title}</Text><Pressable onPress={onClose}><Text style={{color:theme.primary,fontWeight:'700'}}>Close</Text></Pressable></View><ScrollView contentContainerStyle={{gap:12,paddingBottom:18}} keyboardShouldPersistTaps="handled">{children}</ScrollView></View></View></Modal>}
 
+type HomeTileRow = { tile_key:string; visible:number; position:number };
+const DEFAULT_HOME_TILES:HomeTileRow[]=[
+ {tile_key:'profile',visible:1,position:0},
+ {tile_key:'stats',visible:1,position:1},
+ {tile_key:'classes',visible:1,position:2},
+ {tile_key:'pinned',visible:1,position:3},
+ {tile_key:'tasks',visible:1,position:4}
+];
 export function HomeScreen({theme,go}:P&{go:(v:string)=>void}){
- const [profile,setProfile]=useState({full_name:'',student_number:'',year_section:''}); const [stats,setStats]=useState([0,0,0,0]); const [next,setNext]=useState<ClassRow|null>(null);
- const refresh=useCallback(async()=>{const db=await database;const p=await db.getFirstAsync<typeof profile>('SELECT full_name,student_number,year_section FROM profile WHERE id=1');if(p)setProfile(p);const day=(new Date().getDay()+6)%7;const classes=await db.getAllAsync<ClassRow>('SELECT * FROM schedule_entries WHERE day=? ORDER BY start_time',day);const now=new Date().toTimeString().slice(0,5);setNext(classes.find(x=>x.end_time>now)||null);const counts=await Promise.all(['schedule_entries','tasks','subjects','notes'].map(async(table)=>{const r=await db.getFirstAsync<{n:number}>('SELECT COUNT(*) n FROM '+table+(table==='schedule_entries'?' WHERE day=?':''),...(table==='schedule_entries'?[day]:[]));return r?.n||0;}));setStats(counts);},[]);
+ const [profile,setProfile]=useState({full_name:'',student_number:'',year_section:''});
+ const [stats,setStats]=useState([0,0,0]);
+ const [todayClasses,setTodayClasses]=useState<ClassRow[]>([]);
+ const [next,setNext]=useState<ClassRow|null>(null);
+ const [tasks,setTasks]=useState<TaskRow[]>([]);
+ const [pinnedNotes,setPinnedNotes]=useState<NoteRow[]>([]);
+ const [tiles,setTiles]=useState<HomeTileRow[]>(DEFAULT_HOME_TILES);
+ const refresh=useCallback(async()=>{
+  const db=await database;
+  const profileRow=await db.getFirstAsync<typeof profile>('SELECT full_name,student_number,year_section FROM profile WHERE id=1');
+  if(profileRow)setProfile(profileRow);
+  const todayIndex=(new Date().getDay()+6)%7;
+  const classRows=await db.getAllAsync<ClassRow>('SELECT * FROM schedule_entries WHERE day=? ORDER BY start_time',todayIndex);
+  setTodayClasses(classRows);
+  const now=new Date().toTimeString().slice(0,5);
+  setNext(classRows.find(row=>row.end_time>now)||null);
+  const [taskCount,subjectCount,noteCount,taskRows,noteRows]=await Promise.all([
+   db.getFirstAsync<{n:number}>('SELECT COUNT(*) n FROM tasks WHERE done=0'),
+   db.getFirstAsync<{n:number}>('SELECT COUNT(*) n FROM subjects'),
+   db.getFirstAsync<{n:number}>('SELECT COUNT(*) n FROM notes'),
+   db.getAllAsync<TaskRow>('SELECT * FROM tasks WHERE done=0 ORDER BY due_date,due_time LIMIT 4'),
+   db.getAllAsync<NoteRow>('SELECT * FROM notes WHERE favorite=1 ORDER BY updated_at DESC LIMIT 4')
+  ]);
+  setStats([taskCount?.n||0,subjectCount?.n||0,noteCount?.n||0]);
+  setTasks(taskRows);setPinnedNotes(noteRows);
+  let savedTiles=await db.getAllAsync<HomeTileRow>('SELECT * FROM home_tiles ORDER BY position');
+  if(savedTiles.length===0){
+   for(const tile of DEFAULT_HOME_TILES)await db.runAsync('INSERT OR IGNORE INTO home_tiles (tile_key,visible,position) VALUES (?,?,?)',tile.tile_key,tile.visible,tile.position);
+   savedTiles=await db.getAllAsync<HomeTileRow>('SELECT * FROM home_tiles ORDER BY position');
+  }
+  const allowed=new Set(DEFAULT_HOME_TILES.map(tile=>tile.tile_key));
+  const normalized=savedTiles.filter(tile=>allowed.has(tile.tile_key));
+  const known=new Set(normalized.map(tile=>tile.tile_key));
+  for(const tile of DEFAULT_HOME_TILES)if(!known.has(tile.tile_key))normalized.push({...tile,position:normalized.length});
+  normalized.sort((a,b)=>a.position-b.position);
+  setTiles(normalized);
+ },[]);
  useEffect(()=>{refresh();},[refresh]);
- return <><View style={[s.hero,{backgroundColor:theme.primary}]}><Text style={s.eyebrow}>YOUR PERSONAL STUDENT PLANNER</Text><Text style={s.heroTitle}>{profile.full_name?'Hello, '+profile.full_name.split(' ')[0]:'Good day.'}</Text><Text style={s.heroSub}>{[profile.year_section,profile.student_number].filter(Boolean).join(' · ')||'Your classes, tasks, and notes in one place.'}</Text><View style={s.statLine}>{stats.slice(0,3).map((n,i)=><View key={i} style={s.stat}><Text style={s.statNumber}>{n}</Text><Text style={s.statLabel}>{['Classes today','Open tasks','Subjects'][i]}</Text></View>)}</View></View>
- <Card theme={theme} title="Today's schedule">{next?<><Text style={[s.itemTitle,{color:theme.text}]}>{next.title}</Text><Text style={{color:theme.muted}}>{next.start_time}–{next.end_time} · {next.kind}{next.room?' · '+next.room:''}</Text></>:<Text style={{color:theme.muted}}>No more classes scheduled today.</Text>}<Button theme={theme} label="Open schedule" secondary onPress={()=>go('Schedule')}/></Card>
- <View style={s.quickGrid}>{[['Tasks',stats[1]],['Notes',stats[3]],['Budget','₱'],['Files','↗']].map(([name,val])=><Pressable key={String(name)} onPress={()=>go(String(name))} style={[s.quick,{backgroundColor:theme.surface,borderColor:theme.border}]}><Text style={{fontSize:20,color:theme.primary,fontWeight:'800'}}>{val}</Text><Text style={{color:theme.text,fontWeight:'700'}}>{name}</Text></Pressable>)}</View>
- <Card theme={theme} title="Planner shortcuts"><Button theme={theme} label="Open Notes" secondary onPress={()=>go('Notes')}/><Button theme={theme} label="Open Lecture Files" secondary onPress={()=>go('Files')}/><Button theme={theme} label="Personalize dashboard" secondary onPress={()=>go('Settings')}/></Card></>;
+ const renderTile=(key:string)=>{
+  if(key==='profile')return <View style={[s.hero,{backgroundColor:theme.primary}]}><Text style={s.eyebrow}>YOUR PERSONAL STUDENT PLANNER</Text><Text style={s.heroTitle}>{profile.full_name?'Hello, '+profile.full_name.split(' ')[0]:'Good day.'}</Text><Text style={s.heroSub}>{[profile.year_section,profile.student_number].filter(Boolean).join(' · ')||'Your classes, tasks, and notes in one place.'}</Text></View>;
+  if(key==='stats')return <View style={s.quickGrid}>{[['Open tasks',stats[0]],['Subjects',stats[1]],['Notes',stats[2]]].map(([label,value])=><View key={String(label)} style={[s.quick,{backgroundColor:theme.surface,borderColor:theme.border}]}><Text style={{color:theme.primary,fontSize:22,fontWeight:'900'}}>{value}</Text><Text style={{color:theme.text,fontWeight:'700'}}>{label}</Text></View>)}</View>;
+  if(key==='classes')return <Card theme={theme} title="Today's classes"><Text style={{color:theme.muted,fontSize:11}}>{todayClasses.length} class session{todayClasses.length===1?'':'s'} today</Text>{next?<View style={{gap:4}}><Text style={{color:theme.primary,fontSize:11,fontWeight:'800'}}>NEXT CLASS</Text><Text style={[s.itemTitle,{color:theme.text}]}>{next.title}</Text><Text style={{color:theme.muted}}>{next.start_time}–{next.end_time} · {next.kind}{next.room?' · '+next.room:''}</Text></View>:<Text style={{color:theme.muted}}>No more classes scheduled today.</Text>}{todayClasses.slice(0,4).map(row=><View key={row.id} style={[s.listRow,{borderBottomColor:theme.border}]}><View style={{flex:1}}><Text style={{color:theme.text,fontWeight:'700'}}>{row.title}</Text><Text style={{color:theme.muted,fontSize:11}}>{row.start_time}–{row.end_time} · {row.kind}{row.room?' · '+row.room:''}</Text></View></View>)}<Button theme={theme} label="Open schedule" secondary onPress={()=>go('Schedule')}/></Card>;
+  if(key==='pinned')return <Card theme={theme} title="Pinned notes">{pinnedNotes.length?pinnedNotes.map(row=><Pressable key={row.id} onPress={()=>go('Notepad')} style={[s.listRow,{borderBottomColor:theme.border,alignItems:'flex-start'}]}><View style={{flex:1,gap:3}}><Text style={{color:theme.text,fontWeight:'800'}}>{row.title}</Text><Text style={{color:theme.muted,fontSize:11}} numberOfLines={2}>{row.body}</Text></View><Text style={{color:theme.primary}}>★</Text></Pressable>):<Text style={{color:theme.muted}}>Favorite a note to pin it here.</Text>}<Button theme={theme} label="Open Notepad" secondary onPress={()=>go('Notepad')}/></Card>;
+  if(key==='tasks')return <Card theme={theme} title="Upcoming tasks">{tasks.length?tasks.map(row=><View key={row.id} style={[s.listRow,{borderBottomColor:theme.border}]}><View style={{flex:1,gap:3}}><Text style={{color:theme.text,fontWeight:'700'}}>{row.title}</Text><Text style={{color:theme.muted,fontSize:11}}>{row.due_date||'No due date'}{row.due_time?' · '+row.due_time:''}</Text></View><Text style={{color:theme.primary,fontSize:11,fontWeight:'700'}}>{row.priority||'Medium'}</Text></View>):<Empty theme={theme} text="No pending tasks. You're all caught up."/>}<Button theme={theme} label="Open Tasks" secondary onPress={()=>go('Tasks')}/></Card>;
+  return null;
+ };
+ return <>{tiles.filter(tile=>tile.visible===1).map(tile=><View key={tile.tile_key}>{renderTile(tile.tile_key)}</View>)}</>;
 }
 
-type DisplayClass = ClassRow & { mergedCount:number; mergedIds:string[] };
-function mergeAdjacentClasses(items:ClassRow[]):DisplayClass[]{
- const sorted=[...items].sort((a,b)=>mins(a.start_time)-mins(b.start_time));
- const result:DisplayClass[]=[];
- for(const row of sorted){
-  const previous=result[result.length-1];
-  const sameSubject=(previous?.subject_id&&row.subject_id&&previous.subject_id===row.subject_id)||previous?.title===row.title;
-  if(previous&&sameSubject&&previous.room.trim().toLowerCase()===row.room.trim().toLowerCase()&&previous.kind===row.kind&&previous.end_time===row.start_time){
-   result[result.length-1]={...previous,end_time:row.end_time,mergedCount:previous.mergedCount+1,mergedIds:[...previous.mergedIds,row.id]};
-  }else result.push({...row,mergedCount:1,mergedIds:[row.id]});
- }
- return result;
-}
 export function ScheduleScreen({theme}:P){
  const [rows,setRows]=useState<ClassRow[]>([]);
  const [visible,setVisible]=useState(false);
@@ -509,7 +544,24 @@ function BackupManager({theme}:{theme:Theme}){
 
 export function SettingsScreen({theme,palette,onPalette,dark,onDark}:P&{palette:PaletteName;onPalette:(p:PaletteName)=>void;dark:boolean;onDark:(v:boolean)=>void}){
  const [name,setName]=useState(''),[student,setStudent]=useState(''),[section,setSection]=useState('');
+ const [homeTiles,setHomeTiles]=useState<HomeTileRow[]>(DEFAULT_HOME_TILES);
  const [remindersEnabled,setRemindersEnabled]=useState(false),[notificationPermission,setNotificationPermission]=useState(false),[reminderBusy,setReminderBusy]=useState(false);
+ const loadHomeTiles=useCallback(async()=>{
+  const db=await database;let rows=await db.getAllAsync<HomeTileRow>('SELECT * FROM home_tiles ORDER BY position');
+  if(rows.length===0){for(const tile of DEFAULT_HOME_TILES)await db.runAsync('INSERT OR IGNORE INTO home_tiles (tile_key,visible,position) VALUES (?,?,?)',tile.tile_key,tile.visible,tile.position);rows=await db.getAllAsync<HomeTileRow>('SELECT * FROM home_tiles ORDER BY position');}
+  setHomeTiles(rows.sort((a,b)=>a.position-b.position));
+ },[]);
+ const persistHomeTiles=async(next:HomeTileRow[])=>{
+  const db=await database;await db.withTransactionAsync(async()=>{for(let index=0;index<next.length;index++){const tile=next[index];await db.runAsync('INSERT OR REPLACE INTO home_tiles (tile_key,visible,position) VALUES (?,?,?)',tile.tile_key,tile.visible,index);}});
+  setHomeTiles(next.map((tile,index)=>({...tile,position:index})));
+ };
+ const toggleHomeTile=async(tile:HomeTileRow,visible:boolean)=>{await persistHomeTiles(homeTiles.map(row=>row.tile_key===tile.tile_key?{...row,visible:visible?1:0}:row));};
+ const moveHomeTile=async(index:number,direction:number)=>{
+  const next=[...homeTiles];const target=index+direction;if(target<0||target>=next.length)return;
+  const temp=next[index];next[index]=next[target];next[target]=temp;await persistHomeTiles(next);
+ };
+ const resetHomeTiles=async()=>{await persistHomeTiles(DEFAULT_HOME_TILES.map(tile=>({...tile})));};
+ useEffect(()=>{loadHomeTiles();},[loadHomeTiles]);
  useEffect(()=>{(async()=>{
   const db=await database;
   const p=await db.getFirstAsync<{full_name:string;student_number:string;year_section:string}>('SELECT * FROM profile WHERE id=1');
@@ -533,7 +585,8 @@ export function SettingsScreen({theme,palette,onPalette,dark,onDark}:P&{palette:
   }catch(error){Alert.alert('Reminder setting failed',error instanceof Error?error.message:'Please try again.');}
   finally{setReminderBusy(false);}
  };
- return <><BackupManager theme={theme}/><Card theme={theme} title="Profile"><Field theme={theme} label="Name" value={name} onChangeText={setName}/><Field theme={theme} label="Student number" value={student} onChangeText={setStudent}/><Field theme={theme} label="Year & section" value={section} onChangeText={setSection}/><Button theme={theme} label="Save profile" onPress={save}/></Card><Card theme={theme} title="Appearance & design"><Text style={{color:theme.muted}}>Choose your CampusOS color combination.</Text><View style={s.paletteGrid}>{(Object.keys(palettes) as PaletteName[]).map(k=><Pressable key={k} onPress={()=>onPalette(k)} style={[s.palette,{borderColor:palette===k?theme.primary:theme.border,borderWidth:palette===k?2:1}]}><View style={[s.swatch,{backgroundColor:palettes[k].primary}]}/><Text style={{color:theme.text,fontSize:12}}>{palettes[k].label}</Text></Pressable>)}</View><Text style={{color:theme.muted,fontWeight:'700'}}>Display mode</Text><View style={s.chips}>{[['light','Light'],['dark','Dark']].map(([v,l])=><Pressable key={v} onPress={()=>onDark(v==='dark')} style={[s.chip,{backgroundColor:dark===(v==='dark')?theme.primary:theme.surfaceAlt}]}><Text style={{color:dark===(v==='dark')?'#FFF':theme.text}}>{l}</Text></Pressable>)}</View></Card><Card theme={theme} title="Reminders & notifications"><Text style={{color:theme.muted,lineHeight:20}}>Receive reminders before scheduled classes and before task deadlines. Reminders are scheduled locally on this phone; no account or server is used.</Text><View style={[s.listRow,{borderBottomWidth:0}]}><View style={{flex:1,gap:3}}><Text style={{color:theme.text,fontWeight:'800'}}>Class and task reminders</Text><Text style={{color:theme.muted,fontSize:11}}>{notificationPermission?'Android notification permission is granted.': 'Android notification permission is not granted.'}</Text></View><Switch value={remindersEnabled} disabled={reminderBusy} onValueChange={toggleReminders} trackColor={{true:theme.primary}}/></View><Text style={{color:theme.muted,fontSize:11}}>Class alerts are scheduled 30 and 10 minutes before each class. Task alerts are scheduled 1 day and 1 hour before the due time.</Text></Card><Card theme={theme} title="Offline & privacy"><Text style={{color:theme.muted,lineHeight:20}}>This CampusOS version is a personal offline planner. It has no sign-in, admin/member accounts, announcements, group chat, or online campus/community functions.</Text><Text style={{color:theme.muted,fontSize:12}}>App lock and Android home-screen widgets remain in migration.</Text></Card></>;
+ const homeTileLabels:Record<string,string>={profile:'Profile / welcome',stats:'Statistics',classes:"Today's classes",pinned:'Pinned notes',tasks:'Upcoming tasks'};
+ return <><BackupManager theme={theme}/><Card theme={theme} title="Dashboard layout"><Text style={{color:theme.muted,lineHeight:19}}>Choose which Home tiles appear and change their order. These settings stay on this device.</Text>{homeTiles.map((tile,index)=><View key={tile.tile_key} style={[s.listRow,{borderBottomColor:theme.border}]}><View style={{flex:1}}><Text style={{color:theme.text,fontWeight:'700'}}>{homeTileLabels[tile.tile_key]||tile.tile_key}</Text><Text style={{color:theme.muted,fontSize:10}}>Position {index+1}</Text></View><Pressable onPress={()=>moveHomeTile(index,-1)} disabled={index===0}><Text style={{color:index===0?theme.muted:theme.primary,fontSize:17,padding:5}}>↑</Text></Pressable><Pressable onPress={()=>moveHomeTile(index,1)} disabled={index===homeTiles.length-1}><Text style={{color:index===homeTiles.length-1?theme.muted:theme.primary,fontSize:17,padding:5}}>↓</Text></Pressable><Switch value={tile.visible===1} onValueChange={value=>toggleHomeTile(tile,value)} trackColor={{true:theme.primary}}/></View>)}<Button theme={theme} secondary label="Reset dashboard layout" onPress={resetHomeTiles}/></Card><Card theme={theme} title="Profile"><Field theme={theme} label="Name" value={name} onChangeText={setName}/><Field theme={theme} label="Student number" value={student} onChangeText={setStudent}/><Field theme={theme} label="Year & section" value={section} onChangeText={setSection}/><Button theme={theme} label="Save profile" onPress={save}/></Card><Card theme={theme} title="Appearance & design"><Text style={{color:theme.muted}}>Choose your CampusOS color combination.</Text><View style={s.paletteGrid}>{(Object.keys(palettes) as PaletteName[]).map(k=><Pressable key={k} onPress={()=>onPalette(k)} style={[s.palette,{borderColor:palette===k?theme.primary:theme.border,borderWidth:palette===k?2:1}]}><View style={[s.swatch,{backgroundColor:palettes[k].primary}]}/><Text style={{color:theme.text,fontSize:12}}>{palettes[k].label}</Text></Pressable>)}</View><Text style={{color:theme.muted,fontWeight:'700'}}>Display mode</Text><View style={s.chips}>{[['light','Light'],['dark','Dark']].map(([v,l])=><Pressable key={v} onPress={()=>onDark(v==='dark')} style={[s.chip,{backgroundColor:dark===(v==='dark')?theme.primary:theme.surfaceAlt}]}><Text style={{color:dark===(v==='dark')?'#FFF':theme.text}}>{l}</Text></Pressable>)}</View></Card><Card theme={theme} title="Reminders & notifications"><Text style={{color:theme.muted,lineHeight:20}}>Receive reminders before scheduled classes and before task deadlines. Reminders are scheduled locally on this phone; no account or server is used.</Text><View style={[s.listRow,{borderBottomWidth:0}]}><View style={{flex:1,gap:3}}><Text style={{color:theme.text,fontWeight:'800'}}>Class and task reminders</Text><Text style={{color:theme.muted,fontSize:11}}>{notificationPermission?'Android notification permission is granted.': 'Android notification permission is not granted.'}</Text></View><Switch value={remindersEnabled} disabled={reminderBusy} onValueChange={toggleReminders} trackColor={{true:theme.primary}}/></View><Text style={{color:theme.muted,fontSize:11}}>Class alerts are scheduled 30 and 10 minutes before each class. Task alerts are scheduled 1 day and 1 hour before the due time.</Text></Card><Card theme={theme} title="Offline & privacy"><Text style={{color:theme.muted,lineHeight:20}}>This CampusOS version is a personal offline planner. It has no sign-in, admin/member accounts, announcements, group chat, or online campus/community functions.</Text><Text style={{color:theme.muted,fontSize:12}}>App lock and Android home-screen widgets remain in migration.</Text></Card></>;
 }
 
 
