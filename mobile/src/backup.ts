@@ -209,7 +209,7 @@ async function upsertRows(db: any, table: string, rows: AnyRow[]) {
     app_settings: ['key','value'],
     profile: ['id','full_name','student_number','year_section','photo_uri'],
     schedule_entries: ['id','subject_id','title','day','start_time','end_time','kind','room','professor','notes'],
-    tasks: ['id','title','details','due_date','due_time','done','pinned','subject_id','created_at'],
+    tasks: ['id','title','details','checklist','due_date','due_time','done','pinned','priority','status','subject_id','created_at'],
     subjects: ['id','legacy_id','code','title','color','created_at'],
     notes: ['id','title','body','subject_id','favorite','note_date','created_at','updated_at'],
     lecture_files: ['id','subject_id','name','mime_type','local_uri','size','added_at','folder_name','favorite'],
@@ -339,9 +339,11 @@ async function restoreLegacyBackup(root: AnyRow, selected: Set<BackupModule>) {
   if (selected.has('tasks') && root.tasks !== undefined) {
     await db.runAsync('DELETE FROM tasks');
     for (const task of safeArray(root.tasks)) {
-      await db.runAsync('INSERT OR REPLACE INTO tasks (id,title,details,due_date,due_time,done,pinned,subject_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
-        'legacy-task-' + asText(task.id, uid('task')), asText(task.title, 'Task'), asText(task.subtitle), asText(task.dueDate), asText(task.dueTime),
-        task.done ? 1 : 0, 0, null, Number(task.id) || now());
+      const oldExtra = safeObject(parseMaybe(task.extra));
+      const subtasks = safeArray(oldExtra.subtasks).map((item,index) => ({ id:asText(item.id,uid('subtask')), title:asText(item.title,'Checklist item '+(index+1)), done:item.done?1:0 }));
+      await db.runAsync('INSERT OR REPLACE INTO tasks (id,title,details,checklist,due_date,due_time,done,pinned,priority,status,subject_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+        'legacy-task-' + asText(task.id, uid('task')), asText(task.title, 'Task'), asText(task.subtitle), JSON.stringify(subtasks), asText(task.dueDate), asText(task.dueTime),
+        task.done ? 1 : 0, oldExtra.pinned ? 1 : 0, asText(oldExtra.priority,'Medium'), asText(oldExtra.status,'Not started'), null, Number(task.id) || now());
     }
   }
 
