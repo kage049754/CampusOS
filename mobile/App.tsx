@@ -57,7 +57,7 @@ export default function App() {
   useEffect(() => { initializeDatabase().then(() => setReady(true)).catch(() => setReady(true)); }, []);
   if (!ready) return <SafeAreaView style={[styles.loading, { backgroundColor: theme.background }]}><ActivityIndicator color={theme.primary} /><Text style={{ color: theme.text }}>Preparing your offline planner…</Text></SafeAreaView>;
   return <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
-    <StatusBar barStyle={dark ? 'light-content' : 'dark-content'} backgroundColor={theme.background} />
+    <StatusBar barStyle={dark ? 'light-content' : 'dark-content'} />
     <View style={styles.topbar}><View><Text style={[styles.brand, { color: theme.primary }]}>CampusOS</Text><Text style={[styles.brandSub, { color: theme.muted }]}>PERSONAL PLANNER</Text></View><View style={styles.topActions}><Pressable onPress={() => setDark(v => !v)} style={[styles.themeToggle, { backgroundColor: theme.surfaceAlt }]}><Text style={{ color: theme.text }}>{dark ? '☀' : '☾'}</Text></Pressable></View></View>
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       {active === 'Home' ? <HomeScreen theme={theme} go={setActive} /> : <ModuleScreen name={active} theme={theme} onTheme={setPalette} />}
