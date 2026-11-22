@@ -15,7 +15,7 @@ export async function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', subject_id TEXT, favorite INTEGER NOT NULL DEFAULT 0, note_date TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY(subject_id) REFERENCES subjects(id) ON DELETE SET NULL);
     CREATE TABLE IF NOT EXISTS lecture_files (id TEXT PRIMARY KEY NOT NULL, subject_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL DEFAULT '', local_uri TEXT NOT NULL, size INTEGER NOT NULL DEFAULT 0, added_at INTEGER NOT NULL, folder_name TEXT NOT NULL DEFAULT 'Lecture 1', favorite INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(subject_id) REFERENCES subjects(id) ON DELETE SET NULL);
     CREATE TABLE IF NOT EXISTS lecture_folders (id TEXT PRIMARY KEY NOT NULL, subject_id TEXT NOT NULL, name TEXT NOT NULL, created_at INTEGER NOT NULL, UNIQUE(subject_id,name), FOREIGN KEY(subject_id) REFERENCES subjects(id) ON DELETE CASCADE);
-    CREATE TABLE IF NOT EXISTS budget_entries (id TEXT PRIMARY KEY NOT NULL, type TEXT NOT NULL, amount REAL NOT NULL, category TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '', date TEXT NOT NULL, created_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS budget_entries (id TEXT PRIMARY KEY NOT NULL, type TEXT NOT NULL, amount REAL NOT NULL, category TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '', date TEXT NOT NULL, target TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS savings_goals (id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, target REAL NOT NULL, saved REAL NOT NULL DEFAULT 0, due_date TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS home_tiles (tile_key TEXT PRIMARY KEY NOT NULL, visible INTEGER NOT NULL DEFAULT 1, position INTEGER NOT NULL DEFAULT 0);
   `);
@@ -29,6 +29,8 @@ export async function initializeDatabase() {
   const fileColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(lecture_files)');
   if (!fileColumns.some(column => column.name === 'folder_name')) await db.execAsync("ALTER TABLE lecture_files ADD COLUMN folder_name TEXT NOT NULL DEFAULT 'Lecture 1'");
   if (!fileColumns.some(column => column.name === 'favorite')) await db.execAsync('ALTER TABLE lecture_files ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0');
+  const budgetColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(budget_entries)');
+  if (!budgetColumns.some(column => column.name === 'target')) await db.execAsync("ALTER TABLE budget_entries ADD COLUMN target TEXT NOT NULL DEFAULT ''");
   const noteColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(notes)');
   if (!noteColumns.some(column => column.name === 'note_date')) await db.execAsync('ALTER TABLE notes ADD COLUMN note_date TEXT NOT NULL DEFAULT \'\'');
   await db.runAsync('INSERT OR IGNORE INTO profile (id) VALUES (1)');

@@ -13,7 +13,8 @@ type P = { theme: Theme };
 type ClassRow = { id:string; subject_id:string|null; title:string; day:number; start_time:string; end_time:string; kind:string; room:string; professor:string; notes:string };
 type TaskRow = { id:string; title:string; details:string; checklist:string; due_date:string; due_time:string; done:number; pinned:number; priority:string; status:string; subject_id:string|null; created_at:number };
 type NoteRow = { id:string; title:string; body:string; subject_id:string|null; favorite:number; note_date:string; created_at:number; updated_at:number };
-type BudgetRow = { id:string; type:string; amount:number; category:string; note:string; date:string };
+type BudgetRow = { id:string; type:string; amount:number; category:string; note:string; date:string; target?:string; created_at?:number };
+type SavingsGoal = { id:string; title:string; target:number; saved:number; due_date:string; created_at:number };
 type FileRow = { id:string; subject_id:string|null; name:string; mime_type:string; local_uri:string; size:number; folder_name?:string; favorite?:number };
 type SubjectRow = { id:string; legacy_id?:string|null; code:string; title:string; color:string; favorite?:number; created_at:number };
 const days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
@@ -201,13 +202,182 @@ export function NotesScreen({theme}:P){
  <Editor theme={theme} title={edit?'Edit note':'New note'} visible={visible} onClose={()=>setVisible(false)}><Field theme={theme} label="Title" value={title} onChangeText={setTitle}/><Field theme={theme} label="Date (YYYY-MM-DD)" value={date} onChangeText={setDate}/><Field theme={theme} label="Note content" value={body} onChangeText={setBody} multiline/><Button theme={theme} label="Save note" onPress={save}/></Editor></>;
 }
 
+function money(value:number):string{return new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP',maximumFractionDigits:2}).format(value);}
+function isInBudgetPeriod(value:string,period:string):boolean{
+ const parts=value.split('-').map(Number);if(parts.length!==3||parts.some(x=>!Number.isFinite(x)))return false;
+ const entry=new Date(parts[0],parts[1]-1,parts[2]);const now=new Date();
+ if(period==='Daily')return dateKey(entry)===dateKey(now);
+ if(period==='Monthly')return entry.getFullYear()===now.getFullYear()&&entry.getMonth()===now.getMonth();
+ const weekStart=(date:Date)=>{const d=new Date(date.getFullYear(),date.getMonth(),date.getDate());d.setDate(d.getDate()-((d.getDay()+6)%7));return dateKey(d);};
+ return weekStart(entry)===weekStart(now);
+}
 export function BudgetScreen({theme}:P){
- const [rows,setRows]=useState<BudgetRow[]>([]);const [visible,setVisible]=useState(false);const [type,setType]=useState('Expense');const [amount,setAmount]=useState('');const [category,setCategory]=useState('Food');const [note,setNote]=useState('');
- const refresh=useCallback(async()=>{const db=await database;setRows(await db.getAllAsync<BudgetRow>('SELECT * FROM budget_entries ORDER BY date DESC,created_at DESC'));},[]);useEffect(()=>{refresh();},[refresh]);
- const income=rows.filter(x=>x.type.toLowerCase()==='income').reduce((a,x)=>a+x.amount,0);const expense=rows.filter(x=>x.type.toLowerCase()!=='income').reduce((a,x)=>a+x.amount,0);
- const save=async()=>{const n=Number(amount);if(!Number.isFinite(n)||n<=0)return Alert.alert('Enter a valid amount');const db=await database;await db.runAsync('INSERT INTO budget_entries (id,type,amount,category,note,date,created_at) VALUES (?,?,?,?,?,?,?)',uid('budget'),type,n,category,note,today(),Date.now());setVisible(false);setAmount('');setNote('');refresh();};
- return <><View style={s.moneyRow}><View style={[s.moneyCard,{backgroundColor:theme.surface,borderColor:theme.border}]}><Text style={{color:theme.muted}}>Income</Text><Text style={{color:theme.primary,fontSize:20,fontWeight:'800'}}>₱{income.toFixed(2)}</Text></View><View style={[s.moneyCard,{backgroundColor:theme.surface,borderColor:theme.border}]}><Text style={{color:theme.muted}}>Expenses</Text><Text style={{color:theme.danger,fontSize:20,fontWeight:'800'}}>₱{expense.toFixed(2)}</Text></View></View><Card theme={theme} title="Budget overview"><Text style={{color:theme.muted}}>Available balance</Text><Text style={{color:theme.text,fontSize:28,fontWeight:'800'}}>₱{(income-expense).toFixed(2)}</Text><Button theme={theme} label="＋ Add transaction" onPress={()=>setVisible(true)}/></Card><Card theme={theme} title="Recent transactions">{rows.length?rows.map(r=><View key={r.id} style={[s.listRow,{borderBottomColor:theme.border}]}><View style={{flex:1}}><Text style={{color:theme.text,fontWeight:'700'}}>{r.category||r.type}</Text><Text style={{color:theme.muted,fontSize:11}}>{r.date} · {r.note}</Text></View><Text style={{fontWeight:'800',color:r.type.toLowerCase()==='income'?theme.primary:theme.danger}}>{r.type.toLowerCase()==='income'?'+':'−'}₱{r.amount.toFixed(2)}</Text></View>):<Empty theme={theme} text="No transactions recorded yet."/>}</Card>
- <Editor theme={theme} title="Add transaction" visible={visible} onClose={()=>setVisible(false)}><View style={s.chips}>{['Expense','Income'].map(k=><Pressable key={k} onPress={()=>setType(k)} style={[s.chip,{backgroundColor:type===k?theme.primary:theme.surfaceAlt}]}><Text style={{color:type===k?'#FFF':theme.text}}>{k}</Text></Pressable>)}</View><Field theme={theme} label="Amount (PHP)" value={amount} onChangeText={setAmount} keyboardType="decimal-pad"/><Field theme={theme} label="Category" value={category} onChangeText={setCategory}/><Field theme={theme} label="Note" value={note} onChangeText={setNote}/><Button theme={theme} label="Save transaction" onPress={save}/></Editor></>;
+ const [rows,setRows]=useState<BudgetRow[]>([]);
+ const [goals,setGoals]=useState<SavingsGoal[]>([]);
+ const [period,setPeriod]=useState('Weekly');
+ const [allowance,setAllowance]=useState('0');
+ const [planVisible,setPlanVisible]=useState(false);
+ const [planPeriod,setPlanPeriod]=useState('Weekly');
+ const [planAmount,setPlanAmount]=useState('');
+ const [editorVisible,setEditorVisible]=useState(false);
+ const [editing,setEditing]=useState<BudgetRow|null>(null);
+ const [type,setType]=useState('expense');
+ const [amount,setAmount]=useState('');
+ const [category,setCategory]=useState('Food');
+ const [note,setNote]=useState('');
+ const [entryDate,setEntryDate]=useState(today());
+ const [targetId,setTargetId]=useState('');
+ const [goalVisible,setGoalVisible]=useState(false);
+ const [goalEdit,setGoalEdit]=useState<SavingsGoal|null>(null);
+ const [goalTitle,setGoalTitle]=useState('');
+ const [goalTarget,setGoalTarget]=useState('');
+ const [goalSaved,setGoalSaved]=useState('0');
+ const [goalDueDate,setGoalDueDate]=useState('');
+ const categories=['Food','Transportation','School','Projects','Bills','Personal','Other'];
+ const refresh=useCallback(async()=>{
+  const db=await database;
+  const [transactions,savingGoals,periodRow,allowanceRow]=await Promise.all([
+   db.getAllAsync<BudgetRow>('SELECT * FROM budget_entries ORDER BY date DESC,created_at DESC'),
+   db.getAllAsync<SavingsGoal>('SELECT * FROM savings_goals ORDER BY created_at DESC'),
+   db.getFirstAsync<{value:string}>("SELECT value FROM app_settings WHERE key='budget_period'"),
+   db.getFirstAsync<{value:string}>("SELECT value FROM app_settings WHERE key='budget_allowance'")
+  ]);
+  setRows(transactions);setGoals(savingGoals);setPeriod(periodRow?.value||'Weekly');setAllowance(allowanceRow?.value||'0');
+ },[]);
+ useEffect(()=>{refresh();},[refresh]);
+ const current=rows.filter(row=>isInBudgetPeriod(row.date,period));
+ const totalIncome=current.filter(row=>row.type.toLowerCase()==='income').reduce((sum,row)=>sum+row.amount,0);
+ const spent=current.filter(row=>row.type.toLowerCase()==='expense').reduce((sum,row)=>sum+row.amount,0);
+ const saved=current.filter(row=>row.type.toLowerCase()==='saving').reduce((sum,row)=>sum+row.amount,0);
+ const allowanceValue=Math.max(0,Number(allowance)||0);
+ const available=allowanceValue+totalIncome-spent-saved;
+ const categoryTotals=categories.map(name=>({name,total:current.filter(row=>row.type.toLowerCase()==='expense'&&row.category===name).reduce((sum,row)=>sum+row.amount,0)})).filter(row=>row.total>0).sort((a,b)=>b.total-a.total);
+ const maximumCategory=Math.max(1,...categoryTotals.map(row=>row.total));
+ const openPlan=()=>{setPlanPeriod(period);setPlanAmount(allowance);setPlanVisible(true);};
+ const savePlan=async()=>{
+  const value=Number(planAmount);if(!Number.isFinite(value)||value<0)return Alert.alert('Enter a valid allowance');
+  const db=await database;
+  await db.runAsync("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('budget_period',?)",planPeriod);
+  await db.runAsync("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('budget_allowance',?)",String(value));
+  setPlanVisible(false);await refresh();
+ };
+ const openEntry=(row?:BudgetRow,nextType='expense')=>{
+  setEditing(row||null);setType(row?.type?.toLowerCase()||nextType);
+  setAmount(row?String(row.amount):'');setCategory(row?.category||'Food');
+  setNote(row?.note||'');setEntryDate(row?.date||today());setTargetId(row?.target||'');
+  setEditorVisible(true);
+ };
+ const saveEntry=async()=>{
+  const value=Number(amount);if(!Number.isFinite(value)||value<=0)return Alert.alert('Enter a valid amount');
+  if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(entryDate))return Alert.alert('Invalid transaction date','Use YYYY-MM-DD.');
+  if(type==='saving'&&!targetId)return Alert.alert('Choose a savings goal','Create or select a savings goal for this contribution.');
+  const db=await database;const id=editing?.id||uid('budget');const created=editing?.created_at||Date.now();
+  await db.withTransactionAsync(async()=>{
+   if(editing&&editing.type.toLowerCase()==='saving'&&editing.target)await db.runAsync('UPDATE savings_goals SET saved=MAX(0,saved-?) WHERE id=?',editing.amount,editing.target);
+   await db.runAsync('INSERT OR REPLACE INTO budget_entries (id,type,amount,category,note,date,target,created_at) VALUES (?,?,?,?,?,?,?,?)',id,type,value,category,note.trim(),entryDate,type==='saving'?targetId:'',created);
+   if(type==='saving')await db.runAsync('UPDATE savings_goals SET saved=saved+? WHERE id=?',value,targetId);
+  });
+  setEditorVisible(false);await refresh();
+ };
+ const deleteEntry=(row:BudgetRow)=>Alert.alert('Delete transaction?',row.note||row.category||row.type,[{text:'Cancel'},{text:'Delete',style:'destructive',onPress:async()=>{
+  const db=await database;await db.withTransactionAsync(async()=>{
+   if(row.type.toLowerCase()==='saving'&&row.target)await db.runAsync('UPDATE savings_goals SET saved=MAX(0,saved-?) WHERE id=?',row.amount,row.target);
+   await db.runAsync('DELETE FROM budget_entries WHERE id=?',row.id);
+  });await refresh();
+ }}]);
+ const openGoal=(goal?:SavingsGoal)=>{
+  setGoalEdit(goal||null);setGoalTitle(goal?.title||'');setGoalTarget(goal?String(goal.target):'');
+  setGoalSaved(goal?String(goal.saved):'0');setGoalDueDate(goal?.due_date||'');setGoalVisible(true);
+ };
+ const saveGoal=async()=>{
+  if(!goalTitle.trim())return Alert.alert('Goal name required');
+  const target=Number(goalTarget),savedValue=Number(goalSaved);
+  if(!Number.isFinite(target)||target<=0||!Number.isFinite(savedValue)||savedValue<0)return Alert.alert('Enter valid savings amounts');
+  const db=await database;const id=goalEdit?.id||uid('goal');
+  await db.runAsync('INSERT OR REPLACE INTO savings_goals (id,title,target,saved,due_date,created_at) VALUES (?,?,?,?,?,?)',id,goalTitle.trim(),target,savedValue,goalDueDate,goalEdit?.created_at||Date.now());
+  setGoalVisible(false);await refresh();
+ };
+ const deleteGoal=(goal:SavingsGoal)=>Alert.alert('Delete savings goal?',goal.title,[{text:'Cancel'},{text:'Delete',style:'destructive',onPress:async()=>{
+  const db=await database;await db.withTransactionAsync(async()=>{
+   await db.runAsync("UPDATE budget_entries SET target='' WHERE target=?",goal.id);
+   await db.runAsync('DELETE FROM savings_goals WHERE id=?',goal.id);
+  });await refresh();
+ }}]);
+ const topCategory=categoryTotals[0];
+ return <>
+  <Card theme={theme} title="Student budget">
+   <View style={s.listRow}><View style={{flex:1}}><Text style={{color:theme.muted,fontSize:12}}>{period} allowance · local only</Text><Text style={{color:theme.text,fontSize:30,fontWeight:'900'}}>{money(available)}</Text><Text style={{color:theme.muted,fontSize:12}}>Available balance</Text></View><Pressable onPress={openPlan}><Text style={{color:theme.primary,fontWeight:'800',padding:7}}>Edit plan</Text></Pressable></View>
+   <View style={s.moneyRow}>
+    <View style={[s.moneyCard,{backgroundColor:theme.surfaceAlt,borderColor:theme.border}]}><Text style={{color:theme.muted,fontSize:11}}>Allowance</Text><Text style={{color:theme.text,fontSize:16,fontWeight:'800'}}>{money(allowanceValue)}</Text></View>
+    <View style={[s.moneyCard,{backgroundColor:theme.surfaceAlt,borderColor:theme.border}]}><Text style={{color:theme.muted,fontSize:11}}>Income</Text><Text style={{color:theme.primary,fontSize:16,fontWeight:'800'}}>{money(totalIncome)}</Text></View>
+   </View>
+   <View style={s.moneyRow}>
+    <View style={[s.moneyCard,{backgroundColor:theme.surfaceAlt,borderColor:theme.border}]}><Text style={{color:theme.muted,fontSize:11}}>Spent</Text><Text style={{color:theme.danger,fontSize:16,fontWeight:'800'}}>{money(spent)}</Text></View>
+    <View style={[s.moneyCard,{backgroundColor:theme.surfaceAlt,borderColor:theme.border}]}><Text style={{color:theme.muted,fontSize:11}}>Saved</Text><Text style={{color:theme.primary,fontSize:16,fontWeight:'800'}}>{money(saved)}</Text></View>
+   </View>
+   {allowanceValue+totalIncome>0?<View style={{height:9,backgroundColor:theme.surfaceAlt,borderRadius:10,overflow:'hidden'}}><View style={{height:9,width:((Math.max(0,available)/(allowanceValue+totalIncome))*100)+'%',backgroundColor:theme.primary,borderRadius:10}}/></View>:null}
+   <Text style={{color:theme.muted,fontSize:11}}>Remaining amount after expenses and savings for the current {period.toLowerCase()}.</Text>
+  </Card>
+  <View style={s.quickGrid}>
+   {[
+    {label:'Add expense',type:'expense',symbol:'−'},
+    {label:'Add income',type:'income',symbol:'+'},
+    {label:'Add saving',type:'saving',symbol:'₱'}
+   ].map(action=><Pressable key={action.type} onPress={()=>openEntry(undefined,action.type)} style={[s.quick,{backgroundColor:theme.surface,borderColor:theme.border}]}>
+    <Text style={{color:theme.primary,fontSize:21,fontWeight:'900'}}>{action.symbol}</Text><Text style={{color:theme.text,fontWeight:'800'}}>{action.label}</Text>
+   </Pressable>)}
+  </View>
+  <Card theme={theme} title="Where your money goes">
+   {categoryTotals.length?categoryTotals.map(row=><View key={row.name} style={{gap:5}}>
+    <View style={s.listRow}><Text style={{color:theme.text,fontWeight:'700',flex:1}}>{row.name}</Text><Text style={{color:theme.muted,fontSize:12}}>{money(row.total)} · {Math.round(row.total/Math.max(1,spent)*100)}%</Text></View>
+    <View style={{height:7,backgroundColor:theme.surfaceAlt,borderRadius:8,overflow:'hidden'}}><View style={{height:7,width:(row.total/maximumCategory*100)+'%',backgroundColor:theme.primary,borderRadius:8}}/></View>
+   </View>):<Empty theme={theme} text="Record expenses to see your category breakdown."/>}
+  </Card>
+  <Card theme={theme} title="Quick insight">
+   <Text style={{color:theme.text,lineHeight:21}}>{allowanceValue<=0&&totalIncome<=0?'Set an allowance or add income to calculate your available balance.':current.length===0?'No transactions recorded in this '+period.toLowerCase()+' period yet.':topCategory?'Most spent: '+topCategory.name+' ('+money(topCategory.total)+'). You have '+Math.max(0,Math.round(available/Math.max(1,allowanceValue+totalIncome)*100))+'% of your planned money left.':'Keep recording transactions to see an insight.'}</Text>
+  </Card>
+  <Card theme={theme} title="Savings goals">
+   <Button theme={theme} label="＋ Add savings goal" onPress={()=>openGoal()}/>
+   {goals.length?goals.map(goal=>{
+    const progress=Math.min(1,goal.saved/Math.max(1,goal.target));
+    return <View key={goal.id} style={{gap:6,borderTopWidth:1,borderTopColor:theme.border,paddingTop:10}}>
+     <View style={s.listRow}><View style={{flex:1,gap:3}}><Text style={{color:theme.text,fontWeight:'800'}}>{goal.title}</Text><Text style={{color:theme.muted,fontSize:11}}>{money(goal.saved)} of {money(goal.target)}{goal.due_date?' · due '+goal.due_date:''}</Text></View><Pressable onPress={()=>openGoal(goal)}><Text style={{color:theme.primary,padding:5}}>Edit</Text></Pressable><Pressable onPress={()=>deleteGoal(goal)}><Text style={{color:theme.danger,padding:5}}>×</Text></Pressable></View>
+     <View style={{height:8,backgroundColor:theme.surfaceAlt,borderRadius:8,overflow:'hidden'}}><View style={{height:8,width:(progress*100)+'%',backgroundColor:theme.primary,borderRadius:8}}/></View>
+     <Text style={{color:theme.muted,fontSize:11}}>{progress>=1?'Goal reached':money(Math.max(0,goal.target-goal.saved))+' left to reach this goal'}</Text>
+    </View>;
+   }):<Empty theme={theme} text="Create a goal such as tuition, a new device, or school supplies."/>}
+  </Card>
+  <Card theme={theme} title="Recent transactions">
+   {rows.length?rows.slice(0,12).map(row=><View key={row.id} style={[s.listRow,{borderBottomColor:theme.border}]}>
+    <View style={{flex:1,gap:3}}><Text style={{color:theme.text,fontWeight:'800'}}>{row.note||row.category||row.type}</Text><Text style={{color:theme.muted,fontSize:11}}>{row.date} · {row.category||row.type}</Text></View>
+    <Text style={{color:row.type.toLowerCase()==='expense'?theme.danger:theme.primary,fontWeight:'800'}}>{row.type.toLowerCase()==='expense'?'−':'+'}{money(row.amount)}</Text>
+    <Pressable onPress={()=>openEntry(row)}><Text style={{color:theme.primary,padding:5}}>Edit</Text></Pressable>
+    <Pressable onPress={()=>deleteEntry(row)}><Text style={{color:theme.danger,padding:5}}>×</Text></Pressable>
+   </View>):<Empty theme={theme} text="No transactions recorded yet."/>}
+  </Card>
+  <Editor theme={theme} title="Allowance plan" visible={planVisible} onClose={()=>setPlanVisible(false)}>
+   <Text style={{color:theme.muted,fontWeight:'700'}}>Period</Text>
+   <View style={s.chips}>{['Daily','Weekly','Monthly'].map(value=><Pressable key={value} onPress={()=>setPlanPeriod(value)} style={[s.chip,{backgroundColor:planPeriod===value?theme.primary:theme.surfaceAlt}]}><Text style={{color:planPeriod===value?'#FFF':theme.text}}>{value}</Text></Pressable>)}</View>
+   <Field theme={theme} label="Allowance amount (PHP)" value={planAmount} onChangeText={setPlanAmount} keyboardType="decimal-pad"/>
+   <Button theme={theme} label="Save allowance" onPress={savePlan}/>
+  </Editor>
+  <Editor theme={theme} title={editing?'Edit transaction':'New transaction'} visible={editorVisible} onClose={()=>setEditorVisible(false)}>
+   <View style={s.chips}>{[['expense','Expense'],['income','Income'],['saving','Saving']].map(([value,label])=><Pressable key={value} onPress={()=>setType(value)} style={[s.chip,{backgroundColor:type===value?theme.primary:theme.surfaceAlt}]}><Text style={{color:type===value?'#FFF':theme.text}}>{label}</Text></Pressable>)}</View>
+   <Field theme={theme} label="Amount (PHP)" value={amount} onChangeText={setAmount} keyboardType="decimal-pad"/>
+   <Field theme={theme} label="Category" value={category} onChangeText={setCategory}/>
+   <Field theme={theme} label="Description" value={note} onChangeText={setNote}/>
+   <Field theme={theme} label="Date (YYYY-MM-DD)" value={entryDate} onChangeText={setEntryDate}/>
+   {type==='saving'?<><Text style={{color:theme.muted,fontWeight:'700'}}>Savings goal</Text><View style={s.chips}>{goals.map(goal=><Pressable key={goal.id} onPress={()=>setTargetId(goal.id)} style={[s.chip,{backgroundColor:targetId===goal.id?theme.primary:theme.surfaceAlt}]}><Text style={{color:targetId===goal.id?'#FFF':theme.text}}>{goal.title}</Text></Pressable>)}</View></>:null}
+   <Button theme={theme} label="Save transaction" onPress={saveEntry}/>
+  </Editor>
+  <Editor theme={theme} title={goalEdit?'Edit savings goal':'New savings goal'} visible={goalVisible} onClose={()=>setGoalVisible(false)}>
+   <Field theme={theme} label="Goal name" value={goalTitle} onChangeText={setGoalTitle}/>
+   <Field theme={theme} label="Target amount (PHP)" value={goalTarget} onChangeText={setGoalTarget} keyboardType="decimal-pad"/>
+   <Field theme={theme} label="Already saved (PHP)" value={goalSaved} onChangeText={setGoalSaved} keyboardType="decimal-pad"/>
+   <Field theme={theme} label="Target date (YYYY-MM-DD, optional)" value={goalDueDate} onChangeText={setGoalDueDate}/>
+   <Button theme={theme} label="Save goal" onPress={saveGoal}/>
+  </Editor>
+ </>;
 }
 
 export function FilesScreen({theme}:P){
