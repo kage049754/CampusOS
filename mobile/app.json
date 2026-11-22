@@ -24,7 +24,40 @@
       "expo-secure-store",
       "expo-local-authentication",
       "expo-file-system",
-      "expo-widgets"
+      [
+        "expo-widgets",
+        {
+          "enableAndroid": true,
+          "widgets": [
+            {
+              "name": "CampusNextClassWidget",
+              "displayName": "CampusOS · Next Class",
+              "description": "See your next scheduled class, time, and room.",
+              "android": {
+                "minWidth": 180,
+                "minHeight": 110,
+                "targetCellWidth": 4,
+                "targetCellHeight": 2,
+                "resizeMode": "both",
+                "initialLayout": "src/widgets/CampusNextClassWidget.tsx"
+              }
+            },
+            {
+              "name": "CampusTasksWidget",
+              "displayName": "CampusOS · Tasks",
+              "description": "See your pending task count and the next deadline.",
+              "android": {
+                "minWidth": 180,
+                "minHeight": 110,
+                "targetCellWidth": 4,
+                "targetCellHeight": 2,
+                "resizeMode": "both",
+                "initialLayout": "src/widgets/CampusTasksWidget.tsx"
+              }
+            }
+          ]
+        }
+      ]
     ]
   }
 }
