@@ -37,7 +37,7 @@ export async function rescheduleCampusReminders(): Promise<void> {
   await cancelCampusNotifications();
   if (setting?.value !== 'true') return;
   await Notifications.setNotificationChannelAsync(CHANNEL_ID, { name:'CampusOS reminders', importance:Notifications.AndroidImportance.MAX, vibrationPattern:[0,250,250,250], sound:'default' });
-  const [classes,tasks] = await Promise.all([
+  const [classes,tasks,notes] = await Promise.all([
     db.getAllAsync<{id:string;title:string;day:number;start_time:string;end_time:string;kind:string;room:string}>('SELECT id,title,day,start_time,end_time,kind,room FROM schedule_entries'),
     db.getAllAsync<{id:string;title:string;due_date:string;due_time:string;done:number}>('SELECT id,title,due_date,due_time,done FROM tasks WHERE done=0 AND due_date IS NOT NULL AND due_date<>\'\'')
   ]);
@@ -56,6 +56,12 @@ export async function rescheduleCampusReminders(): Promise<void> {
       for(const minutes of [30,10]) await scheduleOne('CampusOS · Upcoming class',row.title+(label?' · '+label:'')+' starts in '+minutes+' minutes ('+row.start_time+').',new Date(start.getTime()-minutes*60000),'class',row.id);
       if(count>=250) break;
     }
+  }
+  for(const note of notes){
+    if(count>=250) break;
+    const alarm=parseLocalDateTime(note.note_date,note.note_time);
+    if(!alarm || alarm.getTime()<=now) continue;
+    await scheduleOne('CampusOS · Note alarm',note.title+' is scheduled for '+note.note_date+' at '+note.note_time+'.',alarm,'note',note.id);
   }
   for(const task of tasks){ if(count>=250) break; const due=parseLocalDateTime(task.due_date,task.due_time||'23:59'); if(!due || due.getTime()<=now) continue;
     for(const item of [[1440,'1 day'],[60,'1 hour']] as const) await scheduleOne('CampusOS · Task reminder',task.title+' is due in '+item[1]+(task.due_time?' · '+task.due_time:'' )+'.',new Date(due.getTime()-item[0]*60000),'task',task.id);

@@ -16,7 +16,7 @@ import { PaletteName, palettes, Theme } from './theme';
 type P = { theme: Theme };
 type ClassRow = { id:string; subject_id:string|null; title:string; day:number; start_time:string; end_time:string; kind:string; room:string; professor:string; notes:string };
 type TaskRow = { id:string; title:string; details:string; checklist:string; due_date:string; due_time:string; done:number; pinned:number; priority:string; status:string; subject_id:string|null; created_at:number };
-type NoteRow = { id:string; title:string; body:string; subject_id:string|null; favorite:number; note_date:string; created_at:number; updated_at:number };
+type NoteRow = { id:string; title:string; body:string; subject_id:string|null; favorite:number; note_date:string; note_time?:string; created_at:number; updated_at:number };
 type BudgetRow = { id:string; type:string; amount:number; category:string; note:string; date:string; target?:string; created_at?:number };
 type SavingsGoal = { id:string; title:string; target:number; saved:number; due_date:string; created_at:number };
 type FileRow = { id:string; subject_id:string|null; name:string; mime_type:string; local_uri:string; size:number; folder_name?:string; favorite?:number };
@@ -333,6 +333,28 @@ function calendarDays(monthValue:string):string[]{
   return day>0&&day<=daysInMonth?dateKey(new Date(year,month-1,day)):'';
  });
 }
+function to24HourAlarm(raw:string):string|null{
+ const value=raw.trim();
+ if(!value)return '';
+ const match=value.match(/^(\\d{1,2}):(\\d{2})\\s*(AM|PM)$/i);
+ if(match){
+  let hour=Number(match[1]);const minute=Number(match[2]);
+  if(hour<1||hour>12||minute>59)return null;
+  const suffix=match[3].toUpperCase();
+  if(suffix==='AM')hour=hour===12?0:hour;
+  else hour=hour===12?12:hour+12;
+  return String(hour).padStart(2,'0')+':'+String(minute).padStart(2,'0');
+ }
+ if(/^([01]\\d|2[0-3]):[0-5]\\d$/.test(value))return value;
+ return null;
+}
+function to12HourAlarm(raw:string):string{
+ const parts=raw.split(':').map(Number);if(parts.length!==2||parts.some(value=>!Number.isFinite(value)))return '';
+ const hour=parts[0],minute=parts[1],suffix=hour<12?'AM':'PM';
+ const display=hour%12||12;
+ return String(display).padStart(2,'0')+':'+String(minute).padStart(2,'0')+' '+suffix;
+}
+
 
 export function TasksScreen({theme}:P){
  const [rows,setRows]=useState<TaskRow[]>([]);
@@ -455,14 +477,95 @@ export function TasksScreen({theme}:P){
 }
 
 export function NotesScreen({theme}:P){
- const [rows,setRows]=useState<NoteRow[]>([]);const [visible,setVisible]=useState(false);const [edit,setEdit]=useState<NoteRow|null>(null);const [title,setTitle]=useState(''),[body,setBody]=useState(''),[date,setDate]=useState(today());
- const refresh=useCallback(async()=>{const db=await database;setRows(await db.getAllAsync<NoteRow>('SELECT * FROM notes WHERE subject_id IS NULL ORDER BY favorite DESC,updated_at DESC'));},[]);useEffect(()=>{refresh();},[refresh]);
- const open=(r?:NoteRow)=>{setEdit(r||null);setTitle(r?.title||'');setBody(r?.body||'');setDate(r?.note_date||today());setVisible(true);};
- const save=async()=>{if(!title.trim()&&!body.trim())return Alert.alert('Note is empty');const db=await database;const id=edit?.id||uid('note');const now=Date.now();await db.runAsync('INSERT OR REPLACE INTO notes (id,title,body,subject_id,favorite,note_date,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)',id,title.trim()||'Untitled note',body,edit?.subject_id||null,edit?.favorite||0,date,edit?.created_at||now,now);setVisible(false);refresh();};
- const favorite=async(r:NoteRow)=>{const db=await database;await db.runAsync('UPDATE notes SET favorite=? WHERE id=?',r.favorite?0:1,r.id);refresh();};
- const del=(r:NoteRow)=>Alert.alert('Delete note?',r.title,[{text:'Cancel'},{text:'Delete',style:'destructive',onPress:async()=>{const db=await database;await db.runAsync('DELETE FROM notes WHERE id=?',r.id);refresh();}}]);
- return <><Card theme={theme} title="Notes calendar"><Text style={{color:theme.muted}}>Write, edit, date, and favorite personal notes.</Text><Button theme={theme} label="＋ New note" onPress={()=>open()}/></Card>{rows.length===0?<Empty theme={theme} text="Your notes will appear here."/>:rows.map(r=><Card theme={theme} key={r.id}><View style={s.listRow}><View style={{flex:1,gap:5}}><Text style={[s.itemTitle,{color:theme.text}]}>{r.title}</Text><Text style={{color:theme.muted,fontSize:11}}>{r.note_date||'No date'}{r.favorite?' · Favorite':''}</Text><Text style={{color:theme.text,lineHeight:20}} numberOfLines={4}>{r.body}</Text></View><View style={{gap:4}}><Pressable onPress={()=>favorite(r)}><Text style={{color:theme.primary,padding:4}}>{r.favorite?'★':'☆'}</Text></Pressable><Pressable onPress={()=>open(r)}><Text style={{color:theme.primary,padding:4}}>Edit</Text></Pressable><Pressable onPress={()=>del(r)}><Text style={{color:theme.danger,padding:4}}>×</Text></Pressable></View></View></Card>)}
- <Editor theme={theme} title={edit?'Edit note':'New note'} visible={visible} onClose={()=>setVisible(false)}><Field theme={theme} label="Title" value={title} onChangeText={setTitle}/><Field theme={theme} label="Date (YYYY-MM-DD)" value={date} onChangeText={setDate}/><Field theme={theme} label="Note content" value={body} onChangeText={setBody} multiline/><Button theme={theme} label="Save note" onPress={save}/></Editor></>;
+ const [rows,setRows]=useState<NoteRow[]>([]);
+ const [visible,setVisible]=useState(false);
+ const [edit,setEdit]=useState<NoteRow|null>(null);
+ const [title,setTitle]=useState(''),[body,setBody]=useState(''),[date,setDate]=useState(today()),[alarm,setAlarm]=useState('');
+ const [selectedDate,setSelectedDate]=useState(today());
+ const [shownMonth,setShownMonth]=useState(today().slice(0,7));
+ const [search,setSearch]=useState('');
+ const refresh=useCallback(async()=>{const db=await database;setRows(await db.getAllAsync<NoteRow>('SELECT * FROM notes WHERE subject_id IS NULL ORDER BY favorite DESC,updated_at DESC'));},[]);
+ useEffect(()=>{refresh();},[refresh]);
+ const daysInMonth=calendarDays(shownMonth);
+ const monthCounts=(key:string)=>rows.filter(row=>row.note_date===key).length;
+ const selectedRows=rows.filter(row=>row.note_date===selectedDate&&(search.trim()===''||(row.title+' '+row.body).toLowerCase().includes(search.trim().toLowerCase())));
+ const undatedRows=rows.filter(row=>!row.note_date&&(search.trim()===''||(row.title+' '+row.body).toLowerCase().includes(search.trim().toLowerCase())));
+ const open=(row?:NoteRow)=>{
+  setEdit(row||null);setTitle(row?.title||'');setBody(row?.body||'');setDate(row?.note_date||selectedDate);setAlarm(row?.note_time?to12HourAlarm(row.note_time):'');setVisible(true);
+ };
+ const save=async()=>{
+  if(!title.trim()&&!body.trim())return Alert.alert('Note is empty');
+  if(date&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(date))return Alert.alert('Invalid date','Use YYYY-MM-DD or leave the date empty.');
+  const alarmValue=to24HourAlarm(alarm);
+  if(alarmValue===null)return Alert.alert('Invalid alarm time','Enter a time such as 09:30 AM or 06:15 PM.');
+  if(alarmValue&&!date)return Alert.alert('Date required','Choose a date before setting a note alarm.');
+  const db=await database;const id=edit?.id||uid('note');const now=Date.now();
+  await db.runAsync('INSERT OR REPLACE INTO notes (id,title,body,subject_id,favorite,note_date,note_time,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)',id,title.trim()||'Untitled note',body,edit?.subject_id||null,edit?.favorite||0,date,alarmValue||'',edit?.created_at||now,now);
+  setSelectedDate(date||selectedDate);if(date)setShownMonth(date.slice(0,7));
+  setVisible(false);await refresh();
+  rescheduleCampusReminders().catch(error=>console.warn('CampusOS note alarms could not be refreshed',error));
+ };
+ const favorite=async(row:NoteRow)=>{const db=await database;await db.runAsync('UPDATE notes SET favorite=? WHERE id=?',row.favorite?0:1,row.id);refresh();};
+ const del=(row:NoteRow)=>Alert.alert('Delete note?',row.title,[{text:'Cancel'},{text:'Delete',style:'destructive',onPress:async()=>{const db=await database;await db.runAsync('DELETE FROM notes WHERE id=?',row.id);await refresh();rescheduleCampusReminders().catch(error=>console.warn('CampusOS note alarms could not be refreshed',error));}}]);
+ const changeMonth=(delta:number)=>{
+  const [year,month]=shownMonth.split('-').map(Number);const next=new Date(year,month-1+delta,1);
+  setShownMonth(dateKey(next).slice(0,7));
+ };
+ const renderNote=(row:NoteRow)=><Card theme={theme} key={row.id}>
+  <View style={[s.listRow,{alignItems:'flex-start'}]}>
+   <View style={{flex:1,gap:5}}>
+    <Text style={[s.itemTitle,{color:theme.text}]}>{row.title}</Text>
+    <Text style={{color:theme.muted,fontSize:11}}>{row.note_date||'No date'}{row.note_time?' · Alarm '+to12HourAlarm(row.note_time):''}{row.favorite?' · Favorite':''}</Text>
+    <Text style={{color:theme.text,lineHeight:20}}>{row.body}</Text>
+   </View>
+   <View style={{gap:4}}>
+    <Pressable onPress={()=>favorite(row)}><Text style={{color:theme.primary,padding:4}}>{row.favorite?'★':'☆'}</Text></Pressable>
+    <Pressable onPress={()=>open(row)}><Text style={{color:theme.primary,padding:4}}>Edit</Text></Pressable>
+    <Pressable onPress={()=>del(row)}><Text style={{color:theme.danger,padding:4}}>×</Text></Pressable>
+   </View>
+  </View>
+ </Card>;
+ return <>
+  <Card theme={theme} title="Notepad calendar">
+   <Text style={{color:theme.muted}}>Select a day to see its notes. Add an optional alarm in AM/PM format; reminders are scheduled locally on this phone.</Text>
+   <View style={[s.listRow,{borderBottomWidth:0}]}>
+    <Pressable onPress={()=>changeMonth(-1)} style={[s.chip,{backgroundColor:theme.surfaceAlt}]}><Text style={{color:theme.primary,fontWeight:'900'}}>‹</Text></Pressable>
+    <View style={{flex:1,alignItems:'center'}}><Text style={{color:theme.text,fontSize:17,fontWeight:'800'}}>{formatMonth(shownMonth)}</Text></View>
+    <Pressable onPress={()=>changeMonth(1)} style={[s.chip,{backgroundColor:theme.surfaceAlt}]}><Text style={{color:theme.primary,fontWeight:'900'}}>›</Text></Pressable>
+    <Pressable onPress={()=>{setShownMonth(today().slice(0,7));setSelectedDate(today());}}><Text style={{color:theme.primary,fontWeight:'700',paddingHorizontal:5}}>Today</Text></Pressable>
+   </View>
+   <View style={{flexDirection:'row',gap:3}}>
+    {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(label=><View key={label} style={{flex:1,alignItems:'center',paddingVertical:5}}><Text style={{color:theme.muted,fontSize:10,fontWeight:'700'}}>{label}</Text></View>)}
+   </View>
+   {Array.from({length:Math.ceil(daysInMonth.length/7)},(_,week)=>daysInMonth.slice(week*7,week*7+7)).map((week,index)=><View key={index} style={{flexDirection:'row',gap:3}}>
+    {week.map((key,column)=>{
+     const count=key?monthCounts(key):0,dayNumber=key?Number(key.slice(-2)):0,selected=key===selectedDate;
+     return <Pressable key={key||'blank-'+column} disabled={!key} onPress={()=>setSelectedDate(key)} style={{flex:1,minHeight:48,borderRadius:10,alignItems:'center',justifyContent:'center',backgroundColor:selected?theme.primary:theme.surfaceAlt,borderWidth:key===today()?1:0,borderColor:theme.primary,marginBottom:3}}>
+      <Text style={{color:selected?'#FFF':key?theme.text:theme.muted,fontWeight:key===today()?'900':'600',fontSize:12}}>{dayNumber||''}</Text>
+      {count>0?<Text style={{color:selected?'#FFF':theme.primary,fontSize:9,fontWeight:'800'}}>{count} note{count===1?'':'s'}</Text>:null}
+     </Pressable>;
+    })}
+   </View>)}
+   <View style={[s.listRow,{borderBottomWidth:0,justifyContent:'space-between'}]}>
+    <View style={{flex:1,gap:3}}>
+     <Text style={{color:theme.text,fontWeight:'800'}}>{selectedDate?new Date(Number(selectedDate.slice(0,4)),Number(selectedDate.slice(5,7))-1,Number(selectedDate.slice(8,10))).toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'}):'Select a date'}</Text>
+     <Text style={{color:theme.muted,fontSize:11}}>{selectedRows.length} note{selectedRows.length===1?'':'s'}</Text>
+    </View>
+    <Button theme={theme} label="＋ New note" onPress={()=>open()}/>
+   </View>
+   <Field theme={theme} label="Search notes" value={search} onChangeText={setSearch}/>
+  </Card>
+  {selectedRows.length?selectedRows.map(renderNote):<Empty theme={theme} text="No notes for this date yet."/>}
+  {undatedRows.length?<Card theme={theme} title="Undated notes">{undatedRows.map(renderNote)}</Card>:null}
+  <Editor theme={theme} title={edit?'Edit note':'New note'} visible={visible} onClose={()=>setVisible(false)}>
+   <Field theme={theme} label="Title" value={title} onChangeText={setTitle}/>
+   <Field theme={theme} label="Date (YYYY-MM-DD, optional)" value={date} onChangeText={setDate}/>
+   <Field theme={theme} label="Alarm time (e.g. 09:30 AM or 06:15 PM)" value={alarm} onChangeText={setAlarm}/>
+   <Text style={{color:theme.muted,fontSize:11}}>Leave the alarm empty when you do not need a reminder. A dated alarm appears as a local CampusOS notification at that time.</Text>
+   <Field theme={theme} label="Note content" value={body} onChangeText={setBody} multiline/>
+   <Button theme={theme} label="Save note" onPress={save}/>
+  </Editor>
+ </>;
 }
 
 function money(value:number):string{return new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP',maximumFractionDigits:2}).format(value);}

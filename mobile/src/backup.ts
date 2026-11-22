@@ -211,7 +211,7 @@ async function upsertRows(db: any, table: string, rows: AnyRow[]) {
     schedule_entries: ['id','subject_id','title','day','start_time','end_time','kind','room','professor','notes'],
     tasks: ['id','title','details','checklist','due_date','due_time','done','pinned','priority','status','subject_id','created_at'],
     subjects: ['id','legacy_id','code','title','color','created_at'],
-    notes: ['id','title','body','subject_id','favorite','note_date','created_at','updated_at'],
+    notes: ['id','title','body','subject_id','favorite','note_date','note_time','created_at','updated_at'],
     lecture_files: ['id','subject_id','name','mime_type','local_uri','size','added_at','folder_name','favorite'],
     lecture_folders: ['id','subject_id','name','created_at'],
     budget_entries: ['id','type','amount','category','note','date','target','created_at'],
