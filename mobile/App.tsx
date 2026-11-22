@@ -1,6 +1,7 @@
 import React,{useEffect,useMemo,useState} from 'react';
 import {ActivityIndicator,Pressable,SafeAreaView,ScrollView,StatusBar,StyleSheet,Text,View} from 'react-native';
 import {database,initializeDatabase} from './src/database';
+import {configureCampusNotifications,rescheduleCampusReminders} from './src/notifications';
 import {PaletteName,resolveTheme} from './src/theme';
 import {AcademicsScreen,BudgetScreen,FilesScreen,HomeScreen,NotesScreen,ScheduleScreen,SettingsScreen,TasksScreen} from './src/screens';
 
@@ -12,7 +13,9 @@ export default function App(){
  useEffect(()=>{
   let active=true;
   (async()=>{
+   configureCampusNotifications();
    await initializeDatabase();
+   rescheduleCampusReminders().catch(error=>console.warn('CampusOS reminders were not restored',error));
    const db=await database;
    const settings=await db.getAllAsync<{key:string;value:string}>('SELECT key,value FROM app_settings');
    const values=Object.fromEntries(settings.map(x=>[x.key,x.value]));

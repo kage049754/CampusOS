@@ -5,18 +5,20 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { BackupModule, backupModules, restoreCampusBackup, shareCampusBackup } from './backup';
 import { persistPickedFile, removeStoredFile } from './storage';
+import { getCampusNotificationPermission, requestCampusNotificationPermission, rescheduleCampusReminders } from './notifications';
 import { database } from './database';
 import { PaletteName, palettes, Theme } from './theme';
 
 type P = { theme: Theme };
 type ClassRow = { id:string; subject_id:string|null; title:string; day:number; start_time:string; end_time:string; kind:string; room:string; professor:string; notes:string };
-type TaskRow = { id:string; title:string; details:string; due_date:string; due_time:string; done:number; pinned:number; subject_id:string|null };
+type TaskRow = { id:string; title:string; details:string; checklist:string; due_date:string; due_time:string; done:number; pinned:number; priority:string; status:string; subject_id:string|null };
 type NoteRow = { id:string; title:string; body:string; subject_id:string|null; favorite:number; note_date:string; created_at:number; updated_at:number };
 type BudgetRow = { id:string; type:string; amount:number; category:string; note:string; date:string };
 type FileRow = { id:string; subject_id:string|null; name:string; mime_type:string; local_uri:string; size:number; folder_name?:string; favorite?:number };
 type SubjectRow = { id:string; legacy_id?:string|null; code:string; title:string; color:string; favorite?:number; created_at:number };
 const days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-const today=()=>new Date().toISOString().slice(0,10);
+const dateKey=(date:Date)=>date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
+const today=()=>dateKey(new Date());
 const uid=(p:string)=>p+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7);
 const mins=(v:string)=>{const [h,m]=v.split(':').map(Number);return (h||0)*60+(m||0);};
 
@@ -41,21 +43,151 @@ export function ScheduleScreen({theme}:P){
  const [title,setTitle]=useState(''),[code,setCode]=useState(''),[day,setDay]=useState(0),[kind,setKind]=useState('Lecture'),[start,setStart]=useState('08:00'),[end,setEnd]=useState('09:00'),[room,setRoom]=useState(''),[prof,setProf]=useState(''),[notes,setNotes]=useState('');
  const refresh=useCallback(async()=>{const db=await database;setRows(await db.getAllAsync<ClassRow>('SELECT * FROM schedule_entries ORDER BY day,start_time'));},[]);useEffect(()=>{refresh();},[refresh]);
  const open=async(r?:ClassRow)=>{setEdit(r||null);setTitle(r?.title||'');setCode('');if(r?.subject_id){const db=await database;const subject=await db.getFirstAsync<SubjectRow>('SELECT * FROM subjects WHERE id=?',r.subject_id);if(subject){setTitle(subject.title);setCode(subject.code);}}setDay(r?.day??0);setKind(r?.kind||'Lecture');setStart(r?.start_time||'08:00');setEnd(r?.end_time||'09:00');setRoom(r?.room||'');setProf(r?.professor||'');setNotes(r?.notes||'');setVisible(true);};
- const save=async()=>{if(!title.trim()||!/^([01]\d|2[0-3]):[0-5]\d$/.test(start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(end)||mins(end)<=mins(start))return Alert.alert('Check class details','Provide a subject and valid start/end times.');const conflict=rows.find(r=>r.day===day&&r.id!==edit?.id&&mins(start)<mins(r.end_time)&&mins(end)>mins(r.start_time));if(conflict)return Alert.alert('Schedule conflict','This overlaps '+conflict.title+' ('+conflict.start_time+'–'+conflict.end_time+').');const db=await database;let subject=edit?.subject_id?await db.getFirstAsync<SubjectRow>('SELECT * FROM subjects WHERE id=?',edit.subject_id):null;if(!subject){subject=code.trim()?await db.getFirstAsync<SubjectRow>('SELECT * FROM subjects WHERE lower(code)=lower(?) LIMIT 1',code.trim()):await db.getFirstAsync<SubjectRow>('SELECT * FROM subjects WHERE lower(title)=lower(?) LIMIT 1',title.trim());}const subjectId=subject?.id||uid('subject');if(!subject)await db.runAsync('INSERT INTO subjects (id,code,title,color,created_at) VALUES (?,?,?,?,?)',subjectId,code.trim(),title.trim(),theme.primary,Date.now());else if(subject.title!==title.trim()||(code.trim()&&subject.code!==code.trim()))await db.runAsync('UPDATE subjects SET code=?,title=? WHERE id=?',code.trim()||subject.code,title.trim(),subjectId);const id=edit?.id||uid('class');await db.runAsync('INSERT OR REPLACE INTO schedule_entries (id,subject_id,title,day,start_time,end_time,kind,room,professor,notes) VALUES (?,?,?,?,?,?,?,?,?,?)',id,subjectId,code.trim()?code.trim()+' · '+title.trim():title.trim(),day,start,end,kind,room.trim(),prof.trim(),notes.trim());setVisible(false);refresh();};
- const del=(r:ClassRow)=>Alert.alert('Delete class?',r.title,[{text:'Cancel'},{text:'Delete',style:'destructive',onPress:async()=>{const db=await database;await db.runAsync('DELETE FROM schedule_entries WHERE id=?',r.id);refresh();}}]);
+ const save=async()=>{if(!title.trim()||!/^([01]\d|2[0-3]):[0-5]\d$/.test(start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(end)||mins(end)<=mins(start))return Alert.alert('Check class details','Provide a subject and valid start/end times.');const conflict=rows.find(r=>r.day===day&&r.id!==edit?.id&&mins(start)<mins(r.end_time)&&mins(end)>mins(r.start_time));if(conflict)return Alert.alert('Schedule conflict','This overlaps '+conflict.title+' ('+conflict.start_time+'–'+conflict.end_time+').');const db=await database;let subject=edit?.subject_id?await db.getFirstAsync<SubjectRow>('SELECT * FROM subjects WHERE id=?',edit.subject_id):null;if(!subject){subject=code.trim()?await db.getFirstAsync<SubjectRow>('SELECT * FROM subjects WHERE lower(code)=lower(?) LIMIT 1',code.trim()):await db.getFirstAsync<SubjectRow>('SELECT * FROM subjects WHERE lower(title)=lower(?) LIMIT 1',title.trim());}const subjectId=subject?.id||uid('subject');if(!subject)await db.runAsync('INSERT INTO subjects (id,code,title,color,created_at) VALUES (?,?,?,?,?)',subjectId,code.trim(),title.trim(),theme.primary,Date.now());else if(subject.title!==title.trim()||(code.trim()&&subject.code!==code.trim()))await db.runAsync('UPDATE subjects SET code=?,title=? WHERE id=?',code.trim()||subject.code,title.trim(),subjectId);const id=edit?.id||uid('class');await db.runAsync('INSERT OR REPLACE INTO schedule_entries (id,subject_id,title,day,start_time,end_time,kind,room,professor,notes) VALUES (?,?,?,?,?,?,?,?,?,?)',id,subjectId,code.trim()?code.trim()+' · '+title.trim():title.trim(),day,start,end,kind,room.trim(),prof.trim(),notes.trim());setVisible(false);refresh();rescheduleCampusReminders().catch(error=>console.warn('CampusOS reminders could not be refreshed',error));};
+ const del=(r:ClassRow)=>Alert.alert('Delete class?',r.title,[{text:'Cancel'},{text:'Delete',style:'destructive',onPress:async()=>{const db=await database;await db.runAsync('DELETE FROM schedule_entries WHERE id=?',r.id);refresh();rescheduleCampusReminders().catch(error=>console.warn('CampusOS reminders could not be refreshed',error));}}]);
  return <><Card theme={theme} title="Weekly timetable"><Text style={{color:theme.muted}}>Manage lecture and laboratory sessions. Overlapping classes are rejected.</Text><Button theme={theme} label="＋ Add class" onPress={()=>open()}/></Card>{days.map((d,i)=>{const items=rows.filter(r=>r.day===i);return <Card key={d} theme={theme} title={d}>{items.length?items.map(r=><View key={r.id} style={[s.listRow,{borderBottomColor:theme.border}]}><View style={{flex:1,gap:3}}><Text style={[s.itemTitle,{color:theme.text}]}>{r.title}</Text><Text style={{color:theme.primary,fontSize:12,fontWeight:'700'}}>{r.start_time}–{r.end_time} · {r.kind}</Text><Text style={{color:theme.muted,fontSize:12}}>{[r.room,r.professor].filter(Boolean).join(' · ')}</Text></View><Pressable onPress={()=>open(r)}><Text style={{color:theme.primary,padding:5}}>Edit</Text></Pressable><Pressable onPress={()=>del(r)}><Text style={{color:theme.danger,padding:5}}>×</Text></Pressable></View>):<Text style={{color:theme.muted,fontSize:12}}>No classes</Text>}</Card>;})}
  <Editor theme={theme} title={edit?'Edit class':'Add class'} visible={visible} onClose={()=>setVisible(false)}><Field theme={theme} label="Subject name" value={title} onChangeText={setTitle}/><Field theme={theme} label="Subject code (optional)" value={code} onChangeText={setCode}/><Text style={{color:theme.muted,fontWeight:'700'}}>Class day</Text><View style={s.chips}>{days.map((d,i)=><Pressable key={d} onPress={()=>setDay(i)} style={[s.chip,{backgroundColor:day===i?theme.primary:theme.surfaceAlt}]}><Text style={{color:day===i?'#FFF':theme.text,fontSize:12}}>{d.slice(0,3)}</Text></Pressable>)}</View><Text style={{color:theme.muted,fontWeight:'700'}}>Type</Text><View style={s.chips}>{['Lecture','Laboratory'].map(k=><Pressable key={k} onPress={()=>setKind(k)} style={[s.chip,{backgroundColor:kind===k?theme.primary:theme.surfaceAlt}]}><Text style={{color:kind===k?'#FFF':theme.text}}>{k}</Text></Pressable>)}</View><Field theme={theme} label="Start time (HH:MM)" value={start} onChangeText={setStart}/><Field theme={theme} label="End time (HH:MM)" value={end} onChangeText={setEnd}/><Field theme={theme} label="Room" value={room} onChangeText={setRoom}/><Field theme={theme} label="Professor" value={prof} onChangeText={setProf}/><Field theme={theme} label="Class notes" value={notes} onChangeText={setNotes} multiline/><Button theme={theme} label="Save class" onPress={save}/></Editor></>;
 }
 
+type ChecklistItem = { id:string; title:string; done:boolean };
+function parseChecklist(raw:string):ChecklistItem[]{
+ try { const parsed=JSON.parse(raw||'[]'); return Array.isArray(parsed)?parsed.map((item:any,index:number)=>({id:String(item.id||'subtask-'+index),title:String(item.title||item.text||''),done:Boolean(item.done)})).filter(item=>item.title.trim()):[]; }
+ catch { return []; }
+}
+function formatMonth(value:string):string{
+ const [year,month]=value.split('-').map(Number);
+ return new Date(year,month-1,1).toLocaleDateString(undefined,{month:'long',year:'numeric'});
+}
+function calendarDays(monthValue:string):string[]{
+ const [year,month]=monthValue.split('-').map(Number);
+ const first=new Date(year,month-1,1);
+ const daysInMonth=new Date(year,month,0).getDate();
+ const leading=first.getDay();
+ const count=Math.ceil((leading+daysInMonth)/7)*7;
+ return Array.from({length:count},(_,index)=>{
+  const day=index-leading+1;
+  return day>0&&day<=daysInMonth?dateKey(new Date(year,month-1,day)):'';
+ });
+}
+
 export function TasksScreen({theme}:P){
- const [rows,setRows]=useState<TaskRow[]>([]);const [visible,setVisible]=useState(false);const [edit,setEdit]=useState<TaskRow|null>(null);const [title,setTitle]=useState(''),[details,setDetails]=useState(''),[date,setDate]=useState(today()),[time,setTime]=useState('23:59');
- const refresh=useCallback(async()=>{const db=await database;setRows(await db.getAllAsync<TaskRow>('SELECT * FROM tasks ORDER BY done,due_date,due_time'));},[]);useEffect(()=>{refresh();},[refresh]);
- const open=(r?:TaskRow)=>{setEdit(r||null);setTitle(r?.title||'');setDetails(r?.details||'');setDate(r?.due_date||today());setTime(r?.due_time||'23:59');setVisible(true);};
- const save=async()=>{if(!title.trim())return Alert.alert('Task title required');const db=await database;const id=edit?.id||uid('task');await db.runAsync('INSERT OR REPLACE INTO tasks (id,title,details,due_date,due_time,done,pinned,subject_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)',id,title.trim(),details,date,time,edit?.done||0,edit?.pinned||0,edit?.subject_id||null,Date.now());setVisible(false);refresh();};
- const toggle=async(r:TaskRow)=>{const db=await database;await db.runAsync('UPDATE tasks SET done=? WHERE id=?',r.done?0:1,r.id);refresh();};
- const del=(r:TaskRow)=>Alert.alert('Delete task?',r.title,[{text:'Cancel'},{text:'Delete',style:'destructive',onPress:async()=>{const db=await database;await db.runAsync('DELETE FROM tasks WHERE id=?',r.id);refresh();}}]);
- return <><Card theme={theme} title="Tasks & calendar"><Text style={{color:theme.muted}}>Track deadlines, due dates, and personal reminders offline.</Text><Button theme={theme} label="＋ Add task" onPress={()=>open()}/></Card>{rows.length===0?<Empty theme={theme} text="No tasks yet. Add your first deadline or reminder."/>:rows.map(r=><Card key={r.id} theme={theme}><View style={s.listRow}><Pressable onPress={()=>toggle(r)} style={[s.check,{borderColor:theme.primary,backgroundColor:r.done?theme.primary:'transparent'}]}><Text style={{color:'#FFF'}}>{r.done?'✓':''}</Text></Pressable><View style={{flex:1,gap:3}}><Text style={[s.itemTitle,{color:r.done?theme.muted:theme.text,textDecorationLine:r.done?'line-through':'none'}]}>{r.title}</Text><Text style={{color:theme.muted,fontSize:12}}>{r.due_date} · {r.due_time}</Text>{r.details?<Text style={{color:theme.muted,fontSize:12}}>{r.details}</Text>:null}</View><Pressable onPress={()=>open(r)}><Text style={{color:theme.primary,padding:4}}>Edit</Text></Pressable><Pressable onPress={()=>del(r)}><Text style={{color:theme.danger,padding:4}}>×</Text></Pressable></View></Card>)}
- <Editor theme={theme} title={edit?'Edit task':'New task'} visible={visible} onClose={()=>setVisible(false)}><Field theme={theme} label="Task title" value={title} onChangeText={setTitle}/><Field theme={theme} label="Details / checklist" value={details} onChangeText={setDetails} multiline/><Field theme={theme} label="Due date (YYYY-MM-DD)" value={date} onChangeText={setDate}/><Field theme={theme} label="Reminder time (HH:MM)" value={time} onChangeText={setTime}/><Button theme={theme} label="Save task" onPress={save}/></Editor></>;
+ const [rows,setRows]=useState<TaskRow[]>([]);
+ const [visible,setVisible]=useState(false);
+ const [edit,setEdit]=useState<TaskRow|null>(null);
+ const [title,setTitle]=useState(''),[details,setDetails]=useState(''),[checklistText,setChecklistText]=useState('');
+ const [date,setDate]=useState(today()),[time,setTime]=useState('23:59');
+ const [priority,setPriority]=useState('Medium'),[status,setStatus]=useState('Not started');
+ const [selectedDate,setSelectedDate]=useState(today());
+ const [shownMonth,setShownMonth]=useState(today().slice(0,7));
+ const [showCompleted,setShowCompleted]=useState(true);
+ const refresh=useCallback(async()=>{const db=await database;setRows(await db.getAllAsync<TaskRow>('SELECT * FROM tasks ORDER BY done,pinned DESC,due_date,due_time'));},[]);
+ useEffect(()=>{refresh();},[refresh]);
+ const visibleRows=rows.filter(row=>showCompleted||!row.done);
+ const selectedTasks=visibleRows.filter(row=>row.due_date===selectedDate);
+ const monthDays=calendarDays(shownMonth);
+ const monthCounts=(key:string)=>visibleRows.filter(row=>row.due_date===key).length;
+ const open=(row?:TaskRow)=>{
+  setEdit(row||null);setTitle(row?.title||'');setDetails(row?.details||'');
+  setChecklistText(parseChecklist(row?.checklist||'[]').map(item=>item.title).join('\n'));
+  setDate(row?.due_date||selectedDate);setTime(row?.due_time||'23:59');
+  setPriority(row?.priority||'Medium');setStatus(row?.done?'Completed':row?.status||'Not started');setVisible(true);
+ };
+ const save=async()=>{
+  if(!title.trim())return Alert.alert('Task title required');
+  if(date&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(date))return Alert.alert('Invalid due date','Use YYYY-MM-DD.');
+  if(time&&!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(time))return Alert.alert('Invalid reminder time','Use HH:MM.');
+  const oldItems=parseChecklist(edit?.checklist||'[]');
+  const checklist=checklistText.split(/\\r?\\n/).map(value=>value.trim()).filter(Boolean).map(value=>{
+   const previous=oldItems.find(item=>item.title.toLocaleLowerCase()===value.toLocaleLowerCase());
+   return {id:previous?.id||uid('subtask'),title:value,done:previous?.done||false};
+  });
+  const db=await database;const id=edit?.id||uid('task');const done=status==='Completed'?1:0;
+  await db.runAsync('INSERT OR REPLACE INTO tasks (id,title,details,checklist,due_date,due_time,done,pinned,priority,status,subject_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+   id,title.trim(),details.trim(),JSON.stringify(checklist),date,time,done,edit?.pinned||0,priority,status,edit?.subject_id||null,edit?.created_at||Date.now());
+  setVisible(false);await refresh();rescheduleCampusReminders().catch(error=>console.warn('CampusOS reminders could not be refreshed',error));
+ };
+ const toggleDone=async(row:TaskRow)=>{
+  const done=row.done?0:1;const db=await database;
+  await db.runAsync('UPDATE tasks SET done=?,status=? WHERE id=?',done,done?'Completed':(row.status==='Completed'?'Not started':row.status),row.id);
+  await refresh();rescheduleCampusReminders().catch(error=>console.warn('CampusOS reminders could not be refreshed',error));
+ };
+ const togglePinned=async(row:TaskRow)=>{const db=await database;await db.runAsync('UPDATE tasks SET pinned=? WHERE id=?',row.pinned?0:1,row.id);refresh();};
+ const toggleChecklist=async(row:TaskRow,item:ChecklistItem)=>{
+  const items=parseChecklist(row.checklist).map(value=>value.id===item.id?{...value,done:!value.done}:value);
+  const db=await database;await db.runAsync('UPDATE tasks SET checklist=? WHERE id=?',JSON.stringify(items),row.id);refresh();
+ };
+ const del=(row:TaskRow)=>Alert.alert('Delete task?',row.title,[{text:'Cancel'},{text:'Delete',style:'destructive',onPress:async()=>{const db=await database;await db.runAsync('DELETE FROM tasks WHERE id=?',row.id);await refresh();rescheduleCampusReminders().catch(error=>console.warn('CampusOS reminders could not be refreshed',error));}}]);
+ const changeMonth=(amount:number)=>{
+  const [year,month]=shownMonth.split('-').map(Number);const next=new Date(year,month-1+amount,1);
+  setShownMonth(dateKey(next).slice(0,7));
+ };
+ return <>
+  <Card theme={theme} title="Tasks & calendar">
+   <Text style={{color:theme.muted}}>Plan deadlines and personal reminders by date. Tasks stay on this device.</Text>
+   <View style={[s.listRow,{borderBottomWidth:0}]}>
+    <Pressable onPress={()=>changeMonth(-1)} style={[s.chip,{backgroundColor:theme.surfaceAlt}]}><Text style={{color:theme.primary,fontWeight:'800'}}>‹</Text></Pressable>
+    <View style={{flex:1,alignItems:'center'}}><Text style={{color:theme.text,fontSize:17,fontWeight:'800'}}>{formatMonth(shownMonth)}</Text></View>
+    <Pressable onPress={()=>changeMonth(1)} style={[s.chip,{backgroundColor:theme.surfaceAlt}]}><Text style={{color:theme.primary,fontWeight:'800'}}>›</Text></Pressable>
+    <Pressable onPress={()=>{setShownMonth(today().slice(0,7));setSelectedDate(today());}}><Text style={{color:theme.primary,fontWeight:'700',paddingHorizontal:5}}>Today</Text></Pressable>
+   </View>
+   <View style={{flexDirection:'row',gap:3}}>
+    {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(day=><View key={day} style={{flex:1,alignItems:'center',paddingVertical:5}}><Text style={{color:theme.muted,fontSize:10,fontWeight:'700'}}>{day}</Text></View>)}
+   </View>
+   {Array.from({length:Math.ceil(monthDays.length/7)},(_,week)=>monthDays.slice(week*7,week*7+7)).map((daysInWeek,index)=><View key={index} style={{flexDirection:'row',gap:3}}>
+    {daysInWeek.map((key,column)=>{
+     const count=key?monthCounts(key):0;const day=key?Number(key.slice(-2)):0;const selected=key===selectedDate;
+     return <Pressable key={key||'empty-'+column} disabled={!key} onPress={()=>{setSelectedDate(key);setDate(key);}} style={{flex:1,minHeight:47,borderRadius:11,alignItems:'center',justifyContent:'center',backgroundColor:selected?theme.primary:theme.surfaceAlt,borderWidth:key===today()?1:0,borderColor:theme.primary,marginBottom:3}}>
+      <Text style={{color:selected?'#FFF':key?theme.text:theme.muted,fontWeight:key===today()?'900':'600',fontSize:12}}>{day||''}</Text>
+      {count>0?<Text style={{color:selected?'#FFF':theme.primary,fontSize:9,fontWeight:'800'}}>{count} task{count===1?'':'s'}</Text>:null}
+     </Pressable>;
+    })}
+   </View>)}
+   <View style={[s.listRow,{borderBottomWidth:0,justifyContent:'space-between'}]}>
+    <Text style={{color:theme.text,fontWeight:'800'}}>{new Date(Number(selectedDate.slice(0,4)),Number(selectedDate.slice(5,7))-1,Number(selectedDate.slice(8,10))).toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'})}</Text>
+    <Button theme={theme} label="＋ Add task" onPress={()=>open()}/>
+   </View>
+   <View style={s.chips}>
+    <Pressable onPress={()=>setShowCompleted(value=>!value)} style={[s.chip,{backgroundColor:showCompleted?theme.primary:theme.surfaceAlt}]}><Text style={{color:showCompleted?'#FFF':theme.text,fontSize:12}}>{showCompleted?'✓ Showing completed':'Show completed'}</Text></Pressable>
+    <Text style={{color:theme.muted,fontSize:11,alignSelf:'center'}}>{selectedTasks.length} task{selectedTasks.length===1?'':'s'}</Text>
+   </View>
+  </Card>
+  {selectedTasks.length===0?<Empty theme={theme} text="No tasks for this date. Select another day or add a new task."/>:selectedTasks.map(row=>{
+   const items=parseChecklist(row.checklist);const completed=items.filter(item=>item.done).length;
+   return <Card key={row.id} theme={theme}>
+    <View style={s.listRow}>
+     <Pressable onPress={()=>toggleDone(row)} style={[s.check,{borderColor:theme.primary,backgroundColor:row.done?theme.primary:'transparent'}]}><Text style={{color:'#FFF'}}>{row.done?'✓':''}</Text></Pressable>
+     <View style={{flex:1,gap:3}}>
+      <Text style={[s.itemTitle,{color:row.done?theme.muted:theme.text,textDecorationLine:row.done?'line-through':'none'}]}>{row.title}</Text>
+      <Text style={{color:theme.muted,fontSize:12}}>{row.due_date||'No due date'}{row.due_time?' · '+row.due_time:''} · {row.status|| (row.done?'Completed':'Not started')}</Text>
+     </View>
+     <Pressable onPress={()=>togglePinned(row)}><Text style={{color:row.pinned?theme.primary:theme.muted,fontSize:18,padding:4}}>{row.pinned?'★':'☆'}</Text></Pressable>
+     <Pressable onPress={()=>open(row)}><Text style={{color:theme.primary,padding:4}}>Edit</Text></Pressable>
+     <Pressable onPress={()=>del(row)}><Text style={{color:theme.danger,padding:4}}>×</Text></Pressable>
+    </View>
+    <View style={s.chips}>
+     <View style={[s.chip,{backgroundColor:theme.surfaceAlt}]}><Text style={{color:theme.primary,fontSize:11,fontWeight:'800'}}>{row.priority||'Medium'} priority</Text></View>
+     {items.length>0?<View style={[s.chip,{backgroundColor:theme.surfaceAlt}]}><Text style={{color:theme.muted,fontSize:11}}>{completed}/{items.length} checklist</Text></View>:null}
+    </View>
+    {row.details?<Text style={{color:theme.muted,lineHeight:19}}>{row.details}</Text>:null}
+    {items.map(item=><Pressable key={item.id} onPress={()=>toggleChecklist(row,item)} style={[s.listRow,{borderBottomColor:theme.border}]}>
+     <View style={[s.check,{width:22,height:22,borderColor:theme.primary,backgroundColor:item.done?theme.primary:'transparent'}]}><Text style={{color:'#FFF',fontSize:11}}>{item.done?'✓':''}</Text></View>
+     <Text style={{color:item.done?theme.muted:theme.text,textDecorationLine:item.done?'line-through':'none',flex:1,fontSize:13}}>{item.title}</Text>
+    </Pressable>)}
+   </Card>;
+  })}
+  <Editor theme={theme} title={edit?'Edit task':'New task'} visible={visible} onClose={()=>setVisible(false)}>
+   <Field theme={theme} label="Task title" value={title} onChangeText={setTitle}/>
+   <Field theme={theme} label="Details" value={details} onChangeText={setDetails} multiline/>
+   <Text style={{color:theme.muted,fontWeight:'700'}}>Priority</Text>
+   <View style={s.chips}>{['Low','Medium','High','Urgent'].map(value=><Pressable key={value} onPress={()=>setPriority(value)} style={[s.chip,{backgroundColor:priority===value?theme.primary:theme.surfaceAlt}]}><Text style={{color:priority===value?'#FFF':theme.text,fontSize:12}}>{value}</Text></Pressable>)}</View>
+   <Text style={{color:theme.muted,fontWeight:'700'}}>Status</Text>
+   <View style={s.chips}>{['Not started','In progress','Completed'].map(value=><Pressable key={value} onPress={()=>setStatus(value)} style={[s.chip,{backgroundColor:status===value?theme.primary:theme.surfaceAlt}]}><Text style={{color:status===value?'#FFF':theme.text,fontSize:12}}>{value}</Text></Pressable>)}</View>
+   <Field theme={theme} label="Checklist (one item per line)" value={checklistText} onChangeText={setChecklistText} multiline/>
+   <Field theme={theme} label="Due date (YYYY-MM-DD)" value={date} onChangeText={setDate}/>
+   <Field theme={theme} label="Reminder time (HH:MM)" value={time} onChangeText={setTime}/>
+   <Button theme={theme} label="Save task" onPress={save}/>
+  </Editor>
+ </>;
 }
 
 export function NotesScreen({theme}:P){
@@ -97,9 +229,31 @@ function BackupManager({theme}:{theme:Theme}){
 
 export function SettingsScreen({theme,palette,onPalette,dark,onDark}:P&{palette:PaletteName;onPalette:(p:PaletteName)=>void;dark:boolean;onDark:(v:boolean)=>void}){
  const [name,setName]=useState(''),[student,setStudent]=useState(''),[section,setSection]=useState('');
- useEffect(()=>{(async()=>{const db=await database;const p=await db.getFirstAsync<{full_name:string;student_number:string;year_section:string}>('SELECT * FROM profile WHERE id=1');if(p){setName(p.full_name);setStudent(p.student_number);setSection(p.year_section);}})();},[]);
+ const [remindersEnabled,setRemindersEnabled]=useState(false),[notificationPermission,setNotificationPermission]=useState(false),[reminderBusy,setReminderBusy]=useState(false);
+ useEffect(()=>{(async()=>{
+  const db=await database;
+  const p=await db.getFirstAsync<{full_name:string;student_number:string;year_section:string}>('SELECT * FROM profile WHERE id=1');
+  if(p){setName(p.full_name);setStudent(p.student_number);setSection(p.year_section);}
+  const value=await db.getFirstAsync<{value:string}>("SELECT value FROM app_settings WHERE key='reminders_enabled'");
+  setRemindersEnabled(value?.value==='true');
+  setNotificationPermission(await getCampusNotificationPermission());
+ })();},[]);
  const save=async()=>{const db=await database;await db.runAsync('UPDATE profile SET full_name=?,student_number=?,year_section=? WHERE id=1',name.trim(),student.trim(),section.trim());Alert.alert('Profile saved','Your information is stored on this device.');};
- return <><BackupManager theme={theme}/><Card theme={theme} title="Profile"><Field theme={theme} label="Name" value={name} onChangeText={setName}/><Field theme={theme} label="Student number" value={student} onChangeText={setStudent}/><Field theme={theme} label="Year & section" value={section} onChangeText={setSection}/><Button theme={theme} label="Save profile" onPress={save}/></Card><Card theme={theme} title="Appearance & design"><Text style={{color:theme.muted}}>Choose your CampusOS color combination.</Text><View style={s.paletteGrid}>{(Object.keys(palettes) as PaletteName[]).map(k=><Pressable key={k} onPress={()=>onPalette(k)} style={[s.palette,{borderColor:palette===k?theme.primary:theme.border,borderWidth:palette===k?2:1}]}><View style={[s.swatch,{backgroundColor:palettes[k].primary}]}/><Text style={{color:theme.text,fontSize:12}}>{palettes[k].label}</Text></Pressable>)}</View><Text style={{color:theme.muted,fontWeight:'700'}}>Display mode</Text><View style={s.chips}>{[['light','Light'],['dark','Dark']].map(([v,l])=><Pressable key={v} onPress={()=>onDark(v==='dark')} style={[s.chip,{backgroundColor:dark===(v==='dark')?theme.primary:theme.surfaceAlt}]}><Text style={{color:dark===(v==='dark')?'#FFF':theme.text}}>{l}</Text></Pressable>)}</View></Card><Card theme={theme} title="Offline & privacy"><Text style={{color:theme.muted,lineHeight:20}}>This CampusOS version is a personal offline planner. It has no sign-in, admin/member accounts, announcements, group chat, or online campus/community functions.</Text><Text style={{color:theme.muted,fontSize:12}}>Module-based backup and restore, native reminders, app lock, and home-screen widgets are still being migrated.</Text></Card></>;
+ const toggleReminders=async(enabled:boolean)=>{
+  if(reminderBusy)return;setReminderBusy(true);
+  try{
+   if(enabled){
+    const granted=await requestCampusNotificationPermission();setNotificationPermission(granted);
+    if(!granted){Alert.alert('Notifications not allowed','Enable notifications for CampusOS in Android Settings to receive class and task reminders.');return;}
+   }
+   const db=await database;
+   await db.runAsync("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('reminders_enabled',?)",enabled?'true':'false');
+   setRemindersEnabled(enabled);
+   await rescheduleCampusReminders();
+  }catch(error){Alert.alert('Reminder setting failed',error instanceof Error?error.message:'Please try again.');}
+  finally{setReminderBusy(false);}
+ };
+ return <><BackupManager theme={theme}/><Card theme={theme} title="Profile"><Field theme={theme} label="Name" value={name} onChangeText={setName}/><Field theme={theme} label="Student number" value={student} onChangeText={setStudent}/><Field theme={theme} label="Year & section" value={section} onChangeText={setSection}/><Button theme={theme} label="Save profile" onPress={save}/></Card><Card theme={theme} title="Appearance & design"><Text style={{color:theme.muted}}>Choose your CampusOS color combination.</Text><View style={s.paletteGrid}>{(Object.keys(palettes) as PaletteName[]).map(k=><Pressable key={k} onPress={()=>onPalette(k)} style={[s.palette,{borderColor:palette===k?theme.primary:theme.border,borderWidth:palette===k?2:1}]}><View style={[s.swatch,{backgroundColor:palettes[k].primary}]}/><Text style={{color:theme.text,fontSize:12}}>{palettes[k].label}</Text></Pressable>)}</View><Text style={{color:theme.muted,fontWeight:'700'}}>Display mode</Text><View style={s.chips}>{[['light','Light'],['dark','Dark']].map(([v,l])=><Pressable key={v} onPress={()=>onDark(v==='dark')} style={[s.chip,{backgroundColor:dark===(v==='dark')?theme.primary:theme.surfaceAlt}]}><Text style={{color:dark===(v==='dark')?'#FFF':theme.text}}>{l}</Text></Pressable>)}</View></Card><Card theme={theme} title="Reminders & notifications"><Text style={{color:theme.muted,lineHeight:20}}>Receive reminders before scheduled classes and before task deadlines. Reminders are scheduled locally on this phone; no account or server is used.</Text><View style={[s.listRow,{borderBottomWidth:0}]}><View style={{flex:1,gap:3}}><Text style={{color:theme.text,fontWeight:'800'}}>Class and task reminders</Text><Text style={{color:theme.muted,fontSize:11}}>{notificationPermission?'Android notification permission is granted.': 'Android notification permission is not granted.'}</Text></View><Switch value={remindersEnabled} disabled={reminderBusy} onValueChange={toggleReminders} trackColor={{true:theme.primary}}/></View><Text style={{color:theme.muted,fontSize:11}}>Class alerts are scheduled 30 and 10 minutes before each class. Task alerts are scheduled 1 day and 1 hour before the due time.</Text></Card><Card theme={theme} title="Offline & privacy"><Text style={{color:theme.muted,lineHeight:20}}>This CampusOS version is a personal offline planner. It has no sign-in, admin/member accounts, announcements, group chat, or online campus/community functions.</Text><Text style={{color:theme.muted,fontSize:12}}>App lock and Android home-screen widgets remain in migration.</Text></Card></>;
 }
 
 
