@@ -39,15 +39,125 @@ export function HomeScreen({theme,go}:P&{go:(v:string)=>void}){
  <Card theme={theme} title="Planner shortcuts"><Button theme={theme} label="Open Notes" secondary onPress={()=>go('Notes')}/><Button theme={theme} label="Open Lecture Files" secondary onPress={()=>go('Files')}/><Button theme={theme} label="Personalize dashboard" secondary onPress={()=>go('Settings')}/></Card></>;
 }
 
+type DisplayClass = ClassRow & { mergedCount:number; mergedIds:string[] };
+function mergeAdjacentClasses(items:ClassRow[]):DisplayClass[]{
+ const sorted=[...items].sort((a,b)=>mins(a.start_time)-mins(b.start_time));
+ const result:DisplayClass[]=[];
+ for(const row of sorted){
+  const previous=result[result.length-1];
+  const sameSubject=(previous?.subject_id&&row.subject_id&&previous.subject_id===row.subject_id)||previous?.title===row.title;
+  if(previous&&sameSubject&&previous.room.trim().toLowerCase()===row.room.trim().toLowerCase()&&previous.kind===row.kind&&previous.end_time===row.start_time){
+   result[result.length-1]={...previous,end_time:row.end_time,mergedCount:previous.mergedCount+1,mergedIds:[...previous.mergedIds,row.id]};
+  }else result.push({...row,mergedCount:1,mergedIds:[row.id]});
+ }
+ return result;
+}
 export function ScheduleScreen({theme}:P){
- const [rows,setRows]=useState<ClassRow[]>([]);const [visible,setVisible]=useState(false);const [edit,setEdit]=useState<ClassRow|null>(null);
+ const [rows,setRows]=useState<ClassRow[]>([]);
+ const [visible,setVisible]=useState(false);
+ const [settingsVisible,setSettingsVisible]=useState(false);
+ const [edit,setEdit]=useState<ClassRow|null>(null);
+ const [selectedDays,setSelectedDays]=useState<number[]>([0,1,2,3,4,5]);
+ const [startHour,setStartHour]=useState('07');
+ const [endHour,setEndHour]=useState('21');
  const [title,setTitle]=useState(''),[code,setCode]=useState(''),[day,setDay]=useState(0),[kind,setKind]=useState('Lecture'),[start,setStart]=useState('08:00'),[end,setEnd]=useState('09:00'),[room,setRoom]=useState(''),[prof,setProf]=useState(''),[notes,setNotes]=useState('');
- const refresh=useCallback(async()=>{const db=await database;setRows(await db.getAllAsync<ClassRow>('SELECT * FROM schedule_entries ORDER BY day,start_time'));},[]);useEffect(()=>{refresh();},[refresh]);
- const open=async(r?:ClassRow)=>{setEdit(r||null);setTitle(r?.title||'');setCode('');if(r?.subject_id){const db=await database;const subject=await db.getFirstAsync<SubjectRow>('SELECT * FROM subjects WHERE id=?',r.subject_id);if(subject){setTitle(subject.title);setCode(subject.code);}}setDay(r?.day??0);setKind(r?.kind||'Lecture');setStart(r?.start_time||'08:00');setEnd(r?.end_time||'09:00');setRoom(r?.room||'');setProf(r?.professor||'');setNotes(r?.notes||'');setVisible(true);};
- const save=async()=>{if(!title.trim()||!/^([01]\d|2[0-3]):[0-5]\d$/.test(start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(end)||mins(end)<=mins(start))return Alert.alert('Check class details','Provide a subject and valid start/end times.');const conflict=rows.find(r=>r.day===day&&r.id!==edit?.id&&mins(start)<mins(r.end_time)&&mins(end)>mins(r.start_time));if(conflict)return Alert.alert('Schedule conflict','This overlaps '+conflict.title+' ('+conflict.start_time+'–'+conflict.end_time+').');const db=await database;let subject=edit?.subject_id?await db.getFirstAsync<SubjectRow>('SELECT * FROM subjects WHERE id=?',edit.subject_id):null;if(!subject){subject=code.trim()?await db.getFirstAsync<SubjectRow>('SELECT * FROM subjects WHERE lower(code)=lower(?) LIMIT 1',code.trim()):await db.getFirstAsync<SubjectRow>('SELECT * FROM subjects WHERE lower(title)=lower(?) LIMIT 1',title.trim());}const subjectId=subject?.id||uid('subject');if(!subject)await db.runAsync('INSERT INTO subjects (id,code,title,color,created_at) VALUES (?,?,?,?,?)',subjectId,code.trim(),title.trim(),theme.primary,Date.now());else if(subject.title!==title.trim()||(code.trim()&&subject.code!==code.trim()))await db.runAsync('UPDATE subjects SET code=?,title=? WHERE id=?',code.trim()||subject.code,title.trim(),subjectId);const id=edit?.id||uid('class');await db.runAsync('INSERT OR REPLACE INTO schedule_entries (id,subject_id,title,day,start_time,end_time,kind,room,professor,notes) VALUES (?,?,?,?,?,?,?,?,?,?)',id,subjectId,code.trim()?code.trim()+' · '+title.trim():title.trim(),day,start,end,kind,room.trim(),prof.trim(),notes.trim());setVisible(false);refresh();rescheduleCampusReminders().catch(error=>console.warn('CampusOS reminders could not be refreshed',error));};
- const del=(r:ClassRow)=>Alert.alert('Delete class?',r.title,[{text:'Cancel'},{text:'Delete',style:'destructive',onPress:async()=>{const db=await database;await db.runAsync('DELETE FROM schedule_entries WHERE id=?',r.id);refresh();rescheduleCampusReminders().catch(error=>console.warn('CampusOS reminders could not be refreshed',error));}}]);
- return <><Card theme={theme} title="Weekly timetable"><Text style={{color:theme.muted}}>Manage lecture and laboratory sessions. Overlapping classes are rejected.</Text><Button theme={theme} label="＋ Add class" onPress={()=>open()}/></Card>{days.map((d,i)=>{const items=rows.filter(r=>r.day===i);return <Card key={d} theme={theme} title={d}>{items.length?items.map(r=><View key={r.id} style={[s.listRow,{borderBottomColor:theme.border}]}><View style={{flex:1,gap:3}}><Text style={[s.itemTitle,{color:theme.text}]}>{r.title}</Text><Text style={{color:theme.primary,fontSize:12,fontWeight:'700'}}>{r.start_time}–{r.end_time} · {r.kind}</Text><Text style={{color:theme.muted,fontSize:12}}>{[r.room,r.professor].filter(Boolean).join(' · ')}</Text></View><Pressable onPress={()=>open(r)}><Text style={{color:theme.primary,padding:5}}>Edit</Text></Pressable><Pressable onPress={()=>del(r)}><Text style={{color:theme.danger,padding:5}}>×</Text></Pressable></View>):<Text style={{color:theme.muted,fontSize:12}}>No classes</Text>}</Card>;})}
- <Editor theme={theme} title={edit?'Edit class':'Add class'} visible={visible} onClose={()=>setVisible(false)}><Field theme={theme} label="Subject name" value={title} onChangeText={setTitle}/><Field theme={theme} label="Subject code (optional)" value={code} onChangeText={setCode}/><Text style={{color:theme.muted,fontWeight:'700'}}>Class day</Text><View style={s.chips}>{days.map((d,i)=><Pressable key={d} onPress={()=>setDay(i)} style={[s.chip,{backgroundColor:day===i?theme.primary:theme.surfaceAlt}]}><Text style={{color:day===i?'#FFF':theme.text,fontSize:12}}>{d.slice(0,3)}</Text></Pressable>)}</View><Text style={{color:theme.muted,fontWeight:'700'}}>Type</Text><View style={s.chips}>{['Lecture','Laboratory'].map(k=><Pressable key={k} onPress={()=>setKind(k)} style={[s.chip,{backgroundColor:kind===k?theme.primary:theme.surfaceAlt}]}><Text style={{color:kind===k?'#FFF':theme.text}}>{k}</Text></Pressable>)}</View><Field theme={theme} label="Start time (HH:MM)" value={start} onChangeText={setStart}/><Field theme={theme} label="End time (HH:MM)" value={end} onChangeText={setEnd}/><Field theme={theme} label="Room" value={room} onChangeText={setRoom}/><Field theme={theme} label="Professor" value={prof} onChangeText={setProf}/><Field theme={theme} label="Class notes" value={notes} onChangeText={setNotes} multiline/><Button theme={theme} label="Save class" onPress={save}/></Editor></>;
+ const refresh=useCallback(async()=>{
+  const db=await database;
+  const [classRows,daySetting,startSetting,endSetting]=await Promise.all([
+   db.getAllAsync<ClassRow>('SELECT * FROM schedule_entries ORDER BY day,start_time'),
+   db.getFirstAsync<{value:string}>("SELECT value FROM app_settings WHERE key='schedule_days'"),
+   db.getFirstAsync<{value:string}>("SELECT value FROM app_settings WHERE key='schedule_start_hour'"),
+   db.getFirstAsync<{value:string}>("SELECT value FROM app_settings WHERE key='schedule_end_hour'")
+  ]);
+  setRows(classRows);
+  if(daySetting?.value)setSelectedDays(daySetting.value.split(',').map(Number).filter(value=>Number.isInteger(value)&&value>=0&&value<=6));
+  if(startSetting?.value)setStartHour(startSetting.value);
+  if(endSetting?.value)setEndHour(endSetting.value);
+ },[]);
+ useEffect(()=>{refresh();},[refresh]);
+ const open=async(row?:ClassRow)=>{
+  setEdit(row||null);setTitle(row?.title||'');setCode('');
+  if(row?.subject_id){const db=await database;const subject=await db.getFirstAsync<SubjectRow>('SELECT * FROM subjects WHERE id=?',row.subject_id);if(subject){setTitle(subject.title);setCode(subject.code);}}
+  setDay(row?.day??(selectedDays[0]??0));setKind(row?.kind||'Lecture');setStart(row?.start_time||'08:00');setEnd(row?.end_time||'09:00');setRoom(row?.room||'');setProf(row?.professor||'');setNotes(row?.notes||'');setVisible(true);
+ };
+ const save=async()=>{
+  if(!title.trim()||!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(start)||!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(end)||mins(end)<=mins(start))return Alert.alert('Check class details','Provide a subject and valid start/end times.');
+  const conflict=rows.find(row=>row.day===day&&row.id!==edit?.id&&mins(start)<mins(row.end_time)&&mins(end)>mins(row.start_time));
+  if(conflict)return Alert.alert('Schedule conflict','This overlaps '+conflict.title+' ('+conflict.start_time+'–'+conflict.end_time+').');
+  const db=await database;
+  let subject=edit?.subject_id?await db.getFirstAsync<SubjectRow>('SELECT * FROM subjects WHERE id=?',edit.subject_id):null;
+  if(!subject){subject=code.trim()?await db.getFirstAsync<SubjectRow>('SELECT * FROM subjects WHERE lower(code)=lower(?) LIMIT 1',code.trim()):await db.getFirstAsync<SubjectRow>('SELECT * FROM subjects WHERE lower(title)=lower(?) LIMIT 1',title.trim());}
+  const subjectId=subject?.id||uid('subject');
+  if(!subject)await db.runAsync('INSERT INTO subjects (id,code,title,color,created_at) VALUES (?,?,?,?,?)',subjectId,code.trim(),title.trim(),theme.primary,Date.now());
+  else if(subject.title!==title.trim()||(code.trim()&&subject.code!==code.trim()))await db.runAsync('UPDATE subjects SET code=?,title=? WHERE id=?',code.trim()||subject.code,title.trim(),subjectId);
+  const id=edit?.id||uid('class');
+  await db.runAsync('INSERT OR REPLACE INTO schedule_entries (id,subject_id,title,day,start_time,end_time,kind,room,professor,notes) VALUES (?,?,?,?,?,?,?,?,?,?)',id,subjectId,code.trim()?code.trim()+' · '+title.trim():title.trim(),day,start,end,kind,room.trim(),prof.trim(),notes.trim());
+  if(!selectedDays.includes(day)){
+   const next=[...selectedDays,day].sort((a,b)=>a-b);setSelectedDays(next);
+   await db.runAsync("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('schedule_days',?)",next.join(','));
+  }
+  setVisible(false);await refresh();
+  rescheduleCampusReminders().catch(error=>console.warn('CampusOS reminders could not be refreshed',error));
+ };
+ const del=(row:ClassRow)=>Alert.alert('Delete class?',row.title,[{text:'Cancel'},{text:'Delete',style:'destructive',onPress:async()=>{const db=await database;await db.runAsync('DELETE FROM schedule_entries WHERE id=?',row.id);await refresh();rescheduleCampusReminders().catch(error=>console.warn('CampusOS reminders could not be refreshed',error));}}]);
+ const toggleDay=(value:number)=>setSelectedDays(current=>current.includes(value)?current.filter(dayValue=>dayValue!==value):[...current,value].sort((a,b)=>a-b));
+ const saveSettings=async()=>{
+  const first=Number(startHour),last=Number(endHour);
+  if(!Number.isInteger(first)||!Number.isInteger(last)||first<0||first>23||last<1||last>24||last<=first)return Alert.alert('Invalid timetable range','Choose a start hour from 0–23 and a later end hour up to 24.');
+  if(selectedDays.length===0)return Alert.alert('Choose class days','At least one timetable day must remain enabled.');
+  const db=await database;
+  await db.runAsync("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('schedule_days',?)",selectedDays.join(','));
+  await db.runAsync("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('schedule_start_hour',?)",String(first));
+  await db.runAsync("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('schedule_end_hour',?)",String(last));
+  setSettingsVisible(false);
+ };
+ const startLabel=String(startHour).padStart(2,'0')+':00';
+ const endLabel=String(endHour).padStart(2,'0')+':00';
+ return <>
+  <Card theme={theme} title="Weekly timetable">
+   <Text style={{color:theme.muted}}>Lecture and laboratory sessions are checked for overlaps. Adjacent sessions with the same subject, room, and type are grouped in this view.</Text>
+   <View style={s.listRow}><View style={{flex:1}}><Text style={{color:theme.text,fontWeight:'800'}}>{selectedDays.length} timetable days</Text><Text style={{color:theme.muted,fontSize:11}}>{startLabel}–{endLabel} · {rows.length} class entries</Text></View><Pressable onPress={()=>setSettingsVisible(true)}><Text style={{color:theme.primary,fontWeight:'800',padding:6}}>Timetable settings</Text></Pressable></View>
+   <Button theme={theme} label="＋ Add class" onPress={()=>open()}/>
+  </Card>
+  {selectedDays.map(index=>{
+   const items=mergeAdjacentClasses(rows.filter(row=>row.day===index));
+   return <Card key={index} theme={theme} title={days[index]}>
+    {items.length?items.map(row=><View key={row.mergedIds.join('|')} style={[s.listRow,{borderBottomColor:theme.border,alignItems:'flex-start'}]}>
+     <View style={{width:4,alignSelf:'stretch',borderRadius:4,backgroundColor:theme.primary}}/>
+     <View style={{flex:1,gap:3}}>
+      <Text style={[s.itemTitle,{color:theme.text}]}>{row.title}</Text>
+      <Text style={{color:theme.primary,fontSize:12,fontWeight:'800'}}>{row.start_time}–{row.end_time} · {row.kind}{row.mergedCount>1?' · '+row.mergedCount+' adjacent sessions':''}</Text>
+      <Text style={{color:theme.muted,fontSize:12}}>{[row.room,row.professor].filter(Boolean).join(' · ')||'No room assigned'}</Text>
+      {row.notes?<Text style={{color:theme.muted,fontSize:12}}>{row.notes}</Text>:null}
+     </View>
+     <Pressable onPress={()=>open(row)}><Text style={{color:theme.primary,padding:5}}>Edit</Text></Pressable>
+     <Pressable onPress={()=>del(row)}><Text style={{color:theme.danger,padding:5}}>×</Text></Pressable>
+    </View>):<Text style={{color:theme.muted,fontSize:12}}>No classes</Text>}
+   </Card>;
+  })}
+  <Editor theme={theme} title={edit?'Edit class':'Add class'} visible={visible} onClose={()=>setVisible(false)}>
+   <Field theme={theme} label="Subject name" value={title} onChangeText={setTitle}/>
+   <Field theme={theme} label="Subject code (optional)" value={code} onChangeText={setCode}/>
+   <Text style={{color:theme.muted,fontWeight:'700'}}>Class day</Text>
+   <View style={s.chips}>{days.map((label,index)=><Pressable key={label} onPress={()=>setDay(index)} style={[s.chip,{backgroundColor:day===index?theme.primary:theme.surfaceAlt}]}><Text style={{color:day===index?'#FFF':theme.text,fontSize:12}}>{label.slice(0,3)}</Text></Pressable>)}</View>
+   <Text style={{color:theme.muted,fontWeight:'700'}}>Type</Text>
+   <View style={s.chips}>{['Lecture','Laboratory'].map(value=><Pressable key={value} onPress={()=>setKind(value)} style={[s.chip,{backgroundColor:kind===value?theme.primary:theme.surfaceAlt}]}><Text style={{color:kind===value?'#FFF':theme.text}}>{value}</Text></Pressable>)}</View>
+   <Field theme={theme} label="Start time (HH:MM)" value={start} onChangeText={setStart}/>
+   <Field theme={theme} label="End time (HH:MM)" value={end} onChangeText={setEnd}/>
+   <Field theme={theme} label="Room" value={room} onChangeText={setRoom}/>
+   <Field theme={theme} label="Professor" value={prof} onChangeText={setProf}/>
+   <Field theme={theme} label="Class notes" value={notes} onChangeText={setNotes} multiline/>
+   <Button theme={theme} label="Save class" onPress={save}/>
+  </Editor>
+  <Editor theme={theme} title="Timetable settings" visible={settingsVisible} onClose={()=>setSettingsVisible(false)}>
+   <Text style={{color:theme.muted,fontWeight:'700'}}>Class days</Text>
+   <View style={s.chips}>{days.map((label,index)=><Pressable key={label} onPress={()=>toggleDay(index)} style={[s.chip,{backgroundColor:selectedDays.includes(index)?theme.primary:theme.surfaceAlt}]}><Text style={{color:selectedDays.includes(index)?'#FFF':theme.text,fontSize:12}}>{label.slice(0,3)}</Text></Pressable>)}</View>
+   <Field theme={theme} label="Timetable start hour (00–23)" value={startHour} onChangeText={setStartHour} keyboardType="numeric"/>
+   <Field theme={theme} label="Timetable end hour (01–24)" value={endHour} onChangeText={setEndHour} keyboardType="numeric"/>
+   <Text style={{color:theme.muted,fontSize:11}}>These settings control which days are shown and the timetable time range. Existing classes are kept if you hide a day.</Text>
+   <Button theme={theme} label="Save timetable settings" onPress={saveSettings}/>
+  </Editor>
+ </>;
 }
 
 type ChecklistItem = { id:string; title:string; done:boolean };
