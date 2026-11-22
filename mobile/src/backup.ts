@@ -138,7 +138,6 @@ export async function createCampusBackup(selected: Set<BackupModule>): Promise<s
     data.notes = current.notes.filter(row => row.subject_id != null);
     data.lecture_files = current.files;
     const legacyIdBySubject = new Map<string, string>();
-    current.subjects.forEach(async () => undefined);
     for (let i = 0; i < current.subjects.length; i++) {
       const subject = current.subjects[i];
       const legacyId = getLegacySubjectId(subject, i);
@@ -151,7 +150,7 @@ export async function createCampusBackup(selected: Set<BackupModule>): Promise<s
       subtitle: subject.code || '',
       extra: '',
       value: 0,
-      done: false,
+      done: Boolean(subject.favorite),
       day: '',
       startTime: '',
       endTime: '',
@@ -176,7 +175,7 @@ export async function createCampusBackup(selected: Set<BackupModule>): Promise<s
         favorite: Boolean(note.favorite),
         order: Number(note.updated_at) || now()
       })));
-      favorites[legacyId] = true;
+      if (subject.favorite) favorites[legacyId] = true;
     });
     root.subjectNotes = groupedNotes;
     root.subjectFavorites = favorites;
@@ -205,6 +204,8 @@ export async function createCampusBackup(selected: Set<BackupModule>): Promise<s
 
 async function upsertRows(db: any, table: string, rows: AnyRow[]) {
   const allowed: Record<string, string[]> = {
+    app_settings: ['key','value'],
+    profile: ['id','full_name','student_number','year_section','photo_uri'],
     schedule_entries: ['id','subject_id','title','day','start_time','end_time','kind','room','professor','notes'],
     tasks: ['id','title','details','due_date','due_time','done','pinned','subject_id','created_at'],
     subjects: ['id','legacy_id','code','title','color','created_at'],
@@ -233,10 +234,16 @@ async function restoreMobileData(root: AnyRow, selected: Set<BackupModule>) {
 
   await db.withTransactionAsync(async () => {
     if (selected.has('homepage')) {
-      await db.runAsync('UPDATE profile SET full_name=?,student_number=?,year_section=?,photo_uri=? WHERE id=1',
-        asText(root.profileName), asText(root.profileStudentId), asText(root.profileSection), '');
-      await db.runAsync("DELETE FROM app_settings WHERE key IN ('palette','display_mode','home_layout_order','home_hidden_tiles')");
-      await upsertRows(db, 'app_settings' as never, safeArray(tables.app_settings));
+      const profiles = safeArray(tables.profile);
+      if (profiles.length) {
+        await db.runAsync('DELETE FROM profile');
+        await upsertRows(db, 'profile', profiles);
+      } else {
+        await db.runAsync('UPDATE profile SET full_name=?,student_number=?,year_section=?,photo_uri=? WHERE id=1',
+          asText(root.profileName), asText(root.profileStudentId), asText(root.profileSection), '');
+      }
+      await db.runAsync('DELETE FROM app_settings');
+      await upsertRows(db, 'app_settings', safeArray(tables.app_settings));
       await db.runAsync('DELETE FROM home_tiles');
       await upsertRows(db, 'home_tiles', safeArray(tables.home_tiles));
     }
@@ -287,6 +294,8 @@ async function restoreLegacyBackup(root: AnyRow, selected: Set<BackupModule>) {
   const subjectIdMap = new Map<string, string>();
 
   if (selected.has('academics')) {
+    await db.runAsync('DELETE FROM lecture_files WHERE subject_id IS NOT NULL');
+    await db.runAsync('DELETE FROM notes WHERE subject_id IS NOT NULL');
     for (const [index, subject] of legacySubjects.entries()) {
       const legacyId = asText(subject.id, String(index + 1));
       const id = 'legacy-sub-' + legacyId;
