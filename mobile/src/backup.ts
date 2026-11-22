@@ -37,7 +37,7 @@ const getLegacySubjectId = (subject: Subject, index: number): string =>
 
 async function currentTables() {
   const db = await database;
-  const [profile, settings, tiles, schedule, tasks, subjects, notes, files, budget, savings] = await Promise.all([
+  const [profile, settings, tiles, schedule, tasks, subjects, notes, files, folders, budget, savings] = await Promise.all([
     db.getAllAsync<AnyRow>('SELECT * FROM profile'),
     db.getAllAsync<AnyRow>('SELECT * FROM app_settings'),
     db.getAllAsync<AnyRow>('SELECT * FROM home_tiles ORDER BY position'),
@@ -46,10 +46,11 @@ async function currentTables() {
     db.getAllAsync<Subject>('SELECT * FROM subjects ORDER BY created_at,title'),
     db.getAllAsync<AnyRow>('SELECT * FROM notes ORDER BY updated_at DESC'),
     db.getAllAsync<FileRow>('SELECT * FROM lecture_files ORDER BY added_at DESC'),
+    db.getAllAsync<AnyRow>('SELECT * FROM lecture_folders ORDER BY created_at,name'),
     db.getAllAsync<AnyRow>('SELECT * FROM budget_entries ORDER BY date DESC,created_at DESC'),
     db.getAllAsync<AnyRow>('SELECT * FROM savings_goals ORDER BY created_at DESC')
   ]);
-  return { profile, settings, tiles, schedule, tasks, subjects, notes, files, budget, savings };
+  return { profile, settings, tiles, schedule, tasks, subjects, notes, files, folders, budget, savings };
 }
 
 export async function createCampusBackup(selected: Set<BackupModule>): Promise<string> {
@@ -140,6 +141,7 @@ export async function createCampusBackup(selected: Set<BackupModule>): Promise<s
     data.subjects = current.subjects;
     data.notes = current.notes.filter(row => row.subject_id != null);
     data.lecture_files = current.files;
+    data.lecture_folders = current.folders;
     const legacyIdBySubject = new Map<string, string>();
     for (let i = 0; i < current.subjects.length; i++) {
       const subject = current.subjects[i];
@@ -183,11 +185,9 @@ export async function createCampusBackup(selected: Set<BackupModule>): Promise<s
     root.subjectNotes = groupedNotes;
     root.subjectFavorites = favorites;
     for (const file of current.files) {
-      if (!file.subject_id) continue;
-      const legacyId = legacyIdBySubject.get(file.subject_id);
-      if (!legacyId) continue;
+      const legacyId = file.subject_id ? legacyIdBySubject.get(file.subject_id) : null;
       const base64 = await readStoredFileBase64(file.local_uri);
-      const relativePath = legacyId + '/' + file.name;
+      const relativePath = (legacyId || 'General') + '/' + (file.folder_name || 'Lecture 1') + '/' + file.name;
       filePayloads.push({ id: file.id, path: relativePath, subject_id: file.subject_id, name: file.name, mime_type: file.mime_type, size: file.size, added_at: file.added_at, folder_name: file.folder_name || 'Lecture 1', favorite: Boolean(file.favorite), data: base64 });
       subjectFiles.push({ path: relativePath, data: base64 });
     }
@@ -213,6 +213,7 @@ async function upsertRows(db: any, table: string, rows: AnyRow[]) {
     subjects: ['id','legacy_id','code','title','color','created_at'],
     notes: ['id','title','body','subject_id','favorite','note_date','created_at','updated_at'],
     lecture_files: ['id','subject_id','name','mime_type','local_uri','size','added_at','folder_name','favorite'],
+    lecture_folders: ['id','subject_id','name','created_at'],
     budget_entries: ['id','type','amount','category','note','date','created_at'],
     savings_goals: ['id','title','target','saved','due_date','created_at'],
     home_tiles: ['tile_key','visible','position']
@@ -259,8 +260,10 @@ async function restoreMobileData(root: AnyRow, selected: Set<BackupModule>) {
     }
     if (selected.has('academics')) {
       await db.runAsync('DELETE FROM notes WHERE subject_id IS NOT NULL');
-      await db.runAsync('DELETE FROM lecture_files WHERE subject_id IS NOT NULL');
+      await db.runAsync('DELETE FROM lecture_files');
+      await db.runAsync('DELETE FROM lecture_folders');
       await upsertRows(db, 'subjects', safeArray(tables.subjects));
+      await upsertRows(db, 'lecture_folders', safeArray(tables.lecture_folders));
       await upsertRows(db, 'notes', safeArray(tables.notes));
       for (const file of payloads) {
         const localUri = await writeStoredFileBase64(asText(file.path), asText(file.data));
@@ -296,14 +299,16 @@ async function restoreLegacyBackup(root: AnyRow, selected: Set<BackupModule>) {
   const subjectIdMap = new Map<string, string>();
 
   if (selected.has('academics')) {
-    await db.runAsync('DELETE FROM lecture_files WHERE subject_id IS NOT NULL');
+    await db.runAsync('DELETE FROM lecture_files');
+    await db.runAsync('DELETE FROM lecture_folders');
     await db.runAsync('DELETE FROM notes WHERE subject_id IS NOT NULL');
     for (const [index, subject] of legacySubjects.entries()) {
       const legacyId = asText(subject.id, String(index + 1));
       const id = 'legacy-sub-' + legacyId;
       subjectIdMap.set(legacyId, id);
-      await db.runAsync('INSERT OR REPLACE INTO subjects (id,legacy_id,code,title,color,created_at) VALUES (?,?,?,?,?,?)',
-        id, legacyId, asText(subject.subtitle), asText(subject.title, 'Untitled subject'), '#176B3A', now());
+      await db.runAsync('INSERT OR REPLACE INTO subjects (id,legacy_id,code,title,color,favorite,created_at) VALUES (?,?,?,?,?,?,?)',
+        id, legacyId, asText(subject.subtitle), asText(subject.title, 'Untitled subject'), '#176B3A', safeObject(root.subjectFavorites)[legacyId] ? 1 : 0, now());
+      for (const folder of ['Lecture 1','Lecture 2','Lecture 3']) await db.runAsync('INSERT OR IGNORE INTO lecture_folders (id,subject_id,name,created_at) VALUES (?,?,?,?)', id+'-'+folder.toLowerCase().replace(/[^a-z0-9]+/g,'-'), id, folder, now());
     }
     const notesObject = safeObject(root.subjectNotes);
     for (const legacyId of Object.keys(notesObject)) {
@@ -357,9 +362,13 @@ async function restoreLegacyBackup(root: AnyRow, selected: Set<BackupModule>) {
       const path = asText(safeObject(file).path);
       const data = asText(safeObject(file).data);
       const localUri = await writeStoredFileBase64(path, data);
-      const legacyId = path.split('/')[0];
+      const parts = path.replace(/\\\\/g,'/').split('/').filter(Boolean);
+      const legacyId = parts[0] || '';
+      const subjectId = subjectIdMap.get(legacyId) || null;
+      const folder = subjectId ? (parts.length > 2 ? parts[1] : 'Lecture 1') : 'Lecture 1';
+      if (subjectId) await db.runAsync('INSERT OR IGNORE INTO lecture_folders (id,subject_id,name,created_at) VALUES (?,?,?,?)', uid('folder'), subjectId, folder, now());
       await db.runAsync('INSERT OR REPLACE INTO lecture_files (id,subject_id,name,mime_type,local_uri,size,added_at,folder_name,favorite) VALUES (?,?,?,?,?,?,?,?,?)',
-        uid('file'), subjectIdMap.get(legacyId) || null, path.split('/').pop() || 'Lecture file', '', localUri, 0, now(), 'Lecture 1', 0);
+        uid('file'), subjectId, parts[parts.length-1] || 'Lecture file', '', localUri, 0, now(), folder, 0);
     }
   }
 }
