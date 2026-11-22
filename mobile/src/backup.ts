@@ -14,7 +14,7 @@ export const backupModules: { key: BackupModule; label: string; description: str
 ];
 
 type AnyRow = Record<string, unknown>;
-type Subject = { id: string; legacy_id?: string | null; code: string; title: string; color: string; created_at: number };
+type Subject = { id: string; legacy_id?: string | null; code: string; title: string; color: string; favorite?: number; created_at: number };
 type FileRow = { id: string; subject_id: string | null; name: string; mime_type: string; local_uri: string; size: number; added_at: number; folder_name?: string; favorite?: number };
 
 const now = () => Date.now();
@@ -55,16 +55,19 @@ async function currentTables() {
 export async function createCampusBackup(selected: Set<BackupModule>): Promise<string> {
   const db = await database;
   const data: AnyRow = {};
+  const mobileData: AnyRow = { format: 'CampusOS Mobile Data', version: 1, modules: Array.from(selected).sort(), tables: data, filePayloads: [] as AnyRow[] };
   const root: AnyRow = {
     format: 'CampusOS Backup',
     version: 2,
     createdAt: now(),
     modules: Array.from(selected).sort(),
     source: 'CampusOS React Native',
-    mobileData: { format: 'CampusOS Mobile Data', version: 1, modules: Array.from(selected).sort(), tables: data, filePayloads: [] }
+    mobileData
   };
   const current = await currentTables();
   const filePayloads: AnyRow[] = [];
+  const subjectFiles: AnyRow[] = [];
+  root.subjectFiles = subjectFiles;
 
   if (selected.has('homepage')) {
     data.profile = current.profile;
@@ -179,7 +182,6 @@ export async function createCampusBackup(selected: Set<BackupModule>): Promise<s
     });
     root.subjectNotes = groupedNotes;
     root.subjectFavorites = favorites;
-    root.subjectFiles = [];
     for (const file of current.files) {
       if (!file.subject_id) continue;
       const legacyId = legacyIdBySubject.get(file.subject_id);
@@ -187,7 +189,7 @@ export async function createCampusBackup(selected: Set<BackupModule>): Promise<s
       const base64 = await readStoredFileBase64(file.local_uri);
       const relativePath = legacyId + '/' + file.name;
       filePayloads.push({ id: file.id, path: relativePath, subject_id: file.subject_id, name: file.name, mime_type: file.mime_type, size: file.size, added_at: file.added_at, folder_name: file.folder_name || 'Lecture 1', favorite: Boolean(file.favorite), data: base64 });
-      root.subjectFiles.push({ path: relativePath, data: base64 });
+      subjectFiles.push({ path: relativePath, data: base64 });
     }
   }
 
@@ -198,7 +200,7 @@ export async function createCampusBackup(selected: Set<BackupModule>): Promise<s
     data.savings_goals = current.savings;
   }
 
-  root.mobileData.filePayloads = filePayloads;
+  mobileData.filePayloads = filePayloads;
   return JSON.stringify(root, null, 2);
 }
 
