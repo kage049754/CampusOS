@@ -4,6 +4,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { File as ExpoFile } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import * as SecureStore from 'expo-secure-store';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { BackupModule, backupModules, restoreCampusBackup, shareCampusBackup } from './backup';
 import { persistPickedFile, removeStoredFile } from './storage';
 import { getCampusNotificationPermission, requestCampusNotificationPermission, rescheduleCampusReminders } from './notifications';
@@ -652,10 +654,20 @@ function BackupManager({theme}:{theme:Theme}){
  return <><Card theme={theme} title="Backup & recovery"><Text style={{color:theme.muted,lineHeight:20}}>Export local planner data or restore a CampusOS JSON backup. You can restore selected modules without replacing the rest of your planner.</Text><Button theme={theme} label="Open Backup & Recovery" onPress={()=>setVisible(true)}/></Card><Editor theme={theme} title="Backup & Recovery" visible={visible} onClose={()=>setVisible(false)}><Text style={{color:theme.muted}}>Choose which modules to include when exporting or restoring.</Text>{backupModules.map(item=><View key={item.key} style={[s.listRow,{borderBottomColor:theme.border}]}><View style={{flex:1,gap:3}}><Text style={{color:theme.text,fontWeight:'800'}}>{item.label}</Text><Text style={{color:theme.muted,fontSize:11,lineHeight:16}}>{item.description}</Text></View><Switch value={selected.has(item.key)} onValueChange={value=>toggle(item.key,value)} trackColor={{true:theme.primary}}/></View>)}<Button theme={theme} label={busy?'Working…':'Export selected modules'} onPress={exportBackup}/><Button theme={theme} secondary label={busy?'Working…':'Restore selected modules'} onPress={importBackup}/><Text style={{color:theme.muted,fontSize:11}}>Legacy CampusOS JSON backups are supported. File attachments are included in the Academics module.</Text></Editor></>;
 }
 
-export function SettingsScreen({theme,palette,onPalette,dark,onDark}:P&{palette:PaletteName;onPalette:(p:PaletteName)=>void;dark:boolean;onDark:(v:boolean)=>void}){
+const APP_PIN_KEY='campusos_local_app_pin';
+export function SettingsScreen({theme,palette,onPalette,dark,onDark,onLockChange}:P&{
+ palette:PaletteName;
+ onPalette:(p:PaletteName)=>void;
+ dark:boolean;
+ onDark:(v:boolean)=>void;
+ onLockChange:(enabled:boolean,pin?:string|null,biometric?:boolean)=>void;
+}){
  const [name,setName]=useState(''),[student,setStudent]=useState(''),[section,setSection]=useState('');
  const [homeTiles,setHomeTiles]=useState<HomeTileRow[]>(DEFAULT_HOME_TILES);
  const [remindersEnabled,setRemindersEnabled]=useState(false),[notificationPermission,setNotificationPermission]=useState(false),[reminderBusy,setReminderBusy]=useState(false);
+ const [lockEnabled,setLockEnabled]=useState(false),[pinExists,setPinExists]=useState(false),[biometricSupported,setBiometricSupported]=useState(false),[biometricEnabled,setBiometricEnabled]=useState(false);
+ const [lockEditor,setLockEditor]=useState(false),[lockMode,setLockMode]=useState<'setup'|'disable'>('setup'),[currentPin,setCurrentPin]=useState(''),[newPin,setNewPin]=useState(''),[confirmPin,setConfirmPin]=useState('');
+ const [lockBusy,setLockBusy]=useState(false);
  const loadHomeTiles=useCallback(async()=>{
   const db=await database;let rows=await db.getAllAsync<HomeTileRow>('SELECT * FROM home_tiles ORDER BY position');
   if(rows.length===0){for(const tile of DEFAULT_HOME_TILES)await db.runAsync('INSERT OR IGNORE INTO home_tiles (tile_key,visible,position) VALUES (?,?,?)',tile.tile_key,tile.visible,tile.position);rows=await db.getAllAsync<HomeTileRow>('SELECT * FROM home_tiles ORDER BY position');}
@@ -676,10 +688,19 @@ export function SettingsScreen({theme,palette,onPalette,dark,onDark}:P&{palette:
   const db=await database;
   const p=await db.getFirstAsync<{full_name:string;student_number:string;year_section:string}>('SELECT * FROM profile WHERE id=1');
   if(p){setName(p.full_name);setStudent(p.student_number);setSection(p.year_section);}
-  const value=await db.getFirstAsync<{value:string}>("SELECT value FROM app_settings WHERE key='reminders_enabled'");
-  setRemindersEnabled(value?.value==='true');
+  const [reminderValue,lockValue,bioValue]=await Promise.all([
+   db.getFirstAsync<{value:string}>("SELECT value FROM app_settings WHERE key='reminders_enabled'"),
+   db.getFirstAsync<{value:string}>("SELECT value FROM app_settings WHERE key='app_lock_enabled'"),
+   db.getFirstAsync<{value:string}>("SELECT value FROM app_settings WHERE key='app_lock_biometrics'")
+  ]);
+  setRemindersEnabled(reminderValue?.value==='true');
   setNotificationPermission(await getCampusNotificationPermission());
- })();},[]);
+  const savedPin=await SecureStore.getItemAsync(APP_PIN_KEY);
+  const enabled=lockValue?.value==='true'&&Boolean(savedPin);
+  setPinExists(Boolean(savedPin));setLockEnabled(enabled);setBiometricEnabled(bioValue?.value==='true');
+  const [hasHardware,enrolled]=await Promise.all([LocalAuthentication.hasHardwareAsync(),LocalAuthentication.isEnrolledAsync()]);
+  setBiometricSupported(hasHardware&&enrolled);
+ })().catch(error=>console.warn('CampusOS settings could not be loaded',error));},[]);
  const save=async()=>{const db=await database;await db.runAsync('UPDATE profile SET full_name=?,student_number=?,year_section=? WHERE id=1',name.trim(),student.trim(),section.trim());Alert.alert('Profile saved','Your information is stored on this device.');};
  const toggleReminders=async(enabled:boolean)=>{
   if(reminderBusy)return;setReminderBusy(true);
@@ -688,15 +709,111 @@ export function SettingsScreen({theme,palette,onPalette,dark,onDark}:P&{palette:
     const granted=await requestCampusNotificationPermission();setNotificationPermission(granted);
     if(!granted){Alert.alert('Notifications not allowed','Enable notifications for CampusOS in Android Settings to receive class and task reminders.');return;}
    }
-   const db=await database;
-   await db.runAsync("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('reminders_enabled',?)",enabled?'true':'false');
-   setRemindersEnabled(enabled);
-   await rescheduleCampusReminders();
+   const db=await database;await db.runAsync("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('reminders_enabled',?)",enabled?'true':'false');
+   setRemindersEnabled(enabled);await rescheduleCampusReminders();
   }catch(error){Alert.alert('Reminder setting failed',error instanceof Error?error.message:'Please try again.');}
   finally{setReminderBusy(false);}
  };
+ const openPinEditor=(mode:'setup'|'disable')=>{
+  setLockMode(mode);setCurrentPin('');setNewPin('');setConfirmPin('');setLockEditor(true);
+ };
+ const savePin=async()=>{
+  if(lockBusy)return;setLockBusy(true);
+  try{
+   const existing=await SecureStore.getItemAsync(APP_PIN_KEY);
+   if(existing&&existing!==currentPin){Alert.alert('Current PIN is incorrect');return;}
+   if(!/^\\d{4,8}$/.test(newPin)){Alert.alert('Invalid PIN','Use 4 to 8 digits.');return;}
+   if(newPin!==confirmPin){Alert.alert('PINs do not match');return;}
+   await SecureStore.setItemAsync(APP_PIN_KEY,newPin);
+   const db=await database;
+   await db.runAsync("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('app_lock_enabled','true')");
+   await db.runAsync("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('app_lock_biometrics',?)",biometricEnabled?'true':'false');
+   setPinExists(true);setLockEnabled(true);onLockChange(true,newPin,biometricEnabled);setLockEditor(false);
+   Alert.alert('App lock enabled','CampusOS will ask for your PIN when you reopen it after leaving the app.');
+  }catch(error){Alert.alert('Unable to save PIN',error instanceof Error?error.message:'Secure storage is unavailable.');}
+  finally{setLockBusy(false);}
+ };
+ const disablePin=async()=>{
+  if(lockBusy)return;setLockBusy(true);
+  try{
+   const existing=await SecureStore.getItemAsync(APP_PIN_KEY);
+   if(!existing||existing!==currentPin){Alert.alert('Current PIN is incorrect');return;}
+   await SecureStore.deleteItemAsync(APP_PIN_KEY);
+   const db=await database;
+   await db.runAsync("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('app_lock_enabled','false')");
+   await db.runAsync("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('app_lock_biometrics','false')");
+   setPinExists(false);setLockEnabled(false);setBiometricEnabled(false);onLockChange(false,null,false);setLockEditor(false);
+   Alert.alert('App lock disabled');
+  }catch(error){Alert.alert('Unable to disable app lock',error instanceof Error?error.message:'Please try again.');}
+  finally{setLockBusy(false);}
+ };
+ const toggleBiometric=async(value:boolean)=>{
+  if(!biometricSupported||!lockEnabled)return;
+  setBiometricEnabled(value);
+  const db=await database;
+  await db.runAsync("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('app_lock_biometrics',?)",value?'true':'false');
+  const pin=await SecureStore.getItemAsync(APP_PIN_KEY);
+  onLockChange(lockEnabled,pin,value);
+ };
  const homeTileLabels:Record<string,string>={profile:'Profile / welcome',stats:'Statistics',classes:"Today's classes",pinned:'Pinned notes',tasks:'Upcoming tasks'};
- return <><BackupManager theme={theme}/><Card theme={theme} title="Dashboard layout"><Text style={{color:theme.muted,lineHeight:19}}>Choose which Home tiles appear and change their order. These settings stay on this device.</Text>{homeTiles.map((tile,index)=><View key={tile.tile_key} style={[s.listRow,{borderBottomColor:theme.border}]}><View style={{flex:1}}><Text style={{color:theme.text,fontWeight:'700'}}>{homeTileLabels[tile.tile_key]||tile.tile_key}</Text><Text style={{color:theme.muted,fontSize:10}}>Position {index+1}</Text></View><Pressable onPress={()=>moveHomeTile(index,-1)} disabled={index===0}><Text style={{color:index===0?theme.muted:theme.primary,fontSize:17,padding:5}}>↑</Text></Pressable><Pressable onPress={()=>moveHomeTile(index,1)} disabled={index===homeTiles.length-1}><Text style={{color:index===homeTiles.length-1?theme.muted:theme.primary,fontSize:17,padding:5}}>↓</Text></Pressable><Switch value={tile.visible===1} onValueChange={value=>toggleHomeTile(tile,value)} trackColor={{true:theme.primary}}/></View>)}<Button theme={theme} secondary label="Reset dashboard layout" onPress={resetHomeTiles}/></Card><Card theme={theme} title="Profile"><Field theme={theme} label="Name" value={name} onChangeText={setName}/><Field theme={theme} label="Student number" value={student} onChangeText={setStudent}/><Field theme={theme} label="Year & section" value={section} onChangeText={setSection}/><Button theme={theme} label="Save profile" onPress={save}/></Card><Card theme={theme} title="Appearance & design"><Text style={{color:theme.muted}}>Choose your CampusOS color combination.</Text><View style={s.paletteGrid}>{(Object.keys(palettes) as PaletteName[]).map(k=><Pressable key={k} onPress={()=>onPalette(k)} style={[s.palette,{borderColor:palette===k?theme.primary:theme.border,borderWidth:palette===k?2:1}]}><View style={[s.swatch,{backgroundColor:palettes[k].primary}]}/><Text style={{color:theme.text,fontSize:12}}>{palettes[k].label}</Text></Pressable>)}</View><Text style={{color:theme.muted,fontWeight:'700'}}>Display mode</Text><View style={s.chips}>{[['light','Light'],['dark','Dark']].map(([v,l])=><Pressable key={v} onPress={()=>onDark(v==='dark')} style={[s.chip,{backgroundColor:dark===(v==='dark')?theme.primary:theme.surfaceAlt}]}><Text style={{color:dark===(v==='dark')?'#FFF':theme.text}}>{l}</Text></Pressable>)}</View></Card><Card theme={theme} title="Home-screen widgets"><Text style={{color:theme.muted,lineHeight:20}}>Add CampusOS widgets from your Android home screen: touch and hold an empty area, open Widgets, then choose CampusOS · Next Class or CampusOS · Tasks. They refresh when CampusOS opens and when schedule or task data changes.</Text></Card><Card theme={theme} title="Reminders & notifications"><Text style={{color:theme.muted,lineHeight:20}}>Receive reminders before scheduled classes and before task deadlines. Reminders are scheduled locally on this phone; no account or server is used.</Text><View style={[s.listRow,{borderBottomWidth:0}]}><View style={{flex:1,gap:3}}><Text style={{color:theme.text,fontWeight:'800'}}>Class and task reminders</Text><Text style={{color:theme.muted,fontSize:11}}>{notificationPermission?'Android notification permission is granted.': 'Android notification permission is not granted.'}</Text></View><Switch value={remindersEnabled} disabled={reminderBusy} onValueChange={toggleReminders} trackColor={{true:theme.primary}}/></View><Text style={{color:theme.muted,fontSize:11}}>Class alerts are scheduled 30 and 10 minutes before each class. Task alerts are scheduled 1 day and 1 hour before the due time.</Text></Card><Card theme={theme} title="Offline & privacy"><Text style={{color:theme.muted,lineHeight:20}}>This CampusOS version is a personal offline planner. It has no sign-in, admin/member accounts, announcements, group chat, or online campus/community functions.</Text><Text style={{color:theme.muted,fontSize:12}}>App lock and Android home-screen widgets remain in migration.</Text></Card></>;
+ return <>
+  <BackupManager theme={theme}/>
+  <Card theme={theme} title="Dashboard layout">
+   <Text style={{color:theme.muted,lineHeight:19}}>Choose which Home tiles appear and change their order. These settings stay on this device.</Text>
+   {homeTiles.map((tile,index)=><View key={tile.tile_key} style={[s.listRow,{borderBottomColor:theme.border}]}>
+    <View style={{flex:1}}><Text style={{color:theme.text,fontWeight:'700'}}>{homeTileLabels[tile.tile_key]||tile.tile_key}</Text><Text style={{color:theme.muted,fontSize:10}}>Position {index+1}</Text></View>
+    <Pressable onPress={()=>moveHomeTile(index,-1)} disabled={index===0}><Text style={{color:index===0?theme.muted:theme.primary,fontSize:17,padding:5}}>↑</Text></Pressable>
+    <Pressable onPress={()=>moveHomeTile(index,1)} disabled={index===homeTiles.length-1}><Text style={{color:index===homeTiles.length-1?theme.muted:theme.primary,fontSize:17,padding:5}}>↓</Text></Pressable>
+    <Switch value={tile.visible===1} onValueChange={value=>toggleHomeTile(tile,value)} trackColor={{true:theme.primary}}/>
+   </View>)}
+   <Button theme={theme} secondary label="Reset dashboard layout" onPress={resetHomeTiles}/>
+  </Card>
+  <Card theme={theme} title="Profile">
+   <Field theme={theme} label="Name" value={name} onChangeText={setName}/>
+   <Field theme={theme} label="Student number" value={student} onChangeText={setStudent}/>
+   <Field theme={theme} label="Year & section" value={section} onChangeText={setSection}/>
+   <Button theme={theme} label="Save profile" onPress={save}/>
+  </Card>
+  <Card theme={theme} title="Appearance & design">
+   <Text style={{color:theme.muted}}>Choose your CampusOS color combination.</Text>
+   <View style={s.paletteGrid}>{(Object.keys(palettes) as PaletteName[]).map(k=><Pressable key={k} onPress={()=>onPalette(k)} style={[s.palette,{borderColor:palette===k?theme.primary:theme.border,borderWidth:palette===k?2:1}]}><View style={[s.swatch,{backgroundColor:palettes[k].primary}]}/><Text style={{color:theme.text,fontSize:12}}>{palettes[k].label}</Text></Pressable>)}</View>
+   <Text style={{color:theme.muted,fontWeight:'700'}}>Display mode</Text>
+   <View style={s.chips}>{[['light','Light'],['dark','Dark']].map(([v,l])=><Pressable key={v} onPress={()=>onDark(v==='dark')} style={[s.chip,{backgroundColor:dark===(v==='dark')?theme.primary:theme.surfaceAlt}]}><Text style={{color:dark===(v==='dark')?'#FFF':theme.text}}>{l}</Text></Pressable>)}</View>
+  </Card>
+  <Card theme={theme} title="Home-screen widgets"><Text style={{color:theme.muted,lineHeight:20}}>Add CampusOS widgets from your Android home screen: touch and hold an empty area, open Widgets, then choose CampusOS · Next Class or CampusOS · Tasks. They refresh when CampusOS opens and when schedule or task data changes.</Text></Card>
+  <Card theme={theme} title="App lock">
+   <Text style={{color:theme.muted,lineHeight:20}}>Protect this offline planner with a 4–8 digit PIN stored securely on this device. The app locks again when you leave and reopen it.</Text>
+   <View style={s.chips}>
+    <Button theme={theme} secondary label={pinExists?'Change PIN':'Set PIN'} onPress={()=>openPinEditor('setup')}/>
+    {lockEnabled?<Button theme={theme} secondary label="Turn off lock" onPress={()=>openPinEditor('disable')}/>:null}
+   </View>
+   {lockEnabled&&biometricSupported?<View style={[s.listRow,{borderBottomWidth:0}]}>
+    <View style={{flex:1,gap:3}}><Text style={{color:theme.text,fontWeight:'800'}}>Use fingerprint / face unlock</Text><Text style={{color:theme.muted,fontSize:11}}>Uses the biometric method registered in Android.</Text></View>
+    <Switch value={biometricEnabled} onValueChange={toggleBiometric} trackColor={{true:theme.primary}}/>
+   </View>:null}
+   <Text style={{color:theme.muted,fontSize:11}}>{lockEnabled?'App lock is enabled.':'App lock is disabled.'}{!biometricSupported?' Biometric unlock is not available on this device.':''}</Text>
+  </Card>
+  <Card theme={theme} title="Reminders & notifications">
+   <Text style={{color:theme.muted,lineHeight:20}}>Receive reminders before scheduled classes and before task deadlines. Reminders are scheduled locally on this phone; no account or server is used.</Text>
+   <View style={[s.listRow,{borderBottomWidth:0}]}>
+    <View style={{flex:1,gap:3}}><Text style={{color:theme.text,fontWeight:'800'}}>Class and task reminders</Text><Text style={{color:theme.muted,fontSize:11}}>{notificationPermission?'Android notification permission is granted.':'Android notification permission is not granted.'}</Text></View>
+    <Switch value={remindersEnabled} disabled={reminderBusy} onValueChange={toggleReminders} trackColor={{true:theme.primary}}/>
+   </View>
+   <Text style={{color:theme.muted,fontSize:11}}>Class alerts are scheduled 30 and 10 minutes before each class. Task alerts are scheduled 1 day and 1 hour before the due time.</Text>
+  </Card>
+  <Card theme={theme} title="Offline & privacy">
+   <Text style={{color:theme.muted,lineHeight:20}}>This CampusOS version is a personal offline planner. It has no sign-in, admin/member accounts, announcements, group chat, or online campus/community functions.</Text>
+   <Text style={{color:theme.muted,fontSize:12}}>All core planner records and reminders remain on-device.</Text>
+  </Card>
+  <Editor theme={theme} title={lockMode==='disable'?'Turn off app lock':pinExists?'Change app PIN':'Set app PIN'} visible={lockEditor} onClose={()=>setLockEditor(false)}>
+   {pinExists?<Field theme={theme} label="Current PIN" value={currentPin} onChangeText={setCurrentPin} keyboardType="numeric"/>:null}
+   {lockMode==='disable'?<Button theme={theme} label={lockBusy?'Working…':'Confirm and turn off lock'} onPress={disablePin}/>:<>
+    <Field theme={theme} label="New PIN (4–8 digits)" value={newPin} onChangeText={value=>setNewPin(value.replace(/[^0-9]/g,'').slice(0,8))} keyboardType="numeric"/>
+    <Field theme={theme} label="Confirm new PIN" value={confirmPin} onChangeText={value=>setConfirmPin(value.replace(/[^0-9]/g,'').slice(0,8))} keyboardType="numeric"/>
+    <Button theme={theme} label={lockBusy?'Working…':'Save PIN'} onPress={savePin}/>
+   </>}
+  </Editor>
+ </>;
 }
 
 
