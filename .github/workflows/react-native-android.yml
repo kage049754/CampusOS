@@ -40,14 +40,26 @@ jobs:
         run: npm run typecheck
       - name: Generate Android project
         run: npx expo prebuild --platform android --non-interactive
-      - name: Build debug APK
+      - name: Build ARM64 debug APK
         working-directory: mobile/android
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug
+          ./gradlew --no-daemon assembleDebug -PreactNativeArchitectures=arm64-v8a
+      - name: Verify APK manifest and signature
+        working-directory: mobile
+        run: |
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/campusos-apk-badging.txt
+          grep -q "package: name='com.kage049754.campusos'" /tmp/campusos-apk-badging.txt
+          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          sha256sum "$APK" | tee "$APK.sha256"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: CampusOS-react-native-debug
-          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          name: CampusOS-react-native-arm64-debug
+          path: |
+            mobile/android/app/build/outputs/apk/debug/app-debug.apk
+            mobile/android/app/build/outputs/apk/debug/app-debug.apk.sha256
           if-no-files-found: error
