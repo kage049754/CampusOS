@@ -39,7 +39,8 @@ export async function rescheduleCampusReminders(): Promise<void> {
   await Notifications.setNotificationChannelAsync(CHANNEL_ID, { name:'CampusOS reminders', importance:Notifications.AndroidImportance.MAX, vibrationPattern:[0,250,250,250], sound:'default' });
   const [classes,tasks,notes] = await Promise.all([
     db.getAllAsync<{id:string;title:string;day:number;start_time:string;end_time:string;kind:string;room:string}>('SELECT id,title,day,start_time,end_time,kind,room FROM schedule_entries'),
-    db.getAllAsync<{id:string;title:string;due_date:string;due_time:string;done:number}>('SELECT id,title,due_date,due_time,done FROM tasks WHERE done=0 AND due_date IS NOT NULL AND due_date<>\'\'')
+    db.getAllAsync<{id:string;title:string;due_date:string;due_time:string;done:number}>('SELECT id,title,due_date,due_time,done FROM tasks WHERE done=0 AND due_date IS NOT NULL AND due_date<>\'\'')    db.getAllAsync<{id:string;title:string;note_date:string;note_time:string}>('SELECT id,title,note_date,note_time FROM notes WHERE note_date<>\'\' AND note_time<>\'\'')
+
   ]);
   const now=Date.now(); let count=0;
   const scheduleOne=async(title:string,body:string,trigger:Date,kind:string,recordId:string)=>{

@@ -147,7 +147,7 @@ export function ScheduleScreen({theme}:P){
   setDay(row?.day??(selectedDays[0]??0));setKind(row?.kind||'Lecture');setStartTime(row?.start_time||'08:00');setEndTime(row?.end_time||'09:00');setRoom(row?.room||'');setProf(row?.professor||'');setNotes(row?.notes||'');setVisible(true);
  };
  const save=async()=>{
-  if(!title.trim()||!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(startTime)||!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(endTime)||mins(endTime)<=mins(startTime))return Alert.alert('Check class details','Provide a subject and valid start/end times.');
+  if(!title.trim()||!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)||mins(endTime)<=mins(startTime))return Alert.alert('Check class details','Provide a subject and valid start/end times.');
   const conflict=rows.find(row=>row.day===day&&row.id!==edit?.id&&mins(startTime)<mins(row.end_time)&&mins(endTime)>mins(row.start_time));
   if(conflict)return Alert.alert('Schedule conflict','This overlaps '+conflict.title+' ('+conflict.start_time+'–'+conflict.end_time+').');
   const db=await database;
@@ -336,7 +336,7 @@ function calendarDays(monthValue:string):string[]{
 function to24HourAlarm(raw:string):string|null{
  const value=raw.trim();
  if(!value)return '';
- const match=value.match(/^(\\d{1,2}):(\\d{2})\\s*(AM|PM)$/i);
+ const match=value.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
  if(match){
   let hour=Number(match[1]);const minute=Number(match[2]);
   if(hour<1||hour>12||minute>59)return null;
@@ -345,7 +345,7 @@ function to24HourAlarm(raw:string):string|null{
   else hour=hour===12?12:hour+12;
   return String(hour).padStart(2,'0')+':'+String(minute).padStart(2,'0');
  }
- if(/^([01]\\d|2[0-3]):[0-5]\\d$/.test(value))return value;
+ if(/^([01]\d|2[0-3]):[0-5]\d$/.test(value))return value;
  return null;
 }
 function to12HourAlarm(raw:string):string{
@@ -380,8 +380,8 @@ export function TasksScreen({theme}:P){
  };
  const save=async()=>{
   if(!title.trim())return Alert.alert('Task title required');
-  if(date&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(date))return Alert.alert('Invalid due date','Use YYYY-MM-DD.');
-  if(time&&!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(time))return Alert.alert('Invalid reminder time','Use HH:MM.');
+  if(date&&!/^\d{4}-\d{2}-\d{2}$/.test(date))return Alert.alert('Invalid due date','Use YYYY-MM-DD.');
+  if(time&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))return Alert.alert('Invalid reminder time','Use HH:MM.');
   const oldItems=parseChecklist(edit?.checklist||'[]');
   const checklist=checklistText.split(/\\r?\\n/).map(value=>value.trim()).filter(Boolean).map(value=>{
    const previous=oldItems.find(item=>item.title.toLocaleLowerCase()===value.toLocaleLowerCase());
@@ -495,7 +495,7 @@ export function NotesScreen({theme}:P){
  };
  const save=async()=>{
   if(!title.trim()&&!body.trim())return Alert.alert('Note is empty');
-  if(date&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(date))return Alert.alert('Invalid date','Use YYYY-MM-DD or leave the date empty.');
+  if(date&&!/^\d{4}-\d{2}-\d{2}$/.test(date))return Alert.alert('Invalid date','Use YYYY-MM-DD or leave the date empty.');
   const alarmValue=to24HourAlarm(alarm);
   if(alarmValue===null)return Alert.alert('Invalid alarm time','Enter a time such as 09:30 AM or 06:15 PM.');
   if(alarmValue&&!date)return Alert.alert('Date required','Choose a date before setting a note alarm.');
@@ -635,7 +635,7 @@ export function BudgetScreen({theme}:P){
  };
  const saveEntry=async()=>{
   const value=Number(amount);if(!Number.isFinite(value)||value<=0)return Alert.alert('Enter a valid amount');
-  if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(entryDate))return Alert.alert('Invalid transaction date','Use YYYY-MM-DD.');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(entryDate))return Alert.alert('Invalid transaction date','Use YYYY-MM-DD.');
   if(type==='saving'&&!targetId)return Alert.alert('Choose a savings goal','Create or select a savings goal for this contribution.');
   const db=await database;const id=editing?.id||uid('budget');const created=editing?.created_at||Date.now();
   await db.withTransactionAsync(async()=>{
@@ -924,7 +924,7 @@ export function SettingsScreen({theme,palette,onPalette,dark,onDark,onLockChange
   try{
    const existing=await SecureStore.getItemAsync(APP_PIN_KEY);
    if(existing&&existing!==currentPin){Alert.alert('Current PIN is incorrect');return;}
-   if(!/^\\d{4,8}$/.test(newPin)){Alert.alert('Invalid PIN','Use 4 to 8 digits.');return;}
+   if(!/^\d{4,8}$/.test(newPin)){Alert.alert('Invalid PIN','Use 4 to 8 digits.');return;}
    if(newPin!==confirmPin){Alert.alert('PINs do not match');return;}
    await SecureStore.setItemAsync(APP_PIN_KEY,newPin);
    const db=await database;
