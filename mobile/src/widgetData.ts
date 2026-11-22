@@ -23,7 +23,7 @@ export async function updateCampusWidgets():Promise<void>{
   const active=classes.find(row=>row.start_time<=time&&row.end_time>time);
   const nextTitle=next?.title||'No more classes today';
   const nextTime=next?(active?'In progress · '+active.end_time+' end':next.start_time+'–'+next.end_time):'Open your weekly timetable';
-  const detail=next?[next.kind,row.room].filter(Boolean).join(' · '):'Add or edit classes in Schedule.';
+  const detail=next?[next.kind,next.room].filter(Boolean).join(' · '):'Add or edit classes in Schedule.';
   CampusNextClassWidget.updateSnapshot({title:nextTitle,time:nextTime,detail});
   const task=tasks[0];
   const dueText=task?(task.due_date===today?'Due today': 'Due '+task.due_date)+(task.due_time?' · '+task.due_time:''):'No upcoming task deadline';
