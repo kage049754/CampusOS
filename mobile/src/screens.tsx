@@ -113,29 +113,42 @@ export function ScheduleScreen({theme}:P){
  const [selectedDays,setSelectedDays]=useState<number[]>([0,1,2,3,4,5]);
  const [startHour,setStartHour]=useState('07');
  const [endHour,setEndHour]=useState('21');
- const [title,setTitle]=useState(''),[code,setCode]=useState(''),[day,setDay]=useState(0),[kind,setKind]=useState('Lecture'),[start,setStart]=useState('08:00'),[end,setEnd]=useState('09:00'),[room,setRoom]=useState(''),[prof,setProf]=useState(''),[notes,setNotes]=useState('');
+ const [gridMode,setGridMode]=useState(true);
+ const [selectedGridDay,setSelectedGridDay]=useState<number|null>(null);
+ const [horizontalScroll,setHorizontalScroll]=useState(false);
+ const [verticalScroll,setVerticalScroll]=useState(false);
+ const [tableFontSize,setTableFontSize]=useState('11');
+ const [dayColumnWidth,setDayColumnWidth]=useState('0');
+ const [tableRowHeight,setTableRowHeight]=useState('0');
+ const [zoom,setZoom]=useState(1);
+ const [title,setTitle]=useState(''),[code,setCode]=useState(''),[day,setDay]=useState(0),[kind,setKind]=useState('Lecture'),[startTime,setStartTime]=useState('08:00'),[endTime,setEndTime]=useState('09:00'),[room,setRoom]=useState(''),[prof,setProf]=useState(''),[notes,setNotes]=useState('');
  const refresh=useCallback(async()=>{
   const db=await database;
-  const [classRows,daySetting,startSetting,endSetting]=await Promise.all([
+  const keys=['schedule_days','schedule_start_hour','schedule_end_hour','schedule_table_horizontal_scroll','schedule_table_vertical_scroll','schedule_table_font_size','schedule_table_day_width','schedule_table_row_height'];
+  const [classRows,...settingsRows]=await Promise.all([
    db.getAllAsync<ClassRow>('SELECT * FROM schedule_entries ORDER BY day,start_time'),
-   db.getFirstAsync<{value:string}>("SELECT value FROM app_settings WHERE key='schedule_days'"),
-   db.getFirstAsync<{value:string}>("SELECT value FROM app_settings WHERE key='schedule_start_hour'"),
-   db.getFirstAsync<{value:string}>("SELECT value FROM app_settings WHERE key='schedule_end_hour'")
+   ...keys.map(key=>db.getFirstAsync<{value:string}>('SELECT value FROM app_settings WHERE key=?',key))
   ]);
   setRows(classRows);
-  if(daySetting?.value)setSelectedDays(daySetting.value.split(',').map(Number).filter(value=>Number.isInteger(value)&&value>=0&&value<=6));
-  if(startSetting?.value)setStartHour(startSetting.value);
-  if(endSetting?.value)setEndHour(endSetting.value);
+  const values=Object.fromEntries(keys.map((key,index)=>[key,settingsRows[index]?.value]));
+  if(values.schedule_days!==undefined)setSelectedDays(values.schedule_days.split(',').map(Number).filter(value=>Number.isInteger(value)&&value>=0&&value<=6));
+  if(values.schedule_start_hour!==undefined)setStartHour(values.schedule_start_hour);
+  if(values.schedule_end_hour!==undefined)setEndHour(values.schedule_end_hour);
+  if(values.schedule_table_horizontal_scroll!==undefined)setHorizontalScroll(values.schedule_table_horizontal_scroll==='true');
+  if(values.schedule_table_vertical_scroll!==undefined)setVerticalScroll(values.schedule_table_vertical_scroll==='true');
+  if(values.schedule_table_font_size!==undefined)setTableFontSize(values.schedule_table_font_size);
+  if(values.schedule_table_day_width!==undefined)setDayColumnWidth(values.schedule_table_day_width);
+  if(values.schedule_table_row_height!==undefined)setTableRowHeight(values.schedule_table_row_height);
  },[]);
  useEffect(()=>{refresh();},[refresh]);
  const open=async(row?:ClassRow)=>{
   setEdit(row||null);setTitle(row?.title||'');setCode('');
   if(row?.subject_id){const db=await database;const subject=await db.getFirstAsync<SubjectRow>('SELECT * FROM subjects WHERE id=?',row.subject_id);if(subject){setTitle(subject.title);setCode(subject.code);}}
-  setDay(row?.day??(selectedDays[0]??0));setKind(row?.kind||'Lecture');setStart(row?.start_time||'08:00');setEnd(row?.end_time||'09:00');setRoom(row?.room||'');setProf(row?.professor||'');setNotes(row?.notes||'');setVisible(true);
+  setDay(row?.day??(selectedDays[0]??0));setKind(row?.kind||'Lecture');setStartTime(row?.start_time||'08:00');setEndTime(row?.end_time||'09:00');setRoom(row?.room||'');setProf(row?.professor||'');setNotes(row?.notes||'');setVisible(true);
  };
  const save=async()=>{
-  if(!title.trim()||!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(start)||!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(end)||mins(end)<=mins(start))return Alert.alert('Check class details','Provide a subject and valid start/end times.');
-  const conflict=rows.find(row=>row.day===day&&row.id!==edit?.id&&mins(start)<mins(row.end_time)&&mins(end)>mins(row.start_time));
+  if(!title.trim()||!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(startTime)||!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(endTime)||mins(endTime)<=mins(startTime))return Alert.alert('Check class details','Provide a subject and valid start/end times.');
+  const conflict=rows.find(row=>row.day===day&&row.id!==edit?.id&&mins(startTime)<mins(row.end_time)&&mins(endTime)>mins(row.start_time));
   if(conflict)return Alert.alert('Schedule conflict','This overlaps '+conflict.title+' ('+conflict.start_time+'–'+conflict.end_time+').');
   const db=await database;
   let subject=edit?.subject_id?await db.getFirstAsync<SubjectRow>('SELECT * FROM subjects WHERE id=?',edit.subject_id):null;
@@ -144,7 +157,7 @@ export function ScheduleScreen({theme}:P){
   if(!subject)await db.runAsync('INSERT INTO subjects (id,code,title,color,created_at) VALUES (?,?,?,?,?)',subjectId,code.trim(),title.trim(),theme.primary,Date.now());
   else if(subject.title!==title.trim()||(code.trim()&&subject.code!==code.trim()))await db.runAsync('UPDATE subjects SET code=?,title=? WHERE id=?',code.trim()||subject.code,title.trim(),subjectId);
   const id=edit?.id||uid('class');
-  await db.runAsync('INSERT OR REPLACE INTO schedule_entries (id,subject_id,title,day,start_time,end_time,kind,room,professor,notes) VALUES (?,?,?,?,?,?,?,?,?,?)',id,subjectId,code.trim()?code.trim()+' · '+title.trim():title.trim(),day,start,end,kind,room.trim(),prof.trim(),notes.trim());
+  await db.runAsync('INSERT OR REPLACE INTO schedule_entries (id,subject_id,title,day,start_time,end_time,kind,room,professor,notes) VALUES (?,?,?,?,?,?,?,?,?,?)',id,subjectId,code.trim()?code.trim()+' · '+title.trim():title.trim(),day,startTime,endTime,kind,room.trim(),prof.trim(),notes.trim());
   if(!selectedDays.includes(day)){
    const next=[...selectedDays,day].sort((a,b)=>a-b);setSelectedDays(next);
    await db.runAsync("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('schedule_days',?)",next.join(','));
@@ -153,27 +166,109 @@ export function ScheduleScreen({theme}:P){
   rescheduleCampusReminders().catch(error=>console.warn('CampusOS reminders could not be refreshed',error));
   updateCampusWidgets().catch(error=>console.warn('CampusOS widgets could not be refreshed',error));
  };
- const del=(row:ClassRow)=>Alert.alert('Delete class?',row.title,[{text:'Cancel'},{text:'Delete',style:'destructive',onPress:async()=>{const db=await database;await db.runAsync('DELETE FROM schedule_entries WHERE id=?',row.id);await refresh();rescheduleCampusReminders().catch(error=>console.warn('CampusOS reminders could not be refreshed',error));updateCampusWidgets().catch(error=>console.warn('CampusOS widgets could not be refreshed',error));updateCampusWidgets().catch(error=>console.warn('CampusOS widgets could not be refreshed',error));}}]);
+ const del=(row:ClassRow)=>Alert.alert('Delete class?',row.title,[{text:'Cancel'},{text:'Delete',style:'destructive',onPress:async()=>{
+  const db=await database;await db.runAsync('DELETE FROM schedule_entries WHERE id=?',row.id);await refresh();
+  rescheduleCampusReminders().catch(error=>console.warn('CampusOS reminders could not be refreshed',error));
+  updateCampusWidgets().catch(error=>console.warn('CampusOS widgets could not be refreshed',error));
+ }}]);
  const toggleDay=(value:number)=>setSelectedDays(current=>current.includes(value)?current.filter(dayValue=>dayValue!==value):[...current,value].sort((a,b)=>a-b));
  const saveSettings=async()=>{
   const first=Number(startHour),last=Number(endHour);
   if(!Number.isInteger(first)||!Number.isInteger(last)||first<0||first>23||last<1||last>24||last<=first)return Alert.alert('Invalid timetable range','Choose a start hour from 0–23 and a later end hour up to 24.');
   if(selectedDays.length===0)return Alert.alert('Choose class days','At least one timetable day must remain enabled.');
+  const font=Number(tableFontSize),width=Number(dayColumnWidth),height=Number(tableRowHeight);
+  if(!Number.isFinite(font)||font<8||font>18)return Alert.alert('Invalid text size','Use a value from 8 to 18.');
+  if(!Number.isFinite(width)||width!==0&&(width<60||width>180))return Alert.alert('Invalid day width','Use 0 for automatic or 60 to 180 dp.');
+  if(!Number.isFinite(height)||height!==0&&(height<30||height>120))return Alert.alert('Invalid row height','Use 0 for automatic or 30 to 120 dp.');
   const db=await database;
-  await db.runAsync("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('schedule_days',?)",selectedDays.join(','));
-  await db.runAsync("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('schedule_start_hour',?)",String(first));
-  await db.runAsync("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('schedule_end_hour',?)",String(last));
-  setSettingsVisible(false);
+  const settings:{key:string;value:string}[]=[
+   {key:'schedule_days',value:selectedDays.join(',')},
+   {key:'schedule_start_hour',value:String(first)},
+   {key:'schedule_end_hour',value:String(last)},
+   {key:'schedule_table_horizontal_scroll',value:String(horizontalScroll)},
+   {key:'schedule_table_vertical_scroll',value:String(verticalScroll)},
+   {key:'schedule_table_font_size',value:String(font)},
+   {key:'schedule_table_day_width',value:String(width)},
+   {key:'schedule_table_row_height',value:String(height)}
+  ];
+  await db.withTransactionAsync(async()=>{for(const setting of settings)await db.runAsync('INSERT OR REPLACE INTO app_settings (key,value) VALUES (?,?)',setting.key,setting.value);});
+  setStartHour(String(first));setEndHour(String(last));setTableFontSize(String(font));setDayColumnWidth(String(width));setTableRowHeight(String(height));
+  setSelectedGridDay(null);setZoom(1);setSettingsVisible(false);
  };
- const startLabel=String(startHour).padStart(2,'0')+':00';
- const endLabel=String(endHour).padStart(2,'0')+':00';
+ const firstHour=Math.max(0,Math.min(23,Number(startHour)||7));
+ const lastHour=Math.max(firstHour+1,Math.min(24,Number(endHour)||21));
+ const visibleDays=selectedGridDay!==null&&selectedDays.includes(selectedGridDay)?[selectedGridDay]:selectedDays;
+ const now=new Date();
+ const currentDay=(now.getDay()+6)%7;
+ const currentMinutes=now.getHours()*60+now.getMinutes();
+ const fontSize=Math.max(8,Math.min(18,Number(tableFontSize)||11));
+ const fixedColumnWidth=Math.max(60,Math.min(180,Number(dayColumnWidth)||116))*zoom;
+ const rowHeight=Math.max(30,Math.min(120,Number(tableRowHeight)||60))*zoom;
+ const tableMinimumWidth=horizontalScroll?62+visibleDays.length*fixedColumnWidth:'100%';
+ const renderGrid=()=>{
+  const header=<View style={{flexDirection:'row',minHeight:42,borderBottomWidth:1,borderBottomColor:theme.border}}>
+   <View style={{width:62,justifyContent:'center',alignItems:'center',backgroundColor:theme.surfaceAlt,borderRightWidth:1,borderRightColor:theme.border}}><Text style={{color:theme.muted,fontSize:Math.max(8,fontSize-1),fontWeight:'800'}}>TIME</Text></View>
+   {visibleDays.map(index=><Pressable key={index} onPress={()=>setSelectedGridDay(selectedGridDay===index?null:index)} style={{width:horizontalScroll?fixedColumnWidth:undefined,flex:horizontalScroll?0:1,minWidth:horizontalScroll?0:42,justifyContent:'center',alignItems:'center',backgroundColor:selectedGridDay===index?theme.primarySoft:theme.surfaceAlt,borderRightWidth:1,borderRightColor:theme.border,paddingHorizontal:2}}>
+    <Text numberOfLines={1} style={{color:theme.text,fontSize:fontSize,fontWeight:'900'}}>{days[index].slice(0,3).toUpperCase()}</Text>
+    {index===currentDay?<Text style={{color:theme.primary,fontSize:9,fontWeight:'800'}}>TODAY</Text>:null}
+   </Pressable>)}
+  </View>;
+  const tableRows=Array.from({length:lastHour-firstHour},(_,offset)=>firstHour+offset).map(hour=>{
+   const hourStart=hour*60;
+   return <View key={hour} style={{flexDirection:'row',minHeight:rowHeight,borderBottomWidth:1,borderBottomColor:theme.border}}>
+    <View style={{width:62,alignItems:'center',justifyContent:'center',backgroundColor:theme.surfaceAlt,borderRightWidth:1,borderRightColor:theme.border,paddingHorizontal:2}}>
+     <Text style={{color:theme.muted,fontSize:Math.max(8,fontSize-1),fontWeight:'700'}}>{String(hour).padStart(2,'0')}:00</Text>
+     <Text style={{color:theme.muted,fontSize:8}}>{String((hour+1)%24).padStart(2,'0')}:00</Text>
+    </View>
+    {visibleDays.map(index=>{
+     const cellRows=rows.filter(row=>row.day===index&&Math.floor(mins(row.start_time)/60)===hour).sort((a,b)=>mins(a.start_time)-mins(b.start_time));
+     const grouped=new Map<string,ClassRow[]>();
+     for(const row of cellRows){
+      const key=[row.subject_id||row.title,row.kind,row.room,row.start_time].join('|');
+      const group=grouped.get(key)||[];group.push(row);grouped.set(key,group);
+     }
+     const cellGroups=Array.from(grouped.values()).slice(0,3);
+     const isToday=index===currentDay;
+     return <View key={index} style={{width:horizontalScroll?fixedColumnWidth:undefined,flex:horizontalScroll?0:1,minWidth:horizontalScroll?0:42,borderRightWidth:1,borderRightColor:theme.border,padding:2,backgroundColor:isToday?theme.primarySoft+'55':theme.surface}}>
+      {cellGroups.length===0?<View style={{flex:1,justifyContent:'center',alignItems:'center'}}><Text style={{color:theme.border,fontSize:11}}>—</Text></View>:cellGroups.map((group,groupIndex)=>{
+       const row=group[0],isLab=row.kind.toLowerCase().includes('lab');
+       const start=mins(row.start_time),end=mins(row.end_time);
+       const active=isToday&&currentMinutes>=start&&currentMinutes<end;
+       const bg=isLab?theme.accent+'20':theme.primarySoft;
+       return <Pressable key={row.id+'-'+groupIndex} onPress={()=>open(row)} style={{flex:1,minHeight:Math.min(rowHeight-4,54),borderRadius:6,marginVertical:1,paddingHorizontal:4,paddingVertical:3,backgroundColor:bg,borderWidth:active?2:1,borderColor:active?theme.primary:theme.border,justifyContent:'center'}}>
+        <Text numberOfLines={2} style={{color:theme.text,fontWeight:'800',fontSize:Math.max(8,fontSize-1)}}>{row.title}</Text>
+        <Text numberOfLines={1} style={{color:isLab?theme.accent:theme.primary,fontWeight:'700',fontSize:Math.max(8,fontSize-2)}}>{row.start_time}–{row.end_time} · {isLab?'LAB':'LEC'}</Text>
+        {row.room?<Text numberOfLines={1} style={{color:theme.muted,fontSize:8}}>{row.room}</Text>:null}
+        {active?<View style={{height:3,backgroundColor:theme.primary,borderRadius:3,marginTop:2,width:Math.max(0,Math.min(100,((currentMinutes-start)/Math.max(1,end-start))*100))+'%'}}/>:null}
+       </Pressable>;
+      })}
+     </View>;
+    })}
+   </View>;
+  });
+  const table=<View style={{width:tableMinimumWidth,borderWidth:1,borderColor:theme.border,borderRadius:12,overflow:'hidden'}}>{header}{tableRows}</View>;
+  const horizontallyScrollable=<ScrollView horizontal={horizontalScroll} scrollEnabled={horizontalScroll} nestedScrollEnabled showsHorizontalScrollIndicator={horizontalScroll} contentContainerStyle={{minWidth:horizontalScroll?undefined:'100%'}}>{table}</ScrollView>;
+  return verticalScroll?<ScrollView style={{maxHeight:520}} nestedScrollEnabled showsVerticalScrollIndicator contentContainerStyle={{paddingBottom:4}}>{horizontallyScrollable}</ScrollView>:horizontallyScrollable;
+ };
  return <>
   <Card theme={theme} title="Weekly timetable">
-   <Text style={{color:theme.muted}}>Lecture and laboratory sessions are checked for overlaps. Adjacent sessions with the same subject, room, and type are grouped in this view.</Text>
-   <View style={s.listRow}><View style={{flex:1}}><Text style={{color:theme.text,fontWeight:'800'}}>{selectedDays.length} timetable days</Text><Text style={{color:theme.muted,fontSize:11}}>{startLabel}–{endLabel} · {rows.length} class entries</Text></View><Pressable onPress={()=>setSettingsVisible(true)}><Text style={{color:theme.primary,fontWeight:'800',padding:6}}>Timetable settings</Text></Pressable></View>
-   <Button theme={theme} label="＋ Add class" onPress={()=>open()}/>
+   <Text style={{color:theme.muted}}>View classes by hour and day. Tap a class to edit it; tap a day heading to focus that day.</Text>
+   <View style={s.listRow}>
+    <View style={{flex:1}}><Text style={{color:theme.text,fontWeight:'800'}}>{selectedDays.length} timetable days</Text><Text style={{color:theme.muted,fontSize:11}}>{String(firstHour).padStart(2,'0')}:00–{String(lastHour).padStart(2,'0')}:00 · {rows.length} class entries</Text></View>
+    <Pressable onPress={()=>setSettingsVisible(true)}><Text style={{color:theme.primary,fontWeight:'800',padding:6}}>Table settings</Text></Pressable>
+   </View>
+   <View style={s.chips}>
+    <Pressable onPress={()=>setGridMode(true)} style={[s.chip,{backgroundColor:gridMode?theme.primary:theme.surfaceAlt}]}><Text style={{color:gridMode?'#FFF':theme.text,fontSize:12,fontWeight:'700'}}>Grid</Text></Pressable>
+    <Pressable onPress={()=>{setGridMode(false);setSelectedGridDay(null);}} style={[s.chip,{backgroundColor:!gridMode?theme.primary:theme.surfaceAlt}]}><Text style={{color:!gridMode?'#FFF':theme.text,fontSize:12,fontWeight:'700'}}>List</Text></Pressable>
+    {gridMode&&selectedGridDay!==null?<Pressable onPress={()=>setSelectedGridDay(null)} style={[s.chip,{backgroundColor:theme.surfaceAlt}]}><Text style={{color:theme.primary,fontSize:12}}>Show all days</Text></Pressable>:null}
+   </View>
+   {gridMode?<View style={{gap:7}}>
+    {(horizontalScroll||verticalScroll)?<View style={s.listRow}><Text style={{color:theme.muted,fontSize:10,flex:1}}>Zoom {zoom.toFixed(2).replace(/0+$/,'').replace(/\\.$/,'')}×</Text><Pressable onPress={()=>setZoom(value=>Math.max(0.75,value-0.25))}><Text style={{color:theme.primary,padding:5}}>−</Text></Pressable><Pressable onPress={()=>setZoom(value=>Math.min(2,value+0.25))}><Text style={{color:theme.primary,padding:5}}>＋</Text></Pressable><Pressable onPress={()=>setZoom(1)}><Text style={{color:theme.primary,padding:5}}>Reset</Text></Pressable></View>:null}
+    {visibleDays.length?renderGrid():<Empty theme={theme} text="Choose at least one class day in Table settings."/>}
+   </View>:null}
+   {!gridMode?<Button theme={theme} label="＋ Add class" onPress={()=>open()}/>:<Button theme={theme} secondary label="＋ Add class" onPress={()=>open()}/>}
   </Card>
-  {selectedDays.map(index=>{
+  {!gridMode?selectedDays.map(index=>{
    const items=mergeAdjacentClasses(rows.filter(row=>row.day===index));
    return <Card key={index} theme={theme} title={days[index]}>
     {items.length?items.map(row=><View key={row.mergedIds.join('|')} style={[s.listRow,{borderBottomColor:theme.border,alignItems:'flex-start'}]}>
@@ -188,7 +283,7 @@ export function ScheduleScreen({theme}:P){
      <Pressable onPress={()=>del(row)}><Text style={{color:theme.danger,padding:5}}>×</Text></Pressable>
     </View>):<Text style={{color:theme.muted,fontSize:12}}>No classes</Text>}
    </Card>;
-  })}
+  }):null}
   <Editor theme={theme} title={edit?'Edit class':'Add class'} visible={visible} onClose={()=>setVisible(false)}>
    <Field theme={theme} label="Subject name" value={title} onChangeText={setTitle}/>
    <Field theme={theme} label="Subject code (optional)" value={code} onChangeText={setCode}/>
@@ -196,19 +291,23 @@ export function ScheduleScreen({theme}:P){
    <View style={s.chips}>{days.map((label,index)=><Pressable key={label} onPress={()=>setDay(index)} style={[s.chip,{backgroundColor:day===index?theme.primary:theme.surfaceAlt}]}><Text style={{color:day===index?'#FFF':theme.text,fontSize:12}}>{label.slice(0,3)}</Text></Pressable>)}</View>
    <Text style={{color:theme.muted,fontWeight:'700'}}>Type</Text>
    <View style={s.chips}>{['Lecture','Laboratory'].map(value=><Pressable key={value} onPress={()=>setKind(value)} style={[s.chip,{backgroundColor:kind===value?theme.primary:theme.surfaceAlt}]}><Text style={{color:kind===value?'#FFF':theme.text}}>{value}</Text></Pressable>)}</View>
-   <Field theme={theme} label="Start time (HH:MM)" value={start} onChangeText={setStart}/>
-   <Field theme={theme} label="End time (HH:MM)" value={end} onChangeText={setEnd}/>
+   <Field theme={theme} label="Start time (HH:MM)" value={startTime} onChangeText={setStartTime}/>
+   <Field theme={theme} label="End time (HH:MM)" value={endTime} onChangeText={setEndTime}/>
    <Field theme={theme} label="Room" value={room} onChangeText={setRoom}/>
    <Field theme={theme} label="Professor" value={prof} onChangeText={setProf}/>
    <Field theme={theme} label="Class notes" value={notes} onChangeText={setNotes} multiline/>
    <Button theme={theme} label="Save class" onPress={save}/>
   </Editor>
-  <Editor theme={theme} title="Timetable settings" visible={settingsVisible} onClose={()=>setSettingsVisible(false)}>
+  <Editor theme={theme} title="Timetable and table settings" visible={settingsVisible} onClose={()=>setSettingsVisible(false)}>
    <Text style={{color:theme.muted,fontWeight:'700'}}>Class days</Text>
    <View style={s.chips}>{days.map((label,index)=><Pressable key={label} onPress={()=>toggleDay(index)} style={[s.chip,{backgroundColor:selectedDays.includes(index)?theme.primary:theme.surfaceAlt}]}><Text style={{color:selectedDays.includes(index)?'#FFF':theme.text,fontSize:12}}>{label.slice(0,3)}</Text></Pressable>)}</View>
    <Field theme={theme} label="Timetable start hour (00–23)" value={startHour} onChangeText={setStartHour} keyboardType="numeric"/>
    <Field theme={theme} label="Timetable end hour (01–24)" value={endHour} onChangeText={setEndHour} keyboardType="numeric"/>
-   <Text style={{color:theme.muted,fontSize:11}}>These settings control which days are shown and the timetable time range. Existing classes are kept if you hide a day.</Text>
+   <View style={s.listRow}><View style={{flex:1,gap:3}}><Text style={{color:theme.text,fontWeight:'700'}}>Horizontal scrolling</Text><Text style={{color:theme.muted,fontSize:10}}>Swipe sideways when you have many class days.</Text></View><Switch value={horizontalScroll} onValueChange={setHorizontalScroll} trackColor={{true:theme.primary}}/></View>
+   <View style={s.listRow}><View style={{flex:1,gap:3}}><Text style={{color:theme.text,fontWeight:'700'}}>Vertical scrolling</Text><Text style={{color:theme.muted,fontSize:10}}>Scroll the timetable independently up and down.</Text></View><Switch value={verticalScroll} onValueChange={setVerticalScroll} trackColor={{true:theme.primary}}/></View>
+   <Field theme={theme} label="Text size (8–18)" value={tableFontSize} onChangeText={setTableFontSize} keyboardType="numeric"/>
+   <Field theme={theme} label="Day width in dp (0 = auto, 60–180)" value={dayColumnWidth} onChangeText={setDayColumnWidth} keyboardType="numeric"/>
+   <Field theme={theme} label="Row height in dp (0 = auto, 30–120)" value={tableRowHeight} onChangeText={setTableRowHeight} keyboardType="numeric"/>
    <Button theme={theme} label="Save timetable settings" onPress={saveSettings}/>
   </Editor>
  </>;
