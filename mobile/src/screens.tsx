@@ -87,6 +87,20 @@ export function HomeScreen({theme,go}:P&{go:(v:string)=>void}){
  return <>{tiles.filter(tile=>tile.visible===1).map(tile=><View key={tile.tile_key}>{renderTile(tile.tile_key)}</View>)}</>;
 }
 
+type DisplayClass = ClassRow & { mergedCount:number; mergedIds:string[]; merged_end_time:string };
+function mergeAdjacentClasses(items:ClassRow[]):DisplayClass[]{
+ const sorted=[...items].sort((a,b)=>mins(a.start_time)-mins(b.start_time));
+ const result:DisplayClass[]=[];
+ for(const row of sorted){
+  const previous=result[result.length-1];
+  const sameSubject=Boolean(previous&&((previous.subject_id&&row.subject_id&&previous.subject_id===row.subject_id)||previous.title===row.title));
+  if(previous&&sameSubject&&previous.room.trim().toLowerCase()===row.room.trim().toLowerCase()&&previous.kind===row.kind&&previous.merged_end_time===row.start_time){
+   result[result.length-1]={...previous,merged_end_time:row.end_time,mergedCount:previous.mergedCount+1,mergedIds:[...previous.mergedIds,row.id]};
+  }else result.push({...row,merged_end_time:row.end_time,mergedCount:1,mergedIds:[row.id]});
+ }
+ return result;
+}
+
 export function ScheduleScreen({theme}:P){
  const [rows,setRows]=useState<ClassRow[]>([]);
  const [visible,setVisible]=useState(false);
@@ -161,7 +175,7 @@ export function ScheduleScreen({theme}:P){
      <View style={{width:4,alignSelf:'stretch',borderRadius:4,backgroundColor:theme.primary}}/>
      <View style={{flex:1,gap:3}}>
       <Text style={[s.itemTitle,{color:theme.text}]}>{row.title}</Text>
-      <Text style={{color:theme.primary,fontSize:12,fontWeight:'800'}}>{row.start_time}–{row.end_time} · {row.kind}{row.mergedCount>1?' · '+row.mergedCount+' adjacent sessions':''}</Text>
+      <Text style={{color:theme.primary,fontSize:12,fontWeight:'800'}}>{row.start_time}–{row.merged_end_time} · {row.kind}{row.mergedCount>1?' · '+row.mergedCount+' adjacent sessions':''}</Text>
       <Text style={{color:theme.muted,fontSize:12}}>{[row.room,row.professor].filter(Boolean).join(' · ')||'No room assigned'}</Text>
       {row.notes?<Text style={{color:theme.muted,fontSize:12}}>{row.notes}</Text>:null}
      </View>
