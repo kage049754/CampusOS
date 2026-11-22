@@ -83,6 +83,15 @@ export async function createCampusBackup(selected: Set<BackupModule>): Promise<s
     root.profileSection = asText(p.year_section);
     root.homeLayoutOrder = settings.home_layout_order || '';
     root.homeHiddenTiles = settings.home_hidden_tiles || '';
+    const photoUri = asText(p.photo_uri);
+    if (photoUri) {
+      try {
+        const photoData = await readStoredFileBase64(photoUri);
+        filePayloads.push({ kind: 'profile_photo', path: 'Profile/profile-photo', data: photoData });
+      } catch {
+        // Keep the remainder of the backup usable if the image file is unavailable.
+      }
+    }
   }
 
   if (selected.has('schedule')) {

@@ -996,6 +996,13 @@ export function SettingsScreen({theme,palette,onPalette,dark,onDark,onLockChange
    <Button theme={theme} secondary label="Reset dashboard layout" onPress={resetHomeTiles}/>
   </Card>
   <Card theme={theme} title="Profile">
+   <View style={{alignItems:'center',gap:9,paddingVertical:8}}>
+    {photoUri?<Image source={{uri:photoUri}} style={{width:88,height:88,borderRadius:44,borderWidth:2,borderColor:theme.border}}/>:<View style={{width:88,height:88,borderRadius:44,backgroundColor:theme.surfaceAlt,alignItems:'center',justifyContent:'center',borderWidth:1,borderColor:theme.border}}><Text style={{color:theme.primary,fontSize:30,fontWeight:'900'}}>{name.trim().charAt(0).toUpperCase()||'C'}</Text></View>}
+    <View style={s.chips}>
+     <Button theme={theme} secondary label={photoUri?'Change photo':'Add profile photo'} onPress={chooseProfilePhoto}/>
+     {photoUri?<Pressable onPress={removeProfilePhoto}><Text style={{color:theme.danger,fontSize:12,fontWeight:'700',padding:8}}>Remove photo</Text></Pressable>:null}
+    </View>
+   </View>
    <Field theme={theme} label="Name" value={name} onChangeText={setName}/>
    <Field theme={theme} label="Student number" value={student} onChangeText={setStudent}/>
    <Field theme={theme} label="Year & section" value={section} onChangeText={setSection}/>
