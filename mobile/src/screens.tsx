@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import { File as ExpoFile } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { BackupModule, backupModules, restoreCampusBackup, shareCampusBackup } from './backup';
 import { persistPickedFile, removeStoredFile } from './storage';
@@ -539,11 +540,104 @@ export function BudgetScreen({theme}:P){
  </>;
 }
 
+const TEXT_FILE_EXTENSIONS=new Set(['txt','md','markdown','csv','json','log','xml','html','htm','yaml','yml','ini','properties']);
+function fileExtension(name:string):string{return name.includes('.')?name.split('.').pop()!.toLowerCase():'';}
+function isTextFile(row:FileRow):boolean{return (row.mime_type||'').toLowerCase().startsWith('text/')||TEXT_FILE_EXTENSIONS.has(fileExtension(row.name));}
 export function FilesScreen({theme}:P){
- const [rows,setRows]=useState<FileRow[]>([]);const refresh=useCallback(async()=>{const db=await database;setRows(await db.getAllAsync<FileRow>('SELECT * FROM lecture_files ORDER BY added_at DESC'));},[]);useEffect(()=>{refresh();},[refresh]);
- const add=async()=>{try{const result=await DocumentPicker.getDocumentAsync({copyToCacheDirectory:true,multiple:false});if(result.canceled||!result.assets?.[0])return;const a=result.assets[0];const id=uid('file');const localUri=await persistPickedFile(a.uri,a.name,id);const db=await database;await db.runAsync('INSERT INTO lecture_files (id,subject_id,name,mime_type,local_uri,size,added_at,folder_name,favorite) VALUES (?,?,?,?,?,?,?,?,?)',id,null,a.name,a.mimeType||'',localUri,a.size||0,Date.now(),'Lecture 1',0);refresh();}catch(e){Alert.alert('Unable to import file',e instanceof Error?e.message:'Try again.');}};
- const del=(r:FileRow)=>Alert.alert('Remove file?',r.name,[{text:'Cancel'},{text:'Remove',style:'destructive',onPress:async()=>{const db=await database;await db.runAsync('DELETE FROM lecture_files WHERE id=?',r.id);await removeStoredFile(r.local_uri);refresh();}}]);
- return <><Card theme={theme} title="Lecture files"><Text style={{color:theme.muted}}>Import documents for offline access. PDF and Office viewers, and subject folders, are part of the next migration pass.</Text><Button theme={theme} label="＋ Import document" onPress={add}/></Card>{rows.length?rows.map(r=><Card key={r.id} theme={theme}><View style={s.listRow}><View style={{flex:1}}><Text style={{color:theme.text,fontWeight:'700'}}>{r.name}</Text><Text style={{color:theme.muted,fontSize:11}}>{r.mime_type||'Document'} · {Math.round(r.size/1024)} KB</Text></View><Pressable onPress={()=>Sharing.shareAsync(r.local_uri,{mimeType:r.mime_type||'application/octet-stream',dialogTitle:r.name}).catch(()=>Alert.alert('File unavailable','No compatible app could open or share this document.'))}><Text style={{color:theme.primary,padding:6}}>Open</Text></Pressable><Pressable onPress={()=>del(r)}><Text style={{color:theme.danger,padding:6}}>×</Text></Pressable></View></Card>):<Empty theme={theme} text="No lecture files added yet."/>}</>;
+ const [rows,setRows]=useState<FileRow[]>([]);
+ const [query,setQuery]=useState('');
+ const [favoritesOnly,setFavoritesOnly]=useState(false);
+ const [previewVisible,setPreviewVisible]=useState(false);
+ const [previewTitle,setPreviewTitle]=useState('');
+ const [previewContent,setPreviewContent]=useState('');
+ const [previewBusy,setPreviewBusy]=useState(false);
+ const refresh=useCallback(async()=>{
+  const db=await database;
+  setRows(await db.getAllAsync<FileRow>('SELECT * FROM lecture_files ORDER BY favorite DESC,added_at DESC'));
+ },[]);
+ useEffect(()=>{refresh();},[refresh]);
+ const add=async()=>{
+  try{
+   const result=await DocumentPicker.getDocumentAsync({copyToCacheDirectory:true,multiple:false});
+   if(result.canceled||!result.assets?.[0])return;
+   const asset=result.assets[0],id=uid('file');
+   const localUri=await persistPickedFile(asset.uri,asset.name,id);
+   const db=await database;
+   await db.runAsync('INSERT INTO lecture_files (id,subject_id,name,mime_type,local_uri,size,added_at,folder_name,favorite) VALUES (?,?,?,?,?,?,?,?,?)',id,null,asset.name,asset.mimeType||'',localUri,asset.size||0,Date.now(),'General',0);
+   await refresh();
+  }catch(error){Alert.alert('Unable to import file',error instanceof Error?error.message:'Try again.');}
+ };
+ const toggleFavorite=async(row:FileRow)=>{
+  const db=await database;
+  await db.runAsync('UPDATE lecture_files SET favorite=? WHERE id=?',row.favorite?0:1,row.id);
+  await refresh();
+ };
+ const preview=async(row:FileRow)=>{
+  setPreviewBusy(true);
+  try{
+   if(isTextFile(row)){
+    if(row.size>2_000_000){Alert.alert('File is too large for text preview','Open or share this file with a compatible app instead.');return;}
+    let content=await FileSystem.readAsStringAsync(row.local_uri,{encoding:FileSystem.EncodingType.UTF8});
+    if(fileExtension(row.name)==='json'){
+     try{content=JSON.stringify(JSON.parse(content),null,2);}catch{}
+    }
+    const limit=120_000;
+    setPreviewContent(content.length>limit?content.slice(0,limit)+'\n\n[Preview shortened. Open the original file to see the remaining content.]':content);
+    setPreviewTitle(row.name);setPreviewVisible(true);
+    return;
+   }
+   const file=new ExpoFile(row.local_uri);
+   const options={title:row.name,...(row.mime_type?{mimeType:row.mime_type}:{})};
+   if(await file.canPreview(options)){
+    await file.preview(options);
+   }else{
+    if(await Sharing.isAvailableAsync())await Sharing.shareAsync(row.local_uri,{mimeType:row.mime_type||'application/octet-stream',dialogTitle:'Open '+row.name});
+    else Alert.alert('No compatible viewer','Install a PDF or Office viewer app, then try opening this file again.');
+   }
+  }catch(error){
+   try{
+    if(await Sharing.isAvailableAsync())await Sharing.shareAsync(row.local_uri,{mimeType:row.mime_type||'application/octet-stream',dialogTitle:'Open '+row.name});
+    else throw error;
+   }catch{Alert.alert('Unable to preview file',error instanceof Error?error.message:'No compatible app could open this document.');}
+  }finally{setPreviewBusy(false);}
+ };
+ const del=(row:FileRow)=>Alert.alert('Remove file?',row.name,[{text:'Cancel'},{text:'Remove',style:'destructive',onPress:async()=>{
+  const db=await database;
+  await db.runAsync('DELETE FROM lecture_files WHERE id=?',row.id);
+  await removeStoredFile(row.local_uri);
+  await refresh();
+ }}]);
+ const filtered=rows.filter(row=>(!favoritesOnly||Boolean(row.favorite))&&row.name.toLowerCase().includes(query.trim().toLowerCase()));
+ return <>
+  <Card theme={theme} title="Lecture files">
+   <Text style={{color:theme.muted,lineHeight:19}}>Keep class documents on this device. Text files open inside CampusOS; PDFs and Office files use an installed compatible viewer.</Text>
+   <Button theme={theme} label="＋ Import document" onPress={add}/>
+   <Field theme={theme} label="Search files" value={query} onChangeText={setQuery}/>
+   <View style={s.listRow}>
+    <Text style={{color:theme.muted,fontSize:11,flex:1}}>{filtered.length} of {rows.length} files</Text>
+    <Pressable onPress={()=>setFavoritesOnly(value=>!value)} style={[s.chip,{backgroundColor:favoritesOnly?theme.primary:theme.surfaceAlt}]}>
+     <Text style={{color:favoritesOnly?'#FFF':theme.text,fontSize:11,fontWeight:'700'}}>{favoritesOnly?'★ Favorites':'☆ All files'}</Text>
+    </Pressable>
+   </View>
+  </Card>
+  {filtered.length?filtered.map(row=><Card key={row.id} theme={theme}>
+   <View style={s.listRow}>
+    <View style={{flex:1,gap:4}}>
+     <Text style={{color:theme.text,fontWeight:'800'}}>{row.name}</Text>
+     <Text style={{color:theme.muted,fontSize:11}}>{row.mime_type||'Document'} · {Math.round(row.size/1024)} KB · {isTextFile(row)?'In-app text preview':'Native document preview'}</Text>
+    </View>
+    <Pressable onPress={()=>toggleFavorite(row)}><Text style={{color:theme.primary,padding:5,fontSize:17}}>{row.favorite?'★':'☆'}</Text></Pressable>
+    <Pressable disabled={previewBusy} onPress={()=>preview(row)}><Text style={{color:theme.primary,padding:5,fontWeight:'700'}}>{previewBusy?'…':'Open'}</Text></Pressable>
+    <Pressable onPress={()=>del(row)}><Text style={{color:theme.danger,padding:5}}>×</Text></Pressable>
+   </View>
+  </Card>):<Empty theme={theme} text={rows.length?(favoritesOnly?'No favorite files yet.':'No files match this search.'):'No lecture files added yet.'}/>}
+  <Editor theme={theme} title={previewTitle||'Document preview'} visible={previewVisible} onClose={()=>setPreviewVisible(false)}>
+   <ScrollView style={{maxHeight:520}} contentContainerStyle={{padding:12}}>
+    <Text selectable style={{color:theme.text,fontFamily:'monospace',fontSize:12,lineHeight:18}}>{previewContent}</Text>
+   </ScrollView>
+   <Button theme={theme} secondary label="Share original file" onPress={()=>Sharing.shareAsync(rows.find(row=>row.name===previewTitle)?.local_uri||'',{dialogTitle:'Share '+previewTitle}).catch(()=>Alert.alert('Unable to share file'))}/>
+  </Editor>
+ </>;
 }
 
 function BackupManager({theme}:{theme:Theme}){
